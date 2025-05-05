@@ -1,0 +1,130 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model Usuario {
+  id                 Int       @id @default(autoincrement())
+  nome               String
+  email              String    @unique
+  senha              String
+  cargo              String    // "admin", "pastor", "supervisor", "lider", "colider"
+  ativo              Boolean   @default(true)
+  createdAt          DateTime  @default(now()) @map("created_at")
+  updatedAt          DateTime  @updatedAt @map("updated_at")
+  celulasLideradas   Celula[]  @relation("lider")
+  celulasCoLideradas Celula[]  @relation("colider")
+  notificacoes       Notificacao[]
+  conquistas         Conquista[]
+
+  @@map("usuarios")
+}
+
+model Celula {
+  id              Int           @id @default(autoincrement())
+  nome            String
+  endereco        String?
+  diaSemana       String        // "segunda", "terca", "quarta", "quinta", "sexta", "sabado", "domingo"
+  horario         String
+  liderId         Int           @map("lider_id")
+  lider           Usuario       @relation("lider", fields: [liderId], references: [id])
+  coLiderId       Int?          @map("colider_id")
+  coLider         Usuario?      @relation("colider", fields: [coLiderId], references: [id])
+  regiaoId        Int?          @map("regiao_id")
+  regiao          Regiao?       @relation(fields: [regiaoId], references: [id])
+  ativo           Boolean       @default(true)
+  createdAt       DateTime      @default(now()) @map("created_at")
+  updatedAt       DateTime      @updatedAt @map("updated_at")
+  membros         Membro[]
+  relatorios      Relatorio[]
+
+  @@map("celulas")
+}
+
+model Membro {
+  id              Int           @id @default(autoincrement())
+  celulaId        Int           @map("celula_id")
+  celula          Celula        @relation(fields: [celulaId], references: [id])
+  nome            String
+  email           String?
+  telefone        String?
+  ehConsolidador  Boolean       @default(false) @map("eh_consolidador")
+  dataCadastro    DateTime      @default(now()) @map("data_cadastro")
+  ativo           Boolean       @default(true)
+  observacoes     String?
+  presencas       Presenca[]
+
+  @@map("membros")
+}
+
+model Regiao {
+  id              Int           @id @default(autoincrement())
+  nome            String
+  supervisorId    Int?          @map("supervisor_id")
+  ativo           Boolean       @default(true)
+  celulas         Celula[]
+
+  @@map("regioes")
+}
+
+model Relatorio {
+  id              Int           @id @default(autoincrement())
+  celulaId        Int           @map("celula_id")
+  celula          Celula        @relation(fields: [celulaId], references: [id])
+  mes             Int
+  ano             Int
+  dataEnvio       DateTime?     @map("data_envio")
+  observacoes     String?
+  presencas       Presenca[]
+
+  @@unique([celulaId, mes, ano])
+  @@map("relatorios")
+}
+
+model Presenca {
+  id                Int           @id @default(autoincrement())
+  relatorioId       Int           @map("relatorio_id")
+  relatorio         Relatorio     @relation(fields: [relatorioId], references: [id])
+  membroId          Int           @map("membro_id")
+  membro            Membro        @relation(fields: [membroId], references: [id])
+  presencaCelula    Boolean       @default(false) @map("presenca_celula")
+  presencaCulto     Boolean       @default(false) @map("presenca_culto")
+  semana            Int           // 1, 2, 3, 4 ou 5 (semana do mês)
+  observacoes       String?
+
+  @@unique([relatorioId, membroId, semana])
+  @@map("presencas")
+}
+
+model Notificacao {
+  id              Int           @id @default(autoincrement())
+  usuarioId       Int           @map("usuario_id")
+  usuario         Usuario       @relation(fields: [usuarioId], references: [id])
+  titulo          String
+  mensagem        String
+  lida            Boolean       @default(false)
+  dataCriacao     DateTime      @default(now()) @map("data_criacao")
+  tipo            String        // "lembrete", "conquista", "informativo"
+
+  @@map("notificacoes")
+}
+
+model Conquista {
+  id              Int           @id @default(autoincrement())
+  usuarioId       Int           @map("usuario_id")
+  usuario         Usuario       @relation(fields: [usuarioId], references: [id])
+  tipo            String        // "lider_destaque", "assiduidade", "crescimento"
+  descricao       String
+  dataConclusao   DateTime      @default(now()) @map("data_conclusao")
+  mes             Int
+  ano             Int
+
+  @@map("conquistas")
+} 
