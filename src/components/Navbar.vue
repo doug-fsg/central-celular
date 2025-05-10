@@ -20,6 +20,25 @@ const badgeIcon = computed(() => {
   }
 })
 
+// Computed para controlar quais links mostrar
+const navLinks = computed(() => {
+  if (userStore.isAdmin) {
+    return []
+  } else if (userStore.isSupervisor) {
+    return [
+      { name: 'supervisor-dashboard', label: 'Dashboard' },
+      { name: 'reports', label: 'Relatórios' }
+    ]
+  } else {
+    return [
+      { name: 'dashboard', label: 'Dashboard' },
+      { name: 'members', label: 'Membros' },
+      { name: 'attendance', label: 'Frequência' },
+      { name: 'reports', label: 'Relatórios' }
+    ]
+  }
+})
+
 async function handleLogout() {
   try {
     await api.logout()
@@ -46,38 +65,23 @@ function toggleDropdown() {
       <div class="flex justify-between h-16">
         <div class="flex">
           <div class="flex-shrink-0 flex items-center">
-            <router-link :to="{ name: 'home' }" class="text-primary-600 font-bold text-xl">
-              Central
+            <router-link 
+              :to="userStore.isAdmin ? { name: 'admin-dashboard' } : { name: 'home' }" 
+              class="flex flex-col items-start"
+            >
+              <span class="text-primary-600 font-bold text-xl">Central</span>
+              <span v-if="userStore.isAdmin" class="text-xs text-gray-500">Painel Administrativo</span>
             </router-link>
           </div>
-          <div class="ml-6 flex space-x-8">
+          <div v-if="!userStore.isAdmin" class="ml-6 flex space-x-8">
             <router-link
-              :to="{ name: 'dashboard' }"
+              v-for="link in navLinks"
+              :key="link.name"
+              :to="{ name: link.name }"
               class="border-transparent text-gray-500 hover:border-primary-500 hover:text-primary-700 inline-flex items-center px-1 pt-1 border-b-2 text-sm font-medium"
               active-class="border-primary-500 text-primary-900"
             >
-              Dashboard
-            </router-link>
-            <router-link
-              :to="{ name: 'members' }"
-              class="border-transparent text-gray-500 hover:border-primary-500 hover:text-primary-700 inline-flex items-center px-1 pt-1 border-b-2 text-sm font-medium"
-              active-class="border-primary-500 text-primary-900"
-            >
-              Membros
-            </router-link>
-            <router-link
-              :to="{ name: 'attendance' }"
-              class="border-transparent text-gray-500 hover:border-primary-500 hover:text-primary-700 inline-flex items-center px-1 pt-1 border-b-2 text-sm font-medium"
-              active-class="border-primary-500 text-primary-900"
-            >
-              Frequência
-            </router-link>
-            <router-link
-              :to="{ name: 'reports' }"
-              class="border-transparent text-gray-500 hover:border-primary-500 hover:text-primary-700 inline-flex items-center px-1 pt-1 border-b-2 text-sm font-medium"
-              active-class="border-primary-500 text-primary-900"
-            >
-              Relatórios
+              {{ link.label }}
             </router-link>
           </div>
         </div>
@@ -92,14 +96,14 @@ function toggleDropdown() {
                   <div class="h-8 w-8 rounded-full bg-primary-100 flex items-center justify-center text-primary-800 font-bold">
                     {{ userStore.userName.charAt(0).toUpperCase() }}
                   </div>
-                  <div v-if="badgeIcon" class="absolute -top-1 -right-1 text-xs">
+                  <div v-if="badgeIcon && !userStore.isAdmin" class="absolute -top-1 -right-1 text-xs">
                     {{ badgeIcon }}
                   </div>
                 </div>
               </button>
             </div>
             <div v-if="showDropdown" class="origin-top-right absolute right-0 mt-2 w-48 rounded-md shadow-lg py-1 bg-white ring-1 ring-black ring-opacity-5 focus:outline-none z-50" role="menu" aria-orientation="vertical" aria-labelledby="user-menu-button" tabindex="-1">
-              <div v-if="leaderStore.leaderBadge !== 'none'" class="px-3 py-1.5 text-xs text-gray-500 border-b border-gray-100">
+              <div v-if="leaderStore.leaderBadge !== 'none' && !userStore.isAdmin" class="px-3 py-1.5 text-xs text-gray-500 border-b border-gray-100">
                 <div class="flex items-center">
                   <span class="mr-1">
                     {{ leaderStore.leaderBadge === 'bronze' ? '🥉' : leaderStore.leaderBadge === 'silver' ? '🥈' : '🥇' }}

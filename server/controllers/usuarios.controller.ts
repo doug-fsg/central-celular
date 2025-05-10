@@ -3,11 +3,23 @@ import { prisma } from '../index';
 import bcrypt from 'bcryptjs';
 import { z } from 'zod';
 
-// Schema de validação para criar/atualizar usuário
-const usuarioSchema = z.object({
+// Schema de validação para criar usuário
+const criarUsuarioSchema = z.object({
   nome: z.string().min(3, 'Nome deve ter pelo menos 3 caracteres'),
   email: z.string().email('Email inválido'),
-  cargo: z.string().min(2, 'Cargo deve ter pelo menos 2 caracteres'),
+  cargo: z.enum(['ADMINISTRADOR', 'SUPERVISOR', 'LIDER'], {
+    errorMap: () => ({ message: 'Cargo deve ser ADMINISTRADOR, SUPERVISOR ou LIDER' })
+  }),
+  senha: z.string().min(6, 'Senha deve ter pelo menos 6 caracteres')
+});
+
+// Schema de validação para atualizar usuário
+const atualizarUsuarioSchema = z.object({
+  nome: z.string().min(3, 'Nome deve ter pelo menos 3 caracteres'),
+  email: z.string().email('Email inválido'),
+  cargo: z.enum(['ADMINISTRADOR', 'SUPERVISOR', 'LIDER'], {
+    errorMap: () => ({ message: 'Cargo deve ser ADMINISTRADOR, SUPERVISOR ou LIDER' })
+  }),
   senha: z.string().min(6, 'Senha deve ter pelo menos 6 caracteres').optional()
 });
 
@@ -20,7 +32,28 @@ const alterarSenhaSchema = z.object({
 // Listar todos os usuários
 export const listarUsuarios = async (req: Request, res: Response) => {
   try {
+    const page = Number(req.query.page) || 1;
+    const limit = Number(req.query.limit) || 10;
+    const skip = (page - 1) * limit;
+
+    const cargosPermitidos = ['ADMINISTRADOR', 'SUPERVISOR', 'LIDER'];
+
+    // Buscar total de registros com filtro de cargos
+    const total = await prisma.usuario.count({
+      where: {
+        cargo: {
+          in: cargosPermitidos
+        }
+      }
+    });
+
+    // Buscar usuários com paginação e filtro de cargos
     const usuarios = await prisma.usuario.findMany({
+      where: {
+        cargo: {
+          in: cargosPermitidos
+        }
+      },
       select: {
         id: true,
         nome: true,
@@ -29,10 +62,43 @@ export const listarUsuarios = async (req: Request, res: Response) => {
         ativo: true,
         createdAt: true,
         updatedAt: true
-      }
+      },
+      orderBy: [
+        { cargo: 'asc' },
+        { nome: 'asc' }
+      ],
+      skip,
+      take: limit
     });
 
-    res.json(usuarios);
+    // Ordenar cargos na ordem específica
+    const ordemCargos = {
+      'ADMINISTRADOR': 1,
+      'SUPERVISOR': 2,
+      'LIDER': 3
+    };
+
+    const usuariosOrdenados = usuarios
+      .sort((a, b) => {
+        const ordemA = ordemCargos[a.cargo as keyof typeof ordemCargos];
+        const ordemB = ordemCargos[b.cargo as keyof typeof ordemCargos];
+        if (ordemA !== ordemB) return ordemA - ordemB;
+        return a.nome.localeCompare(b.nome);
+      })
+      .map(u => ({
+        ...u,
+        status: u.ativo ? 'ativo' : 'inativo'
+      }));
+
+    res.json({
+      usuarios: usuariosOrdenados,
+      pagination: {
+        total,
+        pages: Math.ceil(total / limit),
+        currentPage: page,
+        perPage: limit
+      }
+    });
   } catch (error) {
     console.error('Erro ao listar usuários:', error);
     res.status(500).json({ message: 'Erro ao listar usuários' });
@@ -72,7 +138,7 @@ export const obterUsuario = async (req: Request, res: Response) => {
 export const criarUsuario = async (req: Request, res: Response) => {
   try {
     // Validar dados de entrada
-    const dados = usuarioSchema.parse(req.body);
+    const dados = criarUsuarioSchema.parse(req.body);
 
     // Verificar se email já existe
     const usuarioExistente = await prisma.usuario.findUnique({ 
@@ -85,7 +151,7 @@ export const criarUsuario = async (req: Request, res: Response) => {
 
     // Hash da senha
     const salt = await bcrypt.genSalt(10);
-    const senhaHash = await bcrypt.hash(dados.senha || 'senha123', salt);
+    const senhaHash = await bcrypt.hash(dados.senha, salt);
 
     // Criar usuário
     const novoUsuario = await prisma.usuario.create({
@@ -103,7 +169,10 @@ export const criarUsuario = async (req: Request, res: Response) => {
     res.status(201).json(usuarioSemSenha);
   } catch (error) {
     if (error instanceof z.ZodError) {
-      return res.status(400).json({ errors: error.errors });
+      return res.status(400).json({ 
+        message: 'Erro ao processar requisição',
+        errors: error.errors 
+      });
     }
     
     console.error('Erro ao criar usuário:', error);
@@ -117,7 +186,7 @@ export const atualizarUsuario = async (req: Request, res: Response) => {
     const { id } = req.params;
     
     // Validar dados de entrada
-    const dados = usuarioSchema.parse(req.body);
+    const dados = atualizarUsuarioSchema.parse(req.body);
 
     // Verificar se usuário existe
     const usuarioExistente = await prisma.usuario.findUnique({ 
@@ -163,7 +232,10 @@ export const atualizarUsuario = async (req: Request, res: Response) => {
     res.json(usuarioSemSenha);
   } catch (error) {
     if (error instanceof z.ZodError) {
-      return res.status(400).json({ errors: error.errors });
+      return res.status(400).json({ 
+        message: 'Erro ao processar requisição',
+        errors: error.errors 
+      });
     }
     
     console.error('Erro ao atualizar usuário:', error);
@@ -190,6 +262,30 @@ export const ativarDesativarUsuario = async (req: Request, res: Response) => {
       return res.status(404).json({ message: 'Usuário não encontrado' });
     }
 
+    // Não permitir desativar o próprio usuário
+    if (Number(id) === (req as any).usuario.id) {
+      return res.status(400).json({ message: 'Não é possível desativar o próprio usuário' });
+    }
+
+    // Verificar se é o último administrador ativo
+    if (!ativo && usuarioExistente.cargo === 'ADMINISTRADOR') {
+      const adminsAtivos = await prisma.usuario.count({
+        where: {
+          cargo: 'ADMINISTRADOR',
+          ativo: true,
+          NOT: {
+            id: Number(id)
+          }
+        }
+      });
+
+      if (adminsAtivos === 0) {
+        return res.status(400).json({ 
+          message: 'Não é possível desativar o último administrador do sistema' 
+        });
+      }
+    }
+
     // Atualizar status
     const usuarioAtualizado = await prisma.usuario.update({
       where: { id: Number(id) },
@@ -198,7 +294,10 @@ export const ativarDesativarUsuario = async (req: Request, res: Response) => {
 
     // Retornar dados do usuário (sem a senha)
     const { senha: _, ...usuarioSemSenha } = usuarioAtualizado;
-    res.json(usuarioSemSenha);
+    res.json({
+      ...usuarioSemSenha,
+      status: usuarioAtualizado.ativo ? 'ativo' : 'inativo'
+    });
   } catch (error) {
     console.error('Erro ao atualizar status do usuário:', error);
     res.status(500).json({ message: 'Erro ao atualizar status do usuário' });

@@ -49,9 +49,9 @@ const handleLogin = async () => {
     userStore.setUser(response.usuario)
     
     // Redirecionar conforme o cargo do usuário
-    if (response.usuario.cargo === 'admin' || response.usuario.cargo === 'pastor') {
+    if (response.usuario.cargo === 'ADMINISTRADOR' || response.usuario.cargo === 'PASTOR') {
       router.push({ name: 'admin-dashboard' })
-    } else if (response.usuario.cargo === 'supervisor') {
+    } else if (response.usuario.cargo === 'SUPERVISOR') {
       router.push({ name: 'supervisor-dashboard' })
     } else {
       router.push({ name: 'dashboard' })

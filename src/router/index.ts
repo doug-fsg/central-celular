@@ -1,3 +1,4 @@
+import type { RouteLocationNormalized, NavigationGuardNext } from 'vue-router'
 import { createRouter, createWebHistory } from 'vue-router'
 import { useUserStore } from '../stores/userStore'
 import LandingPage from '../views/LandingPage.vue'
@@ -6,7 +7,6 @@ import Dashboard from '../views/Dashboard.vue'
 import MemberList from '../views/MemberList.vue'
 import AttendanceForm from '../views/AttendanceForm.vue'
 import Reports from '../views/Reports.vue'
-import DetailedReports from '../views/DetailedReports.vue'
 import Profile from '../views/Profile.vue'
 import AdminDashboard from '../views/AdminDashboard.vue'
 import SupervisorDashboard from '../views/SupervisorDashboard.vue'
@@ -29,7 +29,7 @@ const router = createRouter({
       path: '/dashboard',
       name: 'dashboard',
       component: Dashboard,
-      meta: { requiresAuth: true }
+      meta: { requiresAuth: true, requiresLeader: true }
     },
     {
       path: '/admin',
@@ -47,25 +47,19 @@ const router = createRouter({
       path: '/members',
       name: 'members',
       component: MemberList,
-      meta: { requiresAuth: true }
+      meta: { requiresAuth: true, requiresLeader: true }
     },
     {
       path: '/attendance',
       name: 'attendance',
       component: AttendanceForm,
-      meta: { requiresAuth: true }
+      meta: { requiresAuth: true, requiresLeader: true }
     },
     {
       path: '/reports',
       name: 'reports',
       component: Reports,
-      meta: { requiresAuth: true }
-    },
-    {
-      path: '/detailed-reports',
-      name: 'detailed-reports',
-      component: DetailedReports,
-      meta: { requiresAuth: true }
+      meta: { requiresAuth: true, requiresLeader: true }
     },
     {
       path: '/profile',
@@ -77,7 +71,7 @@ const router = createRouter({
 })
 
 // Navegação Guards
-router.beforeEach((to, from, next) => {
+router.beforeEach((to: RouteLocationNormalized, from: RouteLocationNormalized, next: NavigationGuardNext) => {
   const userStore = useUserStore()
   
   // Verifica se a rota requer autenticação
@@ -94,9 +88,17 @@ router.beforeEach((to, from, next) => {
   if (to.meta.requiresSupervisor && !userStore.isSupervisor) {
     return next({ name: 'dashboard' })
   }
+
+  // Verifica se a rota requer privilégios de líder
+  if (to.meta.requiresLeader && userStore.isAdmin) {
+    return next({ name: 'admin-dashboard' })
+  }
   
   // Verifica se a rota é só para visitantes (login, registro)
   if (to.meta.requiresGuest && userStore.isLoggedIn) {
+    if (userStore.isAdmin) {
+      return next({ name: 'admin-dashboard' })
+    }
     return next({ name: 'dashboard' })
   }
   

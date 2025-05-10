@@ -64,18 +64,24 @@ const relatorioService = {
         }
       }
       
-      const response = await api.get(endpoint);
+      const response = await api.get(endpoint) as Relatorio[];
+      
+      // Converter os meses de 1-12 para 0-11
+      const relatoriosAjustados = response.map((relatorio: Relatorio) => ({
+        ...relatorio,
+        mes: relatorio.mes - 1
+      }));
       
       // Validar se os resultados atendem aos filtros fornecidos
       if (filtros && filtros.mes !== undefined && filtros.ano !== undefined) {
         // Filtrar localmente para garantir que corresponda aos critérios solicitados
-        return response.filter(r => 
-          r.mes === filtros.mes && 
+        return relatoriosAjustados.filter((r: Relatorio) => 
+          r.mes === (filtros.mes as number - 1) && 
           r.ano === filtros.ano
         );
       }
       
-      return response;
+      return relatoriosAjustados;
     } catch (error) {
       console.error('Erro ao listar relatórios:', error);
       return [];
@@ -95,14 +101,22 @@ const relatorioService = {
   // Verificar se existe um relatório para o mês/ano/célula específicos
   async verificarRelatorioExistente(celulaId: number, mes: number, ano: number) {
     try {
+      // Converter mês de 0-11 para 1-12 para o backend
+      const mesAjustado = mes + 1;
+      
       const relatorios = await this.listarRelatorios({
         celula: celulaId,
-        mes: mes + 1, // API usa 1-12 para meses
+        mes: mesAjustado,
         ano
       });
       
       if (relatorios && relatorios.length > 0) {
-        return relatorios[0];
+        // Converter o mês de volta para 0-11 ao retornar
+        const relatorio = relatorios[0];
+        if (relatorio.mes) {
+          relatorio.mes = relatorio.mes - 1;
+        }
+        return relatorio;
       }
       
       return null;
@@ -115,12 +129,20 @@ const relatorioService = {
   // Criar um novo relatório
   async criarRelatorio(celulaId: number, mes: number, ano: number, observacoes?: string) {
     try {
+      // Converter mês de 0-11 para 1-12 para o backend
+      const mesAjustado = mes + 1;
+      
       const resultado = await api.post('/relatorios', {
         celulaId,
-        mes,
+        mes: mesAjustado,
         ano,
         observacoes
       }) as Relatorio;
+      
+      // Converter o mês de volta para 0-11 ao retornar
+      if (resultado.mes) {
+        resultado.mes = resultado.mes - 1;
+      }
       
       console.log(`[DEBUG] criarRelatorio resposta:`, resultado);
       return resultado;

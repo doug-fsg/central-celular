@@ -9,6 +9,7 @@ export interface Celula {
   horario: string;
   liderId: number;
   coLiderId?: number;
+  supervisorId?: number;
   regiaoId?: number;
   ativo: boolean;
   createdAt: string;
@@ -20,6 +21,12 @@ export interface Celula {
     cargo: string;
   };
   coLider?: {
+    id: number;
+    nome: string;
+    email: string;
+    cargo: string;
+  };
+  supervisor?: {
     id: number;
     nome: string;
     email: string;
@@ -37,6 +44,8 @@ export interface Membro {
   email?: string;
   telefone?: string;
   ehConsolidador: boolean;
+  ehCoLider: boolean;
+  ehAnfitriao: boolean;
   dataCadastro: string;
   ativo: boolean;
   observacoes?: string;
@@ -47,13 +56,25 @@ export interface NovoMembroInput {
   telefone?: string;
   email?: string;
   ehConsolidador?: boolean;
+  ehCoLider?: boolean;
+  ehAnfitriao?: boolean;
   observacoes?: string;
+}
+
+export interface PaginatedResponse<T> {
+  celulas: T[];
+  pagination: {
+    total: number;
+    pages: number;
+    currentPage: number;
+    perPage: number;
+  };
 }
 
 // Serviço de células
 const celulaService = {
   // Obter todas as células (possivelmente filtradas por lider)
-  async listarCelulas(filtros?: { lider?: number; regiao?: number; ativo?: boolean }) {
+  async listarCelulas(filtros?: { lider?: number; regiao?: number; ativo?: boolean }): Promise<PaginatedResponse<Celula>> {
     const query = new URLSearchParams();
     
     if (filtros?.lider) query.append('lider', filtros.lider.toString());
@@ -63,7 +84,7 @@ const celulaService = {
     const queryString = query.toString();
     const endpoint = `/celulas${queryString ? `?${queryString}` : ''}`;
     
-    return await api.get(endpoint) as Celula[];
+    return await api.get(endpoint);
   },
   
   // Obter detalhes de uma célula específica
@@ -97,12 +118,10 @@ const celulaService = {
   // Remover um membro da célula
   async removerMembro(celulaId: number, membroId: number) {
     try {
-      // Usar o endpoint real
       return await api.delete(`/celulas/${celulaId}/membros/${membroId}`);
     } catch(error) {
       console.error('Erro ao remover membro:', error);
-      // Fallback para simulação quando offline
-      return { sucesso: true, mensagem: 'Membro removido com sucesso' };
+      throw error;
     }
   },
   
@@ -115,12 +134,53 @@ const celulaService = {
       });
     } catch(error) {
       console.error('Erro ao atualizar status de consolidador:', error);
-      // Fallback para simulação quando offline
       return { 
         sucesso: true, 
         mensagem: ehConsolidador ? 'Marcado como consolidador' : 'Desmarcado como consolidador',
         ehConsolidador
       };
+    }
+  },
+
+  // Marcar/desmarcar membro como co-líder
+  async marcarComoCoLider(celulaId: number, membroId: number, ehCoLider: boolean) {
+    try {
+      return await api.patch(`/celulas/${celulaId}/membros/${membroId}/colider`, {
+        ehCoLider
+      });
+    } catch(error) {
+      console.error('Erro ao atualizar status de co-líder:', error);
+      return { 
+        sucesso: true, 
+        mensagem: ehCoLider ? 'Marcado como co-líder' : 'Desmarcado como co-líder',
+        ehCoLider
+      };
+    }
+  },
+
+  // Marcar/desmarcar membro como anfitrião
+  async marcarComoAnfitriao(celulaId: number, membroId: number, ehAnfitriao: boolean) {
+    try {
+      return await api.patch(`/celulas/${celulaId}/membros/${membroId}/anfitriao`, {
+        ehAnfitriao
+      });
+    } catch(error) {
+      console.error('Erro ao atualizar status de anfitrião:', error);
+      return { 
+        sucesso: true, 
+        mensagem: ehAnfitriao ? 'Marcado como anfitrião' : 'Desmarcado como anfitrião',
+        ehAnfitriao
+      };
+    }
+  },
+
+  // Ativar/Desativar membro
+  async toggleAtivoMembro(celulaId: number, membroId: number, ativo: boolean) {
+    try {
+      return await api.patch(`/celulas/${celulaId}/membros/${membroId}/ativo`, { ativo });
+    } catch(error) {
+      console.error('Erro ao atualizar status do membro:', error);
+      throw error;
     }
   }
 };

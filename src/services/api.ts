@@ -7,6 +7,7 @@ const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3000/api';
 interface ApiError {
   message: string;
   errors?: any[];
+  status?: number;
 }
 
 // Estado global para token e usuário logado
@@ -51,7 +52,6 @@ const fetchApi = async (
       'Content-Type': 'application/json',
     };
 
-    // Incluir token de autenticação se disponível e requerido
     if (includeToken && token.value) {
       headers['Authorization'] = `Bearer ${token.value}`;
     }
@@ -61,42 +61,57 @@ const fetchApi = async (
       headers,
       body: data ? JSON.stringify(data) : undefined,
     };
-    
-    // Log para envio de relatórios
-    if (endpoint.includes('/relatorios/') && endpoint.includes('/enviar')) {
-      console.log(`[DEBUG] fetchApi - URL completa: ${API_URL}${endpoint}`);
-      console.log(`[DEBUG] fetchApi - Headers:`, headers);
-      console.log(`[DEBUG] fetchApi - Options:`, options);
-    }
 
     const response = await fetch(`${API_URL}${endpoint}`, options);
     
-    // Log para envio de relatórios
-    if (endpoint.includes('/relatorios/') && endpoint.includes('/enviar')) {
-      console.log(`[DEBUG] fetchApi - Status da resposta:`, response.status);
-      console.log(`[DEBUG] fetchApi - Headers da resposta:`, Object.fromEntries([...response.headers]));
-    }
-    
-    const result = await response.json();
+    // Verificar se a resposta é JSON
+    const contentType = response.headers.get('content-type');
+    const isJson = contentType?.includes('application/json');
 
-    // Se a resposta não for bem-sucedida, tratar como erro
     if (!response.ok) {
-      // Log para envio de relatórios
-      if (endpoint.includes('/relatorios/') && endpoint.includes('/enviar')) {
-        console.error(`[DEBUG] fetchApi - Erro na resposta de envio de relatório:`, result);
+      let errorMessage = 'Erro ao processar requisição';
+      let errorData: any = {};
+
+      try {
+        if (isJson) {
+          errorData = await response.json();
+        } else {
+          errorMessage = await response.text();
+        }
+      } catch (e) {
+        errorMessage = 'Erro ao processar resposta do servidor';
       }
-      
+
       throw {
-        message: result.message || 'Erro ao processar requisição',
-        errors: result.errors,
+        message: errorData.message || errorMessage,
+        errors: errorData.errors,
         status: response.status,
       };
     }
 
-    return result;
-  } catch (error) {
-    console.error('Erro na API:', error);
-    throw error;
+    // Se a resposta for bem-sucedida, verificar se é JSON
+    try {
+      if (isJson) {
+        return await response.json();
+      }
+      return await response.text();
+    } catch (e) {
+      throw {
+        message: 'Erro ao processar resposta do servidor',
+        status: response.status,
+      };
+    }
+  } catch (error: any) {
+    // Se o erro já estiver formatado, apenas repassa
+    if (error.status) {
+      throw error;
+    }
+    
+    // Se for um erro de rede ou outro tipo
+    throw {
+      message: error.message || 'Erro ao conectar com o servidor',
+      status: 500,
+    };
   }
 };
 

@@ -8,7 +8,10 @@ import {
   adicionarMembro,
   removerMembro,
   atualizarStatusMembro,
-  marcarComoConsolidador
+  toggleAtivoMembro,
+  marcarComoConsolidador,
+  marcarComoCoLider,
+  marcarComoAnfitriao
 } from '../controllers/celulas.controller';
 import { autenticacao } from '../middlewares/auth.middleware';
 
@@ -28,6 +31,9 @@ router.patch('/:id/desativar', desativarCelula);
 router.post('/:id/membros', adicionarMembro);
 router.delete('/:id/membros/:membroId', removerMembro);
 router.patch('/:id/membros/:membroId/status', atualizarStatusMembro);
+router.patch('/:id/membros/:membroId/ativo', toggleAtivoMembro);
 router.patch('/:id/membros/:membroId/consolidador', marcarComoConsolidador);
+router.patch('/:id/membros/:membroId/colider', marcarComoCoLider);
+router.patch('/:id/membros/:membroId/anfitriao', marcarComoAnfitriao);
 
 export default router; 

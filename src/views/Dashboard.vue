@@ -50,10 +50,6 @@ function closeLateReportsAlert() {
 function goToAttendance() {
   router.push({ name: 'attendance' });
 }
-
-function goToReports() {
-  router.push({ name: 'detailed-reports' });
-}
 </script>
 
 <template>
@@ -88,14 +84,7 @@ function goToReports() {
           </p>
         </div>
         
-        <div class="mt-4 md:mt-0 space-x-3">
-          <button 
-            @click="goToReports"
-            class="btn btn-outline flex items-center"
-          >
-            <AppIcon name="chart-bar" class="mr-1.5" />
-            Ver Relatórios
-          </button>
+        <div class="mt-4 md:mt-0">
           <button 
             @click="goToAttendance"
             class="btn btn-primary flex items-center"

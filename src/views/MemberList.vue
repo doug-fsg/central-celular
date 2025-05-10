@@ -13,7 +13,8 @@ const newMember = ref({
   telefone: '',
   email: '',
   isConsolidator: false,
-  isCoLeader: false
+  isCoLeader: false,
+  isHost: false
 })
 
 // Verifica se tem uma célula selecionada
@@ -41,7 +42,8 @@ function addMember() {
       telefone: newMember.value.telefone,
       email: newMember.value.email,
       isConsolidator: newMember.value.isConsolidator,
-      isCoLeader: newMember.value.isCoLeader
+      isCoLeader: newMember.value.isCoLeader,
+      isHost: newMember.value.isHost
     })
     
     // Reset form
@@ -50,7 +52,8 @@ function addMember() {
       telefone: '',
       email: '',
       isConsolidator: false,
-      isCoLeader: false
+      isCoLeader: false,
+      isHost: false
     }
     
     showAddForm.value = false
@@ -72,7 +75,8 @@ const editForm = ref({
   telefone: '',
   email: '',
   isConsolidator: false,
-  isCoLeader: false
+  isCoLeader: false,
+  isHost: false
 })
 
 function startEditing(member: Member) {
@@ -82,7 +86,8 @@ function startEditing(member: Member) {
     telefone: member.telefone || '',
     email: member.email || '',
     isConsolidator: member.isConsolidator,
-    isCoLeader: member.isCoLeader
+    isCoLeader: member.isCoLeader,
+    isHost: member.isHost
   }
 }
 
@@ -93,7 +98,8 @@ function saveEdit() {
       telefone: editForm.value.telefone,
       email: editForm.value.email,
       isConsolidator: editForm.value.isConsolidator,
-      isCoLeader: editForm.value.isCoLeader
+      isCoLeader: editForm.value.isCoLeader,
+      isHost: editForm.value.isHost
     })
     
     cancelEdit()
@@ -104,10 +110,25 @@ function cancelEdit() {
   editingMember.value = null
 }
 
-function deleteMember(id: string) {
-  if (confirm('Tem certeza que deseja excluir este membro?')) {
-    memberStore.deleteMember(id)
+const showDeleteModal = ref(false)
+const memberToDelete = ref<Member | null>(null)
+
+function confirmDelete(member: Member) {
+  memberToDelete.value = member
+  showDeleteModal.value = true
+}
+
+async function handleDelete() {
+  if (memberToDelete.value) {
+    await memberStore.deleteMember(memberToDelete.value.id)
+    showDeleteModal.value = false
+    memberToDelete.value = null
   }
+}
+
+function cancelDelete() {
+  showDeleteModal.value = false
+  memberToDelete.value = null
 }
 
 function recarregarMembros() {
@@ -201,6 +222,30 @@ function recarregarMembros() {
               Consolidador
             </label>
           </div>
+
+          <div class="flex items-center">
+            <input
+              v-model="newMember.isCoLeader"
+              type="checkbox"
+              id="isCoLeader"
+              class="h-4 w-4 text-primary-500 focus:ring-primary-400 border-neutral-300 rounded"
+            />
+            <label for="isCoLeader" class="ml-2 block text-sm text-neutral-700">
+              Co-líder
+            </label>
+          </div>
+
+          <div class="flex items-center">
+            <input
+              v-model="newMember.isHost"
+              type="checkbox"
+              id="isHost"
+              class="h-4 w-4 text-primary-500 focus:ring-primary-400 border-neutral-300 rounded"
+            />
+            <label for="isHost" class="ml-2 block text-sm text-neutral-700">
+              Anfitrião
+            </label>
+          </div>
         </div>
         
         <div class="mt-6 flex justify-end">
@@ -274,59 +319,114 @@ function recarregarMembros() {
       <!-- Members List -->
       <div v-else class="section">
         <ul class="grid grid-cols-1 gap-4">
-          <li v-for="member in memberStore.members" :key="member.id" class="card">
+          <li v-for="member in memberStore.getAllMembers" :key="member.id" 
+            class="card transition-all duration-200"
+            :class="{
+              'opacity-75 bg-neutral-50 border border-neutral-200': !member.isActive,
+              'bg-white hover:shadow-md': member.isActive
+            }"
+          >
             <!-- Display Mode -->
-            <div v-if="editingMember !== member.id" class="flex flex-col sm:flex-row sm:items-center justify-between">
-              <div class="flex-1">
-                <div class="flex items-center flex-wrap gap-2">
-                  <h3 class="text-lg font-medium text-neutral-800">{{ member.name }}</h3>
-                  <span 
-                    v-if="member.isConsolidator" 
-                    class="badge badge-primary"
-                  >
-                    Consolidador
-                  </span>
+            <div v-if="editingMember !== member.id" class="flex flex-col space-y-4">
+              <div class="flex flex-col sm:flex-row sm:items-center gap-4">
+                <div class="flex-1">
+                  <div class="flex flex-col sm:flex-row sm:items-center gap-2">
+                    <div class="flex items-center gap-2 flex-wrap">
+                      <h3 class="text-lg font-medium" :class="member.isActive ? 'text-neutral-800' : 'text-neutral-600'">
+                        {{ member.name }}
+                      </h3>
+                      <div class="flex flex-wrap gap-1.5">
+                        <span 
+                          v-if="!member.isActive" 
+                          class="inline-flex items-center px-2 py-1 rounded text-xs font-medium bg-neutral-100 text-neutral-700"
+                        >
+                          <svg xmlns="http://www.w3.org/2000/svg" class="h-3.5 w-3.5 mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 14l2-2m0 0l2-2m-2 2l-2-2m2 2l2 2m7-2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                          </svg>
+                          Inativo
+                        </span>
+                        <span 
+                          v-if="member.isConsolidator" 
+                          class="badge badge-primary"
+                        >
+                          Consolidador
+                        </span>
+                        <span 
+                          v-if="member.isCoLeader" 
+                          class="badge badge-success"
+                        >
+                          Co-líder
+                        </span>
+                        <span 
+                          v-if="member.isHost" 
+                          class="badge badge-info"
+                        >
+                          Anfitrião
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div class="mt-2 text-sm" :class="member.isActive ? 'text-neutral-500' : 'text-neutral-400'">
+                    <p v-if="member.telefone" class="mb-1">
+                      <span class="inline-flex items-center">
+                        <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 mr-1.5" :class="member.isActive ? 'text-neutral-400' : 'text-neutral-300'" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M3 5a2 2 0 012-2h3.28a1 1 0 01.948.684l1.498 4.493a1 1 0 01-.502 1.21l-2.257 1.13a11.042 11.042 0 005.516 5.516l1.13-2.257a1 1 0 011.21-.502l4.493 1.498a1 1 0 01.684.949V19a2 2 0 01-2 2h-1C9.716 21 3 14.284 3 6V5z" />
+                        </svg>
+                        {{ member.telefone }}
+                      </span>
+                    </p>
+                    <p v-if="member.email">
+                      <span class="inline-flex items-center">
+                        <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 mr-1.5" :class="member.isActive ? 'text-neutral-400' : 'text-neutral-300'" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
+                        </svg>
+                        {{ member.email }}
+                      </span>
+                    </p>
+                  </div>
                 </div>
                 
-                <div class="mt-2 text-sm text-neutral-500">
-                  <p v-if="member.telefone" class="mb-1">
-                    <span class="inline-flex items-center">
-                      <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 mr-1.5 text-neutral-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M3 5a2 2 0 012-2h3.28a1 1 0 01.948.684l1.498 4.493a1 1 0 01-.502 1.21l-2.257 1.13a11.042 11.042 0 005.516 5.516l1.13-2.257a1 1 0 011.21-.502l4.493 1.498a1 1 0 01.684.949V19a2 2 0 01-2 2h-1C9.716 21 3 14.284 3 6V5z" />
-                      </svg>
-                      {{ member.telefone }}
-                    </span>
-                  </p>
-                  <p v-if="member.email">
-                    <span class="inline-flex items-center">
-                      <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 mr-1.5 text-neutral-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
-                      </svg>
-                      {{ member.email }}
-                    </span>
-                  </p>
+                <div class="flex items-center gap-2 sm:gap-3 justify-end">
+                  <!-- Botão Editar -->
+                  <button
+                    @click="startEditing(member)"
+                    class="btn btn-icon btn-ghost"
+                    :class="{'opacity-75': !member.isActive}"
+                    title="Editar membro"
+                  >
+                    <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                    </svg>
+                  </button>
+
+                  <!-- Botão Ativar/Desativar -->
+                  <button
+                    @click="memberStore.toggleMemberActive(member.id)"
+                    class="btn btn-icon"
+                    :class="member.isActive ? 'btn-warning' : 'btn-success'"
+                    :title="member.isActive ? 'Desativar membro' : 'Ativar membro'"
+                  >
+                    <svg v-if="member.isActive" xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M10 14l2-2m0 0l2-2m-2 2l-2-2m2 2l2 2m7-2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                    </svg>
+                    <svg v-else xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                    </svg>
+                  </button>
+
+                  <!-- Botão Apagar -->
+                  <button
+                    @click="confirmDelete(member)"
+                    class="btn btn-icon btn-error"
+                    :class="{'opacity-75': !member.isActive}"
+                    title="Apagar membro permanentemente"
+                  >
+                    <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                    </svg>
+                  </button>
                 </div>
-              </div>
-              
-              <div class="mt-4 sm:mt-0 sm:ml-6 flex space-x-2">
-                <button
-                  @click="startEditing(member)"
-                  class="btn-icon"
-                  title="Editar"
-                >
-                  <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
-                  </svg>
-                </button>
-                <button
-                  @click="deleteMember(member.id)"
-                  class="btn-icon text-red-500 hover:text-red-700 hover:bg-red-50"
-                  title="Excluir"
-                >
-                  <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-                  </svg>
-                </button>
               </div>
             </div>
             
@@ -367,16 +467,42 @@ function recarregarMembros() {
                   />
                 </div>
                 
-                <div class="flex items-center">
-                  <input
-                    v-model="editForm.isConsolidator"
-                    :id="'edit-consolidator-' + member.id"
-                    type="checkbox"
-                    class="h-4 w-4 text-primary-500 focus:ring-primary-400 border-neutral-300 rounded"
-                  />
-                  <label :for="'edit-consolidator-' + member.id" class="ml-2 block text-sm text-neutral-700">
-                    Consolidador
-                  </label>
+                <div class="flex flex-col gap-3">
+                  <div class="flex items-center">
+                    <input
+                      v-model="editForm.isConsolidator"
+                      :id="'edit-consolidator-' + member.id"
+                      type="checkbox"
+                      class="h-4 w-4 text-primary-500 focus:ring-primary-400 border-neutral-300 rounded"
+                    />
+                    <label :for="'edit-consolidator-' + member.id" class="ml-2 block text-sm text-neutral-700">
+                      Consolidador
+                    </label>
+                  </div>
+
+                  <div class="flex items-center">
+                    <input
+                      v-model="editForm.isCoLeader"
+                      :id="'edit-coleader-' + member.id"
+                      type="checkbox"
+                      class="h-4 w-4 text-primary-500 focus:ring-primary-400 border-neutral-300 rounded"
+                    />
+                    <label :for="'edit-coleader-' + member.id" class="ml-2 block text-sm text-neutral-700">
+                      Co-líder
+                    </label>
+                  </div>
+
+                  <div class="flex items-center">
+                    <input
+                      v-model="editForm.isHost"
+                      :id="'edit-host-' + member.id"
+                      type="checkbox"
+                      class="h-4 w-4 text-primary-500 focus:ring-primary-400 border-neutral-300 rounded"
+                    />
+                    <label :for="'edit-host-' + member.id" class="ml-2 block text-sm text-neutral-700">
+                      Anfitrião
+                    </label>
+                  </div>
                 </div>
               </div>
               
@@ -398,6 +524,55 @@ function recarregarMembros() {
             </div>
           </li>
         </ul>
+      </div>
+
+      <!-- Delete Confirmation Modal -->
+      <div v-if="showDeleteModal" class="fixed inset-0 overflow-y-auto z-50">
+        <div class="flex items-center justify-center min-h-screen px-4 pt-4 pb-20 text-center sm:block sm:p-0">
+          <!-- Background overlay -->
+          <div class="fixed inset-0 transition-opacity" aria-hidden="true">
+            <div class="absolute inset-0 bg-neutral-900 opacity-75"></div>
+          </div>
+
+          <!-- Modal panel -->
+          <span class="hidden sm:inline-block sm:align-middle sm:h-screen" aria-hidden="true">&#8203;</span>
+          <div class="inline-block align-bottom bg-white rounded-lg text-left overflow-hidden shadow-xl transform transition-all sm:my-8 sm:align-middle sm:max-w-lg sm:w-full">
+            <div class="bg-white px-4 pt-5 pb-4 sm:p-6 sm:pb-4">
+              <div class="sm:flex sm:items-start">
+                <div class="mx-auto flex-shrink-0 flex items-center justify-center h-12 w-12 rounded-full bg-red-100 sm:mx-0 sm:h-10 sm:w-10">
+                  <svg class="h-6 w-6 text-red-600" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                  </svg>
+                </div>
+                <div class="mt-3 text-center sm:mt-0 sm:ml-4 sm:text-left">
+                  <h3 class="text-lg leading-6 font-medium text-neutral-900">
+                    Confirmar exclusão
+                  </h3>
+                  <div class="mt-2">
+                    <p class="text-sm text-neutral-500">
+                      Você tem certeza que deseja apagar permanentemente o membro <strong>{{ memberToDelete?.name }}</strong>? 
+                      Esta ação não poderá ser desfeita e todos os registros de presença associados também serão removidos.
+                    </p>
+                  </div>
+                </div>
+              </div>
+            </div>
+            <div class="bg-neutral-50 px-4 py-3 sm:px-6 sm:flex sm:flex-row-reverse">
+              <button 
+                @click="handleDelete" 
+                class="w-full inline-flex justify-center rounded-md border border-transparent shadow-sm px-4 py-2 bg-red-600 text-base font-medium text-white hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-500 sm:ml-3 sm:w-auto sm:text-sm"
+              >
+                Apagar
+              </button>
+              <button 
+                @click="cancelDelete" 
+                class="mt-3 w-full inline-flex justify-center rounded-md border border-neutral-300 shadow-sm px-4 py-2 bg-white text-base font-medium text-neutral-700 hover:bg-neutral-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500 sm:mt-0 sm:ml-3 sm:w-auto sm:text-sm"
+              >
+                Cancelar
+              </button>
+            </div>
+          </div>
+        </div>
       </div>
     </main>
   </div>

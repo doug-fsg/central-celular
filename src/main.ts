@@ -6,6 +6,7 @@ import App from './App.vue'
 import api from './services/api'
 import AppIcon from './components/AppIcon.vue'
 import vFadeIn from './directives/fadeInDirective'
+import VueApexCharts from 'vue3-apexcharts'
 
 // Verificar se o servidor backend está respondendo
 api.get('/health')
@@ -16,6 +17,7 @@ api.get('/health')
 const app = createApp(App)
 app.use(createPinia())
 app.use(router)
+app.use(VueApexCharts)
 app.component('AppIcon', AppIcon)
 app.directive('fade-in', vFadeIn)
 app.mount('#app')

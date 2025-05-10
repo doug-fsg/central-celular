@@ -16,15 +16,15 @@ export const useUserStore = defineStore('user', () => {
 
   // Getters
   const isAdmin = computed(() => 
-    user.value?.cargo === 'admin' || user.value?.cargo === 'pastor'
+    user.value?.cargo === 'ADMINISTRADOR' || user.value?.cargo === 'PASTOR'
   )
   
   const isSupervisor = computed(() => 
-    user.value?.cargo === 'supervisor'
+    user.value?.cargo === 'SUPERVISOR'
   )
   
   const isLeader = computed(() => 
-    user.value?.cargo === 'lider'
+    user.value?.cargo === 'LIDER'
   )
   
   const userRole = computed(() => user.value?.cargo || '')
