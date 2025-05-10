@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, onMounted, watch } from 'vue'
+import { ref, onMounted, watch, computed } from 'vue'
 import UserModal from '../components/UserModal.vue'
 import CellModal from '../components/CellModal.vue'
 import { useUserStore } from '../stores/userStore'
@@ -79,10 +79,50 @@ const feedbackType = ref<'success' | 'error'>('success')
 
 // Estado do modal de célula
 const showCellModal = ref(false)
-const selectedCell = ref(undefined)
+const selectedCell = ref<Partial<Celula> | undefined>(undefined)
+const isLoadingCell = ref(false)
 
 // Lista de líderes disponíveis
-const availableLeaders = ref([])
+const availableLeaders = ref<Usuario[]>([])
+
+// Estado para filtros de células
+const cellFilters = ref({
+  searchTerm: '',
+  supervisorId: ''
+})
+
+// Células filtradas
+const filteredCells = computed(() => {
+  let filtered = [...cells.value]
+  
+  // Filtrar por termo de busca
+  if (cellFilters.value.searchTerm) {
+    const searchTerm = cellFilters.value.searchTerm.toLowerCase()
+    filtered = filtered.filter(cell => 
+      cell.nome.toLowerCase().includes(searchTerm) ||
+      cell.endereco.toLowerCase().includes(searchTerm) ||
+      cell.lider?.nome.toLowerCase().includes(searchTerm) ||
+      cell.supervisor?.nome.toLowerCase().includes(searchTerm)
+    )
+  }
+  
+  // Filtrar por supervisor
+  if (cellFilters.value.supervisorId) {
+    filtered = filtered.filter(cell => 
+      cell.supervisorId === parseInt(cellFilters.value.supervisorId) ||
+      cell.supervisor_id === parseInt(cellFilters.value.supervisorId)
+    )
+  }
+  
+  return filtered
+})
+
+// Computed property para supervisores disponíveis
+const availableSupervisors = computed(() => {
+  return availableLeaders.value
+    .filter(user => user.cargo === 'SUPERVISOR' && user.status === 'ativo')
+    .sort((a, b) => a.nome.localeCompare(b.nome))
+})
 
 // Mostrar mensagem de feedback
 const showFeedback = (message: string, type: 'success' | 'error' = 'success') => {
@@ -218,101 +258,183 @@ watch(periodoSelecionado, () => {
 // Carregar líderes disponíveis
 const loadAvailableLeaders = async () => {
   try {
-    const response = await adminService.listarUsuarios(1, 100, 'LIDER')
-    availableLeaders.value = response.usuarios.filter(u => u.status === 'ativo')
+    // Buscar líderes e supervisores
+    const response = await adminService.listarUsuarios(1, 100, ['LIDER', 'SUPERVISOR'])
+    // Filtrar apenas usuários ativos e com cargo correto
+    availableLeaders.value = response.usuarios.filter(u => 
+      u.status === 'ativo' && 
+      (u.cargo === 'LIDER' || u.cargo === 'SUPERVISOR')
+    )
+    console.log('Líderes disponíveis carregados:', availableLeaders.value)
   } catch (error) {
     console.error('Erro ao carregar líderes:', error)
+    showFeedback('Erro ao carregar líderes disponíveis', 'error')
   }
 }
 
 // Abrir modal para criar célula
 const handleNovaCelula = async () => {
-  await loadAvailableLeaders()
-  selectedCell.value = undefined
-  showCellModal.value = true
+  try {
+    isLoadingCell.value = true
+    await loadAvailableLeaders()
+    selectedCell.value = undefined
+    showCellModal.value = true
+  } catch (error) {
+    console.error('Erro ao preparar nova célula:', error)
+    showFeedback('Erro ao preparar formulário de nova célula', 'error')
+  } finally {
+    isLoadingCell.value = false
+  }
 }
 
 // Carregar células
 const loadCells = async (page: number = 1) => {
-  console.log('[AdminDashboard] Iniciando carregamento de células:', { page });
+  console.log('[AdminDashboard] Iniciando carregamento de células:', { page })
   try {
-    loading.value = true;
-    const response = await adminService.listarCelulas(page);
-    console.log('[AdminDashboard] Resposta do serviço:', response);
+    loading.value = true
+    
+    // Primeiro carregamos os líderes disponíveis se ainda não foram carregados
+    if (availableLeaders.value.length === 0) {
+      await loadAvailableLeaders()
+    }
+    
+    const response = await adminService.listarCelulas(page)
     
     if (!response || typeof response !== 'object') {
-      console.error('[AdminDashboard] Resposta inválida:', response);
-      throw new Error('Resposta inválida do servidor');
+      console.error('[AdminDashboard] Resposta inválida:', response)
+      showFeedback('Resposta inválida do servidor', 'error')
+      return
     }
 
     if (!response.celulas || !Array.isArray(response.celulas)) {
-      console.error('[AdminDashboard] Células não encontradas na resposta:', response);
-      throw new Error('Formato de resposta inválido');
+      console.error('[AdminDashboard] Células não encontradas na resposta:', response)
+      showFeedback('Formato de resposta inválido', 'error')
+      return
     }
 
-    cells.value = response.celulas;
-    cellPagination.value = response.pagination;
-    console.log('[AdminDashboard] Células carregadas com sucesso:', {
-      totalCelulas: cells.value.length,
-      pagination: cellPagination.value
-    });
+    cells.value = response.celulas.map((celula: any) => {
+      // Se não tiver o objeto supervisor mas tiver o ID, vamos buscar o supervisor nos líderes disponíveis
+      if (!celula.supervisor && (celula.supervisorId || celula.supervisor_id) && availableLeaders.value.length > 0) {
+        const supervisorId = celula.supervisorId || celula.supervisor_id
+        const supervisor = availableLeaders.value.find(l => l.id === supervisorId)
+        if (supervisor) {
+          celula.supervisor = supervisor
+        }
+      }
+      return celula
+    })
+
+    cellPagination.value = response.pagination
   } catch (error) {
-    console.error('[AdminDashboard] Erro ao carregar células:', error);
-    showFeedback('Erro ao carregar células', 'error');
+    console.error('[AdminDashboard] Erro ao carregar células:', error)
+    showFeedback('Erro ao carregar células', 'error')
   } finally {
-    loading.value = false;
+    loading.value = false
   }
 }
 
 // Editar célula
-const handleEditarCelula = async (cell: any) => {
+const handleEditarCelula = async (cell: Celula) => {
   try {
-    loading.value = true;
-    // Carregar detalhes atualizados da célula
-    const celulaDetalhada = await adminService.obterCelula(cell.id);
-    selectedCell.value = celulaDetalhada;
-    await loadAvailableLeaders();
-    showCellModal.value = true;
+    isLoadingCell.value = true
+    
+    // Primeiro carregamos os líderes disponíveis
+    await loadAvailableLeaders()
+    
+    // Depois obtemos os detalhes da célula
+    const celulaDetalhada = await adminService.obterCelula(cell.id)
+    
+    // Verificamos se os dados estão completos
+    if (!celulaDetalhada.nome) {
+      console.error('Dados de célula incompletos:', celulaDetalhada)
+      throw new Error('Dados de célula incompletos')
+    }
+    
+    // Garantimos que temos liderId ou lider_id
+    if (!celulaDetalhada.liderId && celulaDetalhada.lider_id) {
+      celulaDetalhada.liderId = celulaDetalhada.lider_id
+    } else if (!celulaDetalhada.liderId && celulaDetalhada.lider?.id) {
+      celulaDetalhada.liderId = celulaDetalhada.lider.id
+    }
+    
+    // Garantimos que temos supervisor_id
+    if (!celulaDetalhada.supervisor_id && celulaDetalhada.supervisorId) {
+      celulaDetalhada.supervisor_id = celulaDetalhada.supervisorId
+    } else if (!celulaDetalhada.supervisor_id && celulaDetalhada.supervisor?.id) {
+      celulaDetalhada.supervisor_id = celulaDetalhada.supervisor.id
+    }
+    
+    selectedCell.value = celulaDetalhada
+    showCellModal.value = true
   } catch (error) {
-    console.error('Erro ao carregar detalhes da célula:', error);
-    showFeedback('Erro ao carregar detalhes da célula', 'error');
+    console.error('Erro ao carregar detalhes da célula:', error)
+    showFeedback('Erro ao carregar detalhes da célula', 'error')
   } finally {
-    loading.value = false;
+    isLoadingCell.value = false
   }
 }
 
 // Salvar célula
-const handleSaveCell = async (cellData: any) => {
+const handleSaveCell = async (cellData: Partial<Celula>) => {
   try {
-    loading.value = true;
-    if (selectedCell.value) {
-      await adminService.atualizarCelula(selectedCell.value.id, cellData);
-      showFeedback('Célula atualizada com sucesso');
-    } else {
-      await adminService.criarCelula(cellData);
-      showFeedback('Célula criada com sucesso');
+    isLoadingCell.value = true
+    
+    // Garantir que temos todos os dados necessários
+    if (!cellData.liderId) {
+      showFeedback('Líder é obrigatório', 'error')
+      return
     }
-    showCellModal.value = false;
-    await loadCells(cellPagination.value.currentPage);
-  } catch (error) {
-    console.error('Erro ao salvar célula:', error);
-    showFeedback('Erro ao salvar célula', 'error');
+
+    if (!cellData.supervisorId) {
+      showFeedback('Supervisor é obrigatório', 'error')
+      return
+    }
+
+    const dadosParaSalvar = {
+      nome: cellData.nome,
+      endereco: cellData.endereco,
+      diaSemana: cellData.diaSemana,
+      horario: cellData.horario,
+      liderId: cellData.liderId,
+      supervisor_id: cellData.supervisorId
+    }
+
+    console.log('Dados para salvar:', dadosParaSalvar)
+
+    if (selectedCell.value?.id) {
+      await adminService.atualizarCelula(selectedCell.value.id, dadosParaSalvar)
+      showFeedback('Célula atualizada com sucesso')
+    } else {
+      await adminService.criarCelula(dadosParaSalvar as Omit<Celula, 'id'>)
+      showFeedback('Célula criada com sucesso')
+    }
+    showCellModal.value = false
+    await loadCells(cellPagination.value.currentPage)
+  } catch (error: any) {
+    console.error('Erro ao salvar célula:', error)
+    const mensagemErro = error.errors?.[0]?.message || error.message || 'Erro ao salvar célula'
+    showFeedback(mensagemErro, 'error')
   } finally {
-    loading.value = false;
+    isLoadingCell.value = false
   }
 }
 
 // Confirmar exclusão de célula
-const handleConfirmDeleteCell = async (cell: any) => {
-  if (confirm(`Tem certeza que deseja excluir a célula "${cell.nome}"?`)) {
-    try {
-      await adminService.excluirCelula(cell.id);
-      showFeedback('Célula excluída com sucesso');
-      loadCells(cellPagination.value.currentPage);
-    } catch (error) {
-      console.error('Erro ao excluir célula:', error);
-      showFeedback('Erro ao excluir célula', 'error');
+const handleConfirmDeleteCell = async (cell: Celula) => {
+  try {
+    if (!confirm(`Tem certeza que deseja excluir a célula "${cell.nome}"?`)) {
+      return
     }
+    
+    isLoadingCell.value = true
+    await adminService.excluirCelula(cell.id)
+    showFeedback('Célula excluída com sucesso')
+    await loadCells(cellPagination.value.currentPage)
+  } catch (error) {
+    console.error('Erro ao excluir célula:', error)
+    showFeedback('Erro ao excluir célula', 'error')
+  } finally {
+    isLoadingCell.value = false
   }
 }
 
@@ -771,13 +893,65 @@ watch(activeTab, (newTab) => {
             <h2 class="text-lg font-medium text-gray-900">Lista de Células</h2>
             <button 
               @click="handleNovaCelula"
-              class="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-primary-600 hover:bg-primary-700"
+              :disabled="isLoadingCell"
+              class="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-primary-600 hover:bg-primary-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500 disabled:opacity-50 disabled:cursor-not-allowed"
             >
+              <svg v-if="isLoadingCell" class="animate-spin -ml-1 mr-2 h-4 w-4 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+              </svg>
               Nova Célula
             </button>
           </div>
 
-          <div class="bg-white shadow overflow-hidden sm:rounded-lg">
+          <!-- Filtros -->
+          <div class="bg-white shadow rounded-lg p-4 mb-6">
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <!-- Busca -->
+              <div>
+                <label for="search" class="block text-sm font-medium text-gray-700">Buscar células</label>
+                <div class="mt-1 relative rounded-md shadow-sm">
+                  <input
+                    type="text"
+                    id="search"
+                    v-model="cellFilters.searchTerm"
+                    class="focus:ring-primary-500 focus:border-primary-500 block w-full pl-3 pr-10 py-2 sm:text-sm border-gray-300 rounded-md"
+                    placeholder="Buscar por nome, endereço, líder ou supervisor"
+                  >
+                  <div class="absolute inset-y-0 right-0 pr-3 flex items-center pointer-events-none">
+                    <svg class="h-5 w-5 text-gray-400" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor">
+                      <path fill-rule="evenodd" d="M8 4a4 4 0 100 8 4 4 0 000-8zM2 8a6 6 0 1110.89 3.476l4.817 4.817a1 1 0 01-1.414 1.414l-4.816-4.816A6 6 0 012 8z" clip-rule="evenodd" />
+                    </svg>
+                  </div>
+                </div>
+              </div>
+
+              <!-- Filtro por Supervisor -->
+              <div>
+                <label for="supervisor-filter" class="block text-sm font-medium text-gray-700">Filtrar por Supervisor</label>
+                <select
+                  id="supervisor-filter"
+                  v-model="cellFilters.supervisorId"
+                  class="mt-1 block w-full pl-3 pr-10 py-2 text-base border-gray-300 focus:outline-none focus:ring-primary-500 focus:border-primary-500 sm:text-sm rounded-md"
+                >
+                  <option value="">Todos os supervisores</option>
+                  <option v-for="supervisor in availableSupervisors" :key="supervisor.id" :value="supervisor.id">
+                    {{ supervisor.nome }}
+                  </option>
+                </select>
+              </div>
+            </div>
+          </div>
+
+          <div v-if="loading" class="flex justify-center items-center py-12">
+            <div class="animate-spin rounded-full h-8 w-8 border-b-2 border-primary-600"></div>
+          </div>
+
+          <div v-else-if="filteredCells.length === 0" class="bg-white shadow overflow-hidden sm:rounded-lg p-6 text-center text-gray-500">
+            {{ cells.length === 0 ? 'Nenhuma célula encontrada' : 'Nenhuma célula corresponde aos filtros aplicados' }}
+          </div>
+
+          <div v-else class="bg-white shadow overflow-hidden sm:rounded-lg">
             <table class="min-w-full divide-y divide-gray-200">
               <thead class="bg-gray-50">
                 <tr>
@@ -786,6 +960,9 @@ watch(activeTab, (newTab) => {
                   </th>
                   <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                     Líder
+                  </th>
+                  <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    Supervisor
                   </th>
                   <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                     Dia/Horário
@@ -799,7 +976,7 @@ watch(activeTab, (newTab) => {
                 </tr>
               </thead>
               <tbody class="bg-white divide-y divide-gray-200">
-                <tr v-for="cell in cells" :key="cell.id">
+                <tr v-for="cell in filteredCells" :key="cell.id">
                   <td class="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
                     {{ cell.nome }}
                   </td>
@@ -807,10 +984,13 @@ watch(activeTab, (newTab) => {
                     {{ cell.lider?.nome }}
                   </td>
                   <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                    {{ cell.supervisor?.nome }}
+                  </td>
+                  <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
                     {{ cell.diaSemana }} - {{ cell.horario }}
                   </td>
                   <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                    {{ cell.endereco }}, {{ cell.bairro }}, {{ cell.cidade }}
+                    {{ cell.endereco }}
                   </td>
                   <td class="px-6 py-4 whitespace-nowrap text-sm font-medium">
                     <button 
@@ -831,36 +1011,22 @@ watch(activeTab, (newTab) => {
             </table>
 
             <!-- Paginação -->
-            <div class="bg-white px-4 py-3 flex items-center justify-between border-t border-gray-200 sm:px-6">
-              <div class="flex-1 flex justify-between sm:hidden">
+            <div v-if="cellPagination.pages > 1" class="mt-4 flex justify-center">
+              <nav class="relative z-0 inline-flex rounded-md shadow-sm -space-x-px" aria-label="Pagination">
                 <button
-                  :disabled="cellPagination.currentPage === 1"
-                  @click="handleCellPageChange(cellPagination.currentPage - 1)"
-                  class="relative inline-flex items-center px-4 py-2 border border-gray-300 text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50"
+                  v-for="page in cellPagination.pages"
+                  :key="page"
+                  @click="handleCellPageChange(page)"
+                  :class="[
+                    'relative inline-flex items-center px-4 py-2 border text-sm font-medium',
+                    page === cellPagination.currentPage
+                      ? 'z-10 bg-primary-50 border-primary-500 text-primary-600'
+                      : 'bg-white border-gray-300 text-gray-500 hover:bg-gray-50'
+                  ]"
                 >
-                  Anterior
+                  {{ page }}
                 </button>
-                <button
-                  :disabled="cellPagination.currentPage === cellPagination.pages"
-                  @click="handleCellPageChange(cellPagination.currentPage + 1)"
-                  class="ml-3 relative inline-flex items-center px-4 py-2 border border-gray-300 text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50"
-                >
-                  Próxima
-                </button>
-              </div>
-              <div class="hidden sm:flex-1 sm:flex sm:items-center sm:justify-between">
-                <div>
-                  <p class="text-sm text-gray-700">
-                    Mostrando
-                    <span class="font-medium">{{ ((cellPagination.currentPage - 1) * cellPagination.perPage) + 1 }}</span>
-                    até
-                    <span class="font-medium">{{ Math.min(cellPagination.currentPage * cellPagination.perPage, cellPagination.total) }}</span>
-                    de
-                    <span class="font-medium">{{ cellPagination.total }}</span>
-                    resultados
-                  </p>
-                </div>
-              </div>
+              </nav>
             </div>
           </div>
         </div>
@@ -927,6 +1093,7 @@ watch(activeTab, (newTab) => {
       :is-open="showCellModal"
       :cell="selectedCell"
       :available-leaders="availableLeaders"
+      :is-loading="isLoadingCell"
       @close="showCellModal = false"
       @save="handleSaveCell"
     />

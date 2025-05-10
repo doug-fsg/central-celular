@@ -50,13 +50,24 @@ export interface Usuario {
 export interface Celula {
   id: number;
   nome: string;
-  endereco: string;
-  bairro: string;
-  cidade: string;
+  endereco?: string;
   diaSemana: string;
   horario: string;
-  lider_id: number;
+  lider_id?: number;
+  liderId: number;
   lider?: Usuario;
+  coLider_id?: number;
+  coLider?: Usuario;
+  supervisor_id?: number;
+  supervisor?: Usuario;
+  regiao_id?: number;
+  regiao?: {
+    id: number;
+    nome: string;
+  };
+  ativo: boolean;
+  createdAt: string;
+  updatedAt: string;
 }
 
 export interface PaginatedResponse<T> {
@@ -82,9 +93,23 @@ export const adminService = {
   },
 
   // Listar usuários com paginação
-  async listarUsuarios(page: number = 1, limit: number = 10): Promise<PaginatedResponse<Usuario>> {
+  async listarUsuarios(page: number = 1, limit: number = 10, cargo?: string | string[]): Promise<PaginatedResponse<Usuario>> {
     try {
-      return await api.get(`/admin/usuarios?page=${page}&limit=${limit}`);
+      let params = new URLSearchParams();
+      params.append('page', page.toString());
+      params.append('limit', limit.toString());
+      
+      if (cargo) {
+        if (Array.isArray(cargo)) {
+          // Se for um array de cargos, adiciona cada um com o mesmo nome de parâmetro
+          cargo.forEach(c => params.append('cargo', c));
+        } else {
+          // Se for um único cargo
+          params.append('cargo', cargo);
+        }
+      }
+      
+      return await api.get(`/admin/usuarios?${params.toString()}`);
     } catch (error) {
       console.error('Erro ao listar usuários:', error);
       throw error;
@@ -166,19 +191,76 @@ export const adminService = {
 
   // Obter célula por ID
   async obterCelula(id: number) {
-    const response = await api.get(`/admin/celulas/${id}`);
-    return response.data;
+    console.log('[adminService] Obtendo célula:', id);
+    try {
+      const response = await api.get(`/admin/celulas/${id}`);
+      console.log('[adminService] Resposta de obterCelula:', response);
+      
+      // Verificar se a resposta é válida
+      if (!response || typeof response !== 'object') {
+        console.error('[adminService] Resposta inválida:', response);
+        throw new Error('Resposta inválida do servidor');
+      }
+
+      // Se a resposta já tem o formato esperado
+      if (response.id && response.nome) {
+        return response;
+      }
+      
+      // Se a célula está dentro de data
+      if (response.data && typeof response.data === 'object') {
+        if (response.data.id && response.data.nome) {
+          return response.data;
+        }
+        
+        // Se a célula está dentro de data.celula
+        if (response.data.celula && typeof response.data.celula === 'object') {
+          return response.data.celula;
+        }
+      }
+      
+      // Se a célula está dentro de celula
+      if (response.celula && typeof response.celula === 'object') {
+        return response.celula;
+      }
+      
+      console.error('[adminService] Formato de resposta inesperado:', response);
+      throw new Error('Formato de resposta inválido');
+    } catch (error) {
+      console.error('[adminService] Erro ao obter célula:', error);
+      throw error;
+    }
   },
 
   // Criar nova célula
   async criarCelula(dados: Omit<Celula, 'id'>) {
-    const response = await api.post('/admin/celulas', dados);
+    // Removemos qualquer referência à região
+    const dadosSemRegiao = {
+      nome: dados.nome,
+      endereco: dados.endereco,
+      diaSemana: dados.diaSemana,
+      horario: dados.horario,
+      liderId: dados.liderId,
+      // Usar o formato correto supervisorId esperado pelo backend
+      supervisorId: dados.supervisor_id
+    }
+    const response = await api.post('/admin/celulas', dadosSemRegiao);
     return response.data;
   },
 
   // Atualizar célula
   async atualizarCelula(id: number, dados: Partial<Omit<Celula, 'id'>>) {
-    const response = await api.put(`/admin/celulas/${id}`, dados);
+    // Removemos qualquer referência à região
+    const dadosSemRegiao = {
+      nome: dados.nome,
+      endereco: dados.endereco,
+      diaSemana: dados.diaSemana,
+      horario: dados.horario,
+      liderId: dados.liderId,
+      // Usar o formato correto supervisorId esperado pelo backend
+      supervisorId: dados.supervisor_id
+    }
+    const response = await api.put(`/admin/celulas/${id}`, dadosSemRegiao);
     return response.data;
   },
 
