@@ -7,6 +7,7 @@ import { useAttendanceStore } from '../stores/attendanceStore'
 import { useReportStore } from '../stores/reportStore'
 import relatorioService from '../services/relatorioService'
 import { format } from 'date-fns'
+import Toast from '../components/Toast.vue'
 
 // Definir as stores
 const memberStore = useMemberStore()
@@ -20,8 +21,13 @@ const isSending = ref(false)
 const loadingReport = ref(false)
 const showConfirmModal = ref(false)
 
+// Estado para o toast
+const showToast = ref(false)
+const toastMessage = ref('')
+const toastType = ref<'success' | 'error' | 'warning' | 'info'>('info')
+
 // Computed properties
-const members = computed(() => memberStore.getAllMembers)
+const members = computed(() => memberStore.getAllMembers.filter(member => member.isActive))
 
 // Verificar status temporal do relatório
 const today = new Date()
@@ -135,7 +141,7 @@ async function loadOrCreateReport() {
         console.warn(`Inconsistência: Relatório encontrado (${relatorio.mes}/${relatorio.ano}) é diferente do solicitado (${currentMonth}/${currentYear})`);
       }
     } else {
-      // Verificar se existe relatório usando o serviço antes de criar
+      // Verificar se existe relatório usando o serviço
       if (memberStore.celulaId) {
         const relatorioExistente = await relatorioService.verificarRelatorioExistente(
           memberStore.celulaId,
@@ -150,73 +156,23 @@ async function loadOrCreateReport() {
           
           // Atualizar a store
           await reportStore.carregarRelatorios();
-        } else if (currentMonth >= 0 && currentMonth <= 11) {
-          // Criar um novo relatório somente se realmente não existir
-          // E se o mês for válido (0-11, janeiro a dezembro)
-          
-          try {
-            const novoRelatorioId = await reportStore.criarRelatorio(
-              currentMonth,
-              currentYear
-            );
-            
-            if (novoRelatorioId) {
-              reportId.value = typeof novoRelatorioId === 'string' ? parseInt(novoRelatorioId) : novoRelatorioId;
-              
-              // Buscar o relatório recém-criado
-              const novoRelatorio = reportStore.reports.find(r => 
-                r.id === reportId.value || 
-                (typeof r.id === 'string' && parseInt(r.id) === reportId.value)
-              );
-              
-              if (novoRelatorio) {
-                isReportSubmitted.value = novoRelatorio.isFinalized;
-              }
-            }
-          } catch (error) {
-            // Se ocorrer o erro de "Mês inválido", não continuar tentando,
-            // apenas registrar o erro e deixar o usuário ver o mês sem relatório
-            if (
-              error && 
-              typeof error === 'object' && 
-              'status' in error && 
-              error.status === 400 && 
-              'errors' in error && 
-              Array.isArray(error.errors) && 
-              error.errors.some((e: string) => e.includes('Mês inválido'))
-            ) {
-              console.warn(`Mês ${currentMonth} é inválido, não é possível criar relatório.`);
-            } else {
-              console.error("Erro ao criar relatório:", error);
-              // Se falhou ao criar, tente buscar novamente para verificar se foi criado em paralelo
-              try {
-                await reportStore.carregarRelatorios();
-                const relatorio = reportStore.reports.find((r: any) => 
-                  r.mes === currentMonth && 
-                  r.ano === currentYear
-                );
-                
-                if (relatorio) {
-                  reportId.value = typeof relatorio.id === 'string' ? parseInt(relatorio.id) : relatorio.id;
-                  isReportSubmitted.value = relatorio.isFinalized;
-                }
-              } catch (secondError) {
-                console.error("Erro ao tentar recuperar após falha:", secondError);
-              }
-            }
-          }
         } else {
-          console.warn(`Mês ${currentMonth} está fora do intervalo válido (0-11), não criando relatório.`);
+          // NÃO criar relatório automaticamente, deixar para criá-lo apenas quando o usuário enviar
+          reportId.value = null;
+          isReportSubmitted.value = false;
+          console.log(`Não existe relatório para ${currentMonth}/${currentYear}. Será criado apenas quando o usuário clicar em "Enviar Relatório".`);
         }
       } else {
         console.error("ID da célula não disponível");
       }
     }
   } catch (error) {
-    console.error('Erro ao carregar/criar relatório:', error);
+    console.error('Erro ao carregar relatório:', error);
+    reportId.value = null;
+    isReportSubmitted.value = false;
   } finally {
     // Verificar relatórios na store para garantir que temos valores consistentes
-    if (reportId.value) {
+    if (reportId.value !== null) {
       const relatorioNaStore = reportStore.reports.find(r => 
         r.id === reportId.value || r.id === reportId.value.toString()
       );
@@ -233,7 +189,7 @@ async function loadOrCreateReport() {
             reportId.value = typeof relatorioCorreto.id === 'string' ? parseInt(relatorioCorreto.id) : relatorioCorreto.id;
             isReportSubmitted.value = relatorioCorreto.isFinalized;
           } else {
-            console.warn(`Não foi possível encontrar um relatório correto. Tentando criar um novo.`);
+            console.warn(`Não foi possível encontrar um relatório correto.`);
             // Reseta tudo e deixa o usuário criar manualmente
             reportId.value = null;
             isReportSubmitted.value = false;
@@ -257,20 +213,62 @@ async function openConfirmModal() {
   
   // Não permitir envio para meses futuros
   if (isMonthInFuture.value) {
-    alert("Não é possível enviar relatórios para meses futuros.");
+    showToastMessage("Não é possível enviar relatórios para meses futuros.", "warning");
+    return;
+  }
+  
+  // Verificar se há registros antes de abrir o modal
+  const records = attendanceStore.currentMonthAttendance.records;
+  if (!records || records.length === 0) {
+    showToastMessage("Não é possível enviar um relatório sem registros de frequência.", "error");
     return;
   }
   
   try {
-    // Se não temos um ID de relatório, tentar verificar se existe antes de criar
+    showConfirmModal.value = true;
+  } catch (error) {
+    showToastMessage("Erro ao preparar envio do relatório.", "error");
+  }
+}
+
+// Fechar modal
+function closeConfirmModal() {
+  showConfirmModal.value = false;
+}
+
+// Função para mostrar toast
+function showToastMessage(message: string, type: 'success' | 'error' | 'warning' | 'info' = 'info') {
+  toastMessage.value = message
+  toastType.value = type
+  showToast.value = true
+  
+  // Auto-hide after 5 seconds
+  setTimeout(() => {
+    showToast.value = false
+  }, 5000)
+}
+
+// Enviar relatório
+async function sendReport() {
+  if (isReportSubmitted.value) return;
+  
+  isSending.value = true;
+  
+  try {
+    const records = attendanceStore.currentMonthAttendance.records;
+    
+    if (!records || records.length === 0) {
+      showToastMessage("Não é possível enviar um relatório sem registros de frequência.", "error");
+      isSending.value = false;
+      showConfirmModal.value = false;
+      return;
+    }
+    
     if (!reportId.value && memberStore.celulaId) {
-      loadingReport.value = true;
-      
       const currentMonth = attendanceStore.currentDate.getMonth();
       const currentYear = attendanceStore.currentDate.getFullYear();
       
       try {
-        // Verificar se já existe relatório
         const relatorioExistente = await relatorioService.verificarRelatorioExistente(
           memberStore.celulaId,
           currentMonth,
@@ -280,7 +278,6 @@ async function openConfirmModal() {
         if (relatorioExistente) {
           reportId.value = relatorioExistente.id;
         } else {
-          // Só criar se não existir
           const novoRelatorio = await relatorioService.criarRelatorio(
             memberStore.celulaId,
             currentMonth,
@@ -290,142 +287,82 @@ async function openConfirmModal() {
           
           reportId.value = novoRelatorio.id;
         }
-        
-        // Atualizar a store também
-        await reportStore.carregarRelatorios();
       } catch (error) {
-        console.error("Erro ao criar relatório sob demanda:", error);
-        alert("Não foi possível criar o relatório. Por favor, tente novamente.");
-        return;
-      } finally {
-        loadingReport.value = false;
-      }
-    }
-    
-    showConfirmModal.value = true;
-  } catch (error) {
-    console.error('Erro ao preparar envio de relatório:', error);
-  }
-}
-
-// Fechar modal
-function closeConfirmModal() {
-  showConfirmModal.value = false;
-}
-
-// Enviar relatório
-async function sendReport() {
-  if (isReportSubmitted.value) return;
-  
-  if (!reportId.value) {
-    console.error('Nenhum relatório disponível para envio');
-    alert('Erro: Nenhum relatório disponível para envio. Tente recarregar a página.');
-    return;
-  }
-  
-  console.log(`[DEBUG] Iniciando envio do relatório ID=${reportId.value}`);
-  isSending.value = true;
-  
-  try {
-    // Verificar se existem registros de frequência para este relatório
-    const records = attendanceStore.currentMonthAttendance.records;
-    console.log(`[DEBUG] Verificando registros de frequência:`, records);
-    
-    if (!records || records.length === 0) {
-      console.warn('[DEBUG] Nenhum registro de frequência foi encontrado para este relatório');
-      const confirmar = confirm("Nenhum registro de frequência foi encontrado. Deseja enviar o relatório mesmo assim?");
-      if (!confirmar) {
+        showToastMessage("Não foi possível criar o relatório. Por favor, tente novamente.", "error");
         isSending.value = false;
+        showConfirmModal.value = false;
         return;
       }
     }
     
-    // Verificar se o relatório existe no backend antes de enviá-lo
-    console.log(`[DEBUG] Verificando se o relatório ${reportId.value} existe antes de enviar`);
-    
-    // Tentar obter o relatório do backend para confirmar que ele existe
-    let relatorioExistente = null;
-    try {
-      relatorioExistente = await relatorioService.obterRelatorio(reportId.value);
-      console.log(`[DEBUG] Relatório encontrado no backend:`, relatorioExistente);
-    } catch (error) {
-      console.error('[DEBUG] Erro ao verificar relatório:', error);
-      alert('Não foi possível verificar o relatório. Verifique se ele ainda existe no servidor.');
+    if (!reportId.value) {
+      showToastMessage('Erro: Nenhum relatório disponível para envio. Tente recarregar a página.', 'error');
       isSending.value = false;
+      showConfirmModal.value = false;
       return;
     }
     
-    // Verificar se já existem registros de frequência no backend
-    console.log(`[DEBUG] Verificando se já existem presenças registradas no backend`);
-    if (relatorioExistente._count && relatorioExistente._count.presencas === 0) {
-      console.warn('[DEBUG] Não há presenças registradas no backend para este relatório');
-      
-      // Se não existem registros no backend, mas temos registros locais, 
-      // vamos tentar registrar antes de enviar
-      if (records && records.length > 0) {
-        console.log('[DEBUG] Tentando registrar presenças antes de enviar o relatório');
-        
-        const membrosComPresenca = attendanceStore.currentMonthAttendance.records;
-        
-        try {
-          for (const registro of membrosComPresenca) {
-            const membroId = parseInt(registro.memberId);
-            
-            if (isNaN(membroId)) {
-              console.warn(`[DEBUG] ID de membro inválido: ${registro.memberId}`);
-              continue;
-            }
-            
-            // Determinar presença célula e culto baseado no status
-            const presencaCelula = registro.status === 'cell' || registro.status === 'both';
-            const presencaCulto = registro.status === 'worship' || registro.status === 'both';
-            
-            // Registrar a presença para a semana 1 (simplificado)
-            try {
-              await relatorioService.registrarPresenca(reportId.value, membroId, {
-                presencaCelula,
-                presencaCulto,
-                semana: 1,
-                observacoes: registro.observation || ''
-              });
-              console.log(`[DEBUG] Presença registrada para membro ${membroId}`);
-            } catch (presencaError) {
-              console.error(`[DEBUG] Erro ao registrar presença para membro ${membroId}:`, presencaError);
-            }
+    const currentReportId = reportId.value;
+    
+    if (records && records.length > 0) {
+      try {
+        for (const registro of records) {
+          // Garantir que o ID do membro seja um número
+          const membroId = typeof registro.memberId === 'string' ? 
+            parseInt(registro.memberId) : 
+            registro.memberId;
+          
+          if (isNaN(membroId)) {
+            showToastMessage(`ID inválido para o membro: ${registro.memberId}`, 'error');
+            continue;
           }
-        } catch (batchError) {
-          console.error('[DEBUG] Erro ao registrar lote de presenças:', batchError);
+          
+          const presencaCelula = registro.status === 'cell' || registro.status === 'both';
+          const presencaCulto = registro.status === 'worship' || registro.status === 'both';
+          
+          try {
+            await relatorioService.registrarPresenca(currentReportId, membroId, {
+              presencaCelula,
+              presencaCulto,
+              semana: 1,
+              observacoes: registro.observation || ''
+            });
+          } catch (presencaError: any) {
+            // Mostrar mensagem específica do erro
+            showToastMessage(
+              presencaError.message || 'Erro ao registrar presença para um membro', 
+              'error'
+            );
+            throw presencaError; // Propagar erro para interromper o envio
+          }
         }
+      } catch (error) {
+        showToastMessage('Erro ao registrar presenças. Por favor, tente novamente.', 'error');
+        isSending.value = false;
+        showConfirmModal.value = false;
+        return;
       }
     }
     
-    console.log(`[DEBUG] Enviando relatório para finalização...`);
-    const result = await reportStore.enviarRelatorio(reportId.value);
-    console.log(`[DEBUG] Resultado do envio:`, result);
+    const result = await reportStore.enviarRelatorio(currentReportId);
     
     if (result) {
       isReportSubmitted.value = true;
       showConfirmModal.value = false;
+      showToastMessage('Relatório enviado com sucesso!', 'success');
       
-      // Rolar para o topo para mostrar a mensagem de sucesso
       window.scrollTo({ top: 0, behavior: 'smooth' });
-      
-      // Atualizar a lista de relatórios
       await reportStore.carregarRelatorios();
     } else {
-      console.error('[DEBUG] Envio retornou false, mas sem erro específico');
-      alert('Não foi possível finalizar o relatório. Por favor, tente novamente.');
+      showToastMessage('Não foi possível finalizar o relatório. Por favor, tente novamente.', 'error');
     }
-  } catch (error) {
-    console.error('[DEBUG] Erro detalhado ao enviar relatório:', error);
-    
-    // Mostrar mensagem mais detalhada para o usuário
+  } catch (error: any) {
     let mensagemErro = 'Ocorreu um erro ao enviar o relatório. Por favor, tente novamente.';
     if (error && error.message) {
-      mensagemErro += `\n\nDetalhes: ${error.message}`;
+      mensagemErro += `\n${error.message}`;
     }
     
-    alert(mensagemErro);
+    showToastMessage(mensagemErro, 'error');
   } finally {
     isSending.value = false;
   }
@@ -470,6 +407,15 @@ defineExpose({
 
 <template>
   <div class="min-h-screen bg-gray-50">
+    <!-- Toast component -->
+    <Toast
+      :show="showToast"
+      :message="toastMessage"
+      :type="toastType"
+      :duration="5000"
+      @close="showToast = false"
+    />
+    
     <main class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
       <!-- Cabeçalho com título e botão de enviar -->
       <div class="mb-6 flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
@@ -709,12 +655,12 @@ defineExpose({
   </div>
 </template>
 
-<style scoped>
-.btn {
-  @apply inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-offset-2;
-}
-
-.btn-primary {
-  @apply bg-primary-600 text-white hover:bg-primary-700 focus:ring-primary-500;
-}
+<style>
+  .btn {
+    @apply font-medium rounded-lg focus:outline-none focus:ring-2 focus:ring-offset-2;
+  }
+  
+  .btn-primary {
+    @apply bg-primary-600 text-white hover:bg-primary-700 focus:ring-primary-500;
+  }
 </style>

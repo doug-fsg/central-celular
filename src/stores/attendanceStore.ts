@@ -155,28 +155,31 @@ export const useAttendanceStore = defineStore('attendance', () => {
       // Transformar presenças para o formato usado pelo store
       const registros: AttendanceRecord[] = []
       
-      // Mapear membros ativos da célula
+      // Mapear apenas membros ativos da célula
       const membrosMap = new Map<number, AttendanceRecord>()
       
-      // Preparar uma estrutura inicial para cada membro
-      memberStore.getAllMembers.forEach(membro => {
-        const id = typeof membro.id === 'string' ? parseInt(membro.id) : membro.id
-        membrosMap.set(id, {
-          memberId: id.toString(),
-          status: 'none',
-          week1: { worship: false, cell: false },
-          week2: { worship: false, cell: false },
-          week3: { worship: false, cell: false },
-          week4: { worship: false, cell: false }
+      // Preparar uma estrutura inicial apenas para membros ativos
+      memberStore.getAllMembers
+        .filter(membro => membro.isActive) // Filtrar apenas membros ativos
+        .forEach(membro => {
+          const id = typeof membro.id === 'string' ? parseInt(membro.id) : membro.id
+          membrosMap.set(id, {
+            memberId: id.toString(),
+            status: 'none',
+            week1: { worship: false, cell: false },
+            week2: { worship: false, cell: false },
+            week3: { worship: false, cell: false },
+            week4: { worship: false, cell: false }
+          })
         })
-      })
       
-      // Processar presença por semana
+      // Processar presença por semana apenas para membros ativos
       if (relatorioDetalhes.presencas) {
         relatorioDetalhes.presencas.forEach(presenca => {
           const membroId = presenca.membroId
           const registro = membrosMap.get(membroId)
           
+          // Só processar se o membro estiver no Map (ou seja, se estiver ativo)
           if (registro) {
             // Atualizar o registro de presença para a semana
             const weekKey = `week${presenca.semana}` as keyof typeof registro
@@ -204,7 +207,7 @@ export const useAttendanceStore = defineStore('attendance', () => {
         })
       }
       
-      // Converter o Map para array
+      // Converter o Map para array (já contém apenas membros ativos)
       membrosMap.forEach(registro => {
         registros.push(registro)
       })
@@ -308,25 +311,34 @@ export const useAttendanceStore = defineStore('attendance', () => {
   const currentMonthStats = computed(() => {
     const records = currentMonthAttendance.value.records
     
-    const worship = records.filter(r => 
+    // Filtrar apenas membros ativos
+    const membrosAtivos = memberStore.getAllMembers.filter(m => m.isActive)
+    const totalMembrosAtivos = membrosAtivos.length
+    
+    // Filtrar registros apenas de membros ativos
+    const registrosAtivos = records.filter(r => {
+      const membro = memberStore.getAllMembers.find(m => m.id === r.memberId)
+      return membro && membro.isActive
+    })
+    
+    const worship = registrosAtivos.filter(r => 
       r.status === 'worship' || r.status === 'both'
     ).length
     
-    const cell = records.filter(r => 
+    const cell = registrosAtivos.filter(r => 
       r.status === 'cell' || r.status === 'both'
     ).length
     
-    const both = records.filter(r => r.status === 'both').length
-    const total = records.length
+    const both = registrosAtivos.filter(r => r.status === 'both').length
     
     return {
       worship,
       cell,
       both,
-      total,
-      worshipPercentage: total > 0 ? (worship / total) * 100 : 0,
-      cellPercentage: total > 0 ? (cell / total) * 100 : 0,
-      bothPercentage: total > 0 ? (both / total) * 100 : 0
+      total: totalMembrosAtivos,
+      worshipPercentage: totalMembrosAtivos > 0 ? (worship / totalMembrosAtivos) * 100 : 0,
+      cellPercentage: totalMembrosAtivos > 0 ? (cell / totalMembrosAtivos) * 100 : 0,
+      bothPercentage: totalMembrosAtivos > 0 ? (both / totalMembrosAtivos) * 100 : 0
     }
   })
   

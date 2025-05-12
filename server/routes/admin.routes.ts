@@ -1,7 +1,7 @@
 import { Router } from 'express';
 import { autenticacao } from '../middlewares/auth.middleware';
 import { verificarAdmin } from '../middlewares/admin.middleware';
-import { prisma } from '../index';
+import { prisma } from '../lib/prisma';
 import {
   listarUsuarios,
   obterUsuario,
@@ -17,19 +17,19 @@ import {
   desativarCelula
 } from '../controllers/celulas.controller';
 
-const router = Router();
+const adminRouter = Router();
 
 // Todas as rotas requerem autenticação e privilégios de admin
-router.use(autenticacao);
-router.use(verificarAdmin);
+adminRouter.use(autenticacao);
+adminRouter.use(verificarAdmin);
 
 // Rotas de usuários
-router.get('/usuarios', listarUsuarios);
-router.get('/usuarios/:id', obterUsuario);
-router.post('/usuarios', criarUsuario);
-router.put('/usuarios/:id', atualizarUsuario);
-router.patch('/usuarios/:id/status', ativarDesativarUsuario);
-router.delete('/usuarios/:id', async (req, res) => {
+adminRouter.get('/usuarios', listarUsuarios);
+adminRouter.get('/usuarios/:id', obterUsuario);
+adminRouter.post('/usuarios', criarUsuario);
+adminRouter.put('/usuarios/:id', atualizarUsuario);
+adminRouter.patch('/usuarios/:id/status', ativarDesativarUsuario);
+adminRouter.delete('/usuarios/:id', async (req, res) => {
   try {
     const { id } = req.params;
 
@@ -60,7 +60,7 @@ router.delete('/usuarios/:id', async (req, res) => {
 });
 
 // Rota para obter estatísticas
-router.get('/estatisticas', async (req, res) => {
+adminRouter.get('/estatisticas', async (req, res) => {
   try {
     const periodo = req.query.periodo as string || 'mes';
     console.log(`[DEBUG] Obtendo estatísticas para período: ${periodo}`);
@@ -317,7 +317,7 @@ router.get('/estatisticas', async (req, res) => {
 });
 
 // Rota para exportar relatório em PDF
-router.get('/relatorios/exportar', async (req, res) => {
+adminRouter.get('/relatorios/exportar', async (req, res) => {
   try {
     const { tipo, periodo } = req.query;
     
@@ -331,10 +331,10 @@ router.get('/relatorios/exportar', async (req, res) => {
 });
 
 // Rotas para células
-router.get('/celulas', listarCelulas);
-router.get('/celulas/:id', obterCelula);
-router.post('/celulas', criarCelula);
-router.put('/celulas/:id', atualizarCelula);
-router.patch('/celulas/:id/desativar', desativarCelula);
+adminRouter.get('/celulas', listarCelulas);
+adminRouter.get('/celulas/:id', obterCelula);
+adminRouter.post('/celulas', criarCelula);
+adminRouter.put('/celulas/:id', atualizarCelula);
+adminRouter.patch('/celulas/:id/desativar', desativarCelula);
 
-export default router; 
+export { adminRouter }; 

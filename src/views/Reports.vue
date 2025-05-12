@@ -92,12 +92,12 @@ const isOnTime = computed(() => {
 
 // Calculate statistics for current month
 const worshipAttendanceCount = computed(() => {
-  const { worship, both } = attendanceStore.currentMonthStats
+  const { worship } = attendanceStore.currentMonthStats
   return worship
 })
 
 const cellAttendanceCount = computed(() => {
-  const { cell, both } = attendanceStore.currentMonthStats
+  const { cell } = attendanceStore.currentMonthStats
   return cell
 })
 
@@ -106,7 +106,10 @@ const bothAttendanceCount = computed(() => {
   return both
 })
 
-const totalMembers = computed(() => memberStore.getAllMembers.length)
+const totalMembers = computed(() => {
+  // Filtrar apenas membros ativos
+  return memberStore.getAllMembers.filter(m => m.isActive).length
+})
 
 const presentMembers = computed(() => {
   const { worship, cell, both } = attendanceStore.currentMonthStats
@@ -116,15 +119,19 @@ const presentMembers = computed(() => {
 // Get attendance records with member data
 const attendanceRecords = computed(() => {
   const records = attendanceStore.currentMonthAttendance.records
-  return records.map(record => {
-    const member = memberStore.getAllMembers.find(m => m.id === record.memberId)
-    return {
-      ...record,
-      memberName: member?.name || 'Membro não encontrado',
-      isConsolidator: member?.isConsolidator || false,
-      isCoLeader: member?.isCoLeader || false,
-    }
-  })
+  // Filtrar apenas membros ativos
+  return records
+    .map(record => {
+      const member = memberStore.getAllMembers.find(m => m.id === record.memberId)
+      return {
+        ...record,
+        memberName: member?.name || 'Membro não encontrado',
+        isConsolidator: member?.isConsolidator || false,
+        isCoLeader: member?.isCoLeader || false,
+        isActive: member?.isActive || false
+      }
+    })
+    .filter(record => record.isActive) // Filtrar apenas membros ativos
 })
 
 const statusLabels = {
@@ -144,12 +151,10 @@ const statusColors = {
 // Carregar ou criar relatório para o mês atual
 async function loadOrCreateReport() {
   loadingReport.value = true;
-  console.log(`[DEBUG] Reports.vue - Iniciando loadOrCreateReport para ${attendanceStore.currentDate.getMonth()}/${attendanceStore.currentDate.getFullYear()}`);
   
   try {
     // Verificar se já existe um relatório para este mês
     const relatorios = await reportStore.carregarRelatorios();
-    console.log(`[DEBUG] Reports.vue - Relatórios carregados: ${relatorios.length}`);
     
     // Filtrar para o mês atual
     const relatorio = reportStore.reports.find(r => 
@@ -161,8 +166,6 @@ async function loadOrCreateReport() {
       currentReportId.value = parseInt(relatorio.id.toString());
       isSubmitted.value = relatorio.isFinalized;
       reportSubmitted.value = relatorio.isFinalized;
-      
-      console.log(`[DEBUG] Reports.vue - Relatório encontrado: id=${currentReportId.value}, isFinalized=${relatorio.isFinalized}`);
     } else {
       // Verificar se existe relatório usando o serviço antes de criar
       if (memberStore.celulaId) {
@@ -173,22 +176,16 @@ async function loadOrCreateReport() {
         );
         
         if (relatorioExistente) {
-          // Se o relatório já existe no backend mas não está na store
           currentReportId.value = relatorioExistente.id;
           isSubmitted.value = !!relatorioExistente.dataEnvio;
           reportSubmitted.value = !!relatorioExistente.dataEnvio;
           
-          console.log(`[DEBUG] Reports.vue - Relatório recuperado via serviço: id=${currentReportId.value}, isFinalized=${!!relatorioExistente.dataEnvio}`);
-          
           // Atualizar a store
           await reportStore.carregarRelatorios();
         } else {
-          // Criar um novo relatório somente se realmente não existir
-          console.log(`[DEBUG] Reports.vue - Nenhum relatório encontrado, criando novo`);
-      const newReportId = await reportStore.criarRelatorio();
-      if (newReportId) {
-        currentReportId.value = typeof newReportId === 'number' ? newReportId : parseInt(newReportId);
-            console.log(`[DEBUG] Reports.vue - Novo relatório criado: id=${currentReportId.value}`);
+          const newReportId = await reportStore.criarRelatorio();
+          if (newReportId) {
+            currentReportId.value = typeof newReportId === 'number' ? newReportId : parseInt(newReportId);
           }
         }
       } else {
@@ -198,7 +195,6 @@ async function loadOrCreateReport() {
   } catch (error) {
     console.error('Erro ao carregar/criar relatório:', error);
   } finally {
-    console.log(`[DEBUG] Reports.vue - Final loadOrCreateReport: isSubmitted = ${isSubmitted.value}, reportSubmitted = ${reportSubmitted.value}, currentReportId = ${currentReportId.value}`);
     loadingReport.value = false;
   }
 }
@@ -617,13 +613,13 @@ function getStatusClass(status: string) {
         </div>
         
         <!-- Observations -->
-        <div v-if="currentReportId && currentReportId.observacoes" class="mt-6 bg-white shadow overflow-hidden sm:rounded-md">
+        <div v-if="currentReportId && reportStore.reports.find(r => r.id === currentReportId)?.observations" class="mt-6 bg-white shadow overflow-hidden sm:rounded-md">
           <div class="px-4 py-5 sm:px-6">
             <h3 class="text-lg leading-6 font-medium text-gray-900">
               Observações do Relatório
             </h3>
             <div class="mt-2 text-sm text-gray-500">
-              <p>{{ currentReportId.observacoes }}</p>
+              <p>{{ reportStore.reports.find(r => r.id === currentReportId)?.observations }}</p>
             </div>
           </div>
         </div>

@@ -174,12 +174,15 @@ const relatorioService = {
   },
   
   // Enviar relatório (finalizar)
-  async enviarRelatorio(id: number): Promise<Relatorio> {
+  async enviarRelatorio(id: number, presencas?: Array<{memberId: number, status: string}>): Promise<Relatorio> {
     try {
       console.log(`[DEBUG] relatorioService.enviarRelatorio - Iniciando envio do relatório ID=${id}`);
       console.log(`[DEBUG] relatorioService.enviarRelatorio - Chamando endpoint: /relatorios/${id}/enviar`);
+      console.log(`[DEBUG] relatorioService.enviarRelatorio - Enviando ${presencas?.length || 0} presenças`);
       
-      const resposta = await api.post(`/relatorios/${id}/enviar`, {});
+      const resposta = await api.post(`/relatorios/${id}/enviar`, {
+        presenças: presencas || []
+      });
       console.log(`[DEBUG] relatorioService.enviarRelatorio - Resposta do servidor:`, resposta);
       
       return resposta as Relatorio;

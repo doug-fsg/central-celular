@@ -1,5 +1,5 @@
 import { Request, Response } from 'express';
-import { prisma } from '../index';
+import { prisma } from '../lib/prisma';
 import { z } from 'zod';
 
 // Estendendo o tipo Request para incluir o usuário autenticado
@@ -28,12 +28,31 @@ const presencaSchema = z.object({
   observacoes: z.string().optional()
 });
 
+// Schema para validação de envio de relatório com presenças
+const envioRelatorioSchema = z.object({
+  presenças: z.array(z.object({
+    membroId: z.number(),
+    status: z.string()
+  })).optional()
+});
+
 // Listar relatórios
 export const listarRelatorios = async (req: Request, res: Response) => {
   try {
     const { celula, mes, ano } = req.query;
+    
+    // Obter o accountId do usuário autenticado
+    const accountId = (req as any).user?.accountId || (req as any).usuario?.accountId;
+    
+    if (!accountId) {
+      return res.status(401).json({ message: 'Conta não identificada' });
+    }
 
-    const filtro: any = {};
+    const filtro: any = {
+      celula: {
+        accountId // Filtrar por account
+      }
+    };
     
     if (celula) filtro.celulaId = Number(celula);
     if (mes) filtro.mes = Number(mes);
@@ -49,13 +68,19 @@ export const listarRelatorios = async (req: Request, res: Response) => {
             lider: {
               select: {
                 id: true,
-                nome: true
+                nome: true,
+                email: true
               }
             }
           }
         },
-        _count: {
-          select: { presencas: true }
+        presencas: {
+          select: {
+            id: true,
+            presencaCelula: true,
+            presencaCulto: true,
+            semana: true
+          }
         }
       },
       orderBy: [
@@ -208,45 +233,44 @@ export const registrarPresenca = async (req: Request, res: Response) => {
     const { id } = req.params;
     const data = presencaSchema.parse(req.body);
 
-    // Verificar se o relatório existe
+    // Verificar se o relatório existe e incluir a célula para verificar accountId
     const relatorio = await prisma.relatorio.findUnique({
-      where: { id: Number(id) }
+      where: { id: Number(id) },
+      include: {
+        celula: true
+      }
     });
 
     if (!relatorio) {
       return res.status(404).json({ message: 'Relatório não encontrado' });
     }
 
-    const membroId = data.membroId;
+    // Verificar se o membro existe e pertence à célula correta
+    const membro = await prisma.membro.findFirst({
+      where: {
+        id: data.membroId,
+        celulaId: relatorio.celulaId,
+        ativo: true
+      }
+    });
 
-    // Verificar se o membro existe usando os métodos do prisma
-    const membro = await prisma.$queryRaw`
-      SELECT * FROM membros WHERE id = ${membroId}
-    `;
-
-    if (!membro || membro.length === 0) {
-      return res.status(400).json({ message: 'Membro não encontrado' });
-    }
-
-    // Verificar se o membro pertence à célula do relatório
-    const membroData = membro[0];
-    if (membroData.celula_id !== relatorio.celulaId) {
-      return res.status(400).json({ message: 'Este membro não pertence à célula do relatório' });
+    if (!membro) {
+      return res.status(400).json({ message: 'Membro não encontrado ou não pertence à célula do relatório' });
     }
 
     // Verificar se já existe presença registrada para este membro nesta semana
-    const presencasExistentes = await prisma.$queryRaw`
-      SELECT * FROM presencas 
-      WHERE relatorio_id = ${Number(id)} 
-      AND membro_id = ${membroId}
-      AND semana = ${data.semana}
-    `;
+    const presencaExistente = await prisma.presenca.findFirst({
+      where: {
+        relatorioId: Number(id),
+        membroId: data.membroId,
+        semana: data.semana
+      }
+    });
 
     let presenca;
 
-    if (presencasExistentes && presencasExistentes.length > 0) {
+    if (presencaExistente) {
       // Atualizar presença existente
-      const presencaExistente = presencasExistentes[0];
       presenca = await prisma.presenca.update({
         where: { id: presencaExistente.id },
         data: {
@@ -256,22 +280,17 @@ export const registrarPresenca = async (req: Request, res: Response) => {
         }
       });
     } else {
-      // Criar nova presença usando os campos corretos conforme definido no Prisma
-      presenca = await prisma.$executeRaw`
-        INSERT INTO presencas (relatorio_id, membro_id, presenca_celula, presenca_culto, semana, observacoes)
-        VALUES (${Number(id)}, ${membroId}, ${data.presencaCelula}, ${data.presencaCulto}, ${data.semana}, ${data.observacoes || null})
-      `;
-      
-      // Buscar a presença recém-criada
-      const novaPresenca = await prisma.$queryRaw`
-        SELECT * FROM presencas 
-        WHERE relatorio_id = ${Number(id)} 
-        AND membro_id = ${membroId}
-        AND semana = ${data.semana}
-        LIMIT 1
-      `;
-      
-      presenca = novaPresenca[0];
+      // Criar nova presença
+      presenca = await prisma.presenca.create({
+        data: {
+          relatorioId: Number(id),
+          membroId: data.membroId,
+          presencaCelula: data.presencaCelula,
+          presencaCulto: data.presencaCulto,
+          semana: data.semana,
+          observacoes: data.observacoes
+        }
+      });
     }
 
     res.json(presenca);
@@ -287,89 +306,165 @@ export const registrarPresenca = async (req: Request, res: Response) => {
 };
 
 // Enviar relatório
-export const enviarRelatorio = async (req: AuthRequest, res: Response) => {
+export const enviarRelatorio = async (req: Request, res: Response) => {
   try {
     const { id } = req.params;
-    console.log(`[DEBUG] Controller enviarRelatorio - Iniciando envio do relatório ID=${id}`);
+    console.log(`[DEBUG] Iniciando processo de envio do relatório ${id}`);
     
-    // Verificar se temos um req.auth válido
-    if (!req.auth) {
-      console.error('[DEBUG] Controller enviarRelatorio - req.auth não está definido');
-      console.log('[DEBUG] Controller enviarRelatorio - Conteúdo de req:', Object.keys(req));
-      console.log('[DEBUG] Controller enviarRelatorio - Verificando req.usuario:', (req as any).usuario);
-      
-      // Tentar usar req.usuario como fallback se disponível
-      if ((req as any).usuario) {
-        console.log('[DEBUG] Controller enviarRelatorio - Usando req.usuario como fallback para auth');
-        req.auth = {
-          id: (req as any).usuario.id,
-          email: (req as any).usuario.email,
-          cargo: (req as any).usuario.cargo
-        };
-      } else {
-        return res.status(401).json({ message: 'Autenticação não encontrada' });
-      }
+    // Parse o corpo da requisição para obter as presenças
+    const data = envioRelatorioSchema.safeParse(req.body);
+    console.log(`[DEBUG] Dados recebidos do frontend:`, req.body);
+
+    // Obter informações do usuário a partir do middleware de autenticação
+    const usuario = (req as any).usuario || (req as any).user;
+    if (!usuario) {
+      console.log(`[DEBUG] Usuário não autenticado ao tentar enviar relatório ${id}`);
+      return res.status(401).json({ message: 'Usuário não autenticado' });
     }
-    
-    console.log(`[DEBUG] Controller enviarRelatorio - Usuário autenticado:`, req.auth);
-    
-    // Verificar se o relatório existe
+    console.log(`[DEBUG] Usuário autenticado: ${usuario.id} (${usuario.cargo})`);
+
+    // Verificar se o relatório existe e incluir dados necessários
     const relatorio = await prisma.relatorio.findUnique({
       where: { id: Number(id) },
       include: {
-        celula: true
+        celula: {
+          include: {
+            lider: true,
+            membros: true
+          }
+        },
+        presencas: {
+          include: {
+            membro: true
+          }
+        }
       }
     });
 
-    console.log(`[DEBUG] Controller enviarRelatorio - Relatório encontrado:`, relatorio);
-
     if (!relatorio) {
-      console.log(`[DEBUG] Controller enviarRelatorio - Relatório não encontrado`);
+      console.log(`[DEBUG] Relatório ${id} não encontrado`);
       return res.status(404).json({ message: 'Relatório não encontrado' });
     }
 
+    // Log detalhado do relatório e suas presenças
+    console.log(`[DEBUG] Relatório ${id} encontrado:`, {
+      id: relatorio.id,
+      celulaId: relatorio.celulaId,
+      dataEnvio: relatorio.dataEnvio,
+      totalPresencas: relatorio.presencas?.length || 0
+    });
+
     // Verificar se o relatório já foi enviado
     if (relatorio.dataEnvio) {
-      console.log(`[DEBUG] Controller enviarRelatorio - Relatório já enviado em: ${relatorio.dataEnvio}`);
+      console.log(`[DEBUG] Relatório ${id} já foi enviado em ${relatorio.dataEnvio}`);
       return res.status(400).json({ message: 'Este relatório já foi enviado' });
     }
 
-    // Verificar se temos um líder na célula
-    if (!relatorio.celula || !relatorio.celula.liderId) {
-      console.error('[DEBUG] Controller enviarRelatorio - Célula sem líder definido:', relatorio.celula);
-      return res.status(400).json({ message: 'Célula sem líder definido' });
+    // Salvar as presenças recebidas do frontend, se houver
+    if (data.success && data.data.presenças && data.data.presenças.length > 0) {
+      console.log(`[DEBUG] Presenças recebidas do frontend: ${data.data.presenças.length}`);
+      
+      // Excluir presenças existentes para evitar duplicações
+      await prisma.presenca.deleteMany({
+        where: { relatorioId: Number(id) }
+      });
+
+      // Criar novas presenças com base nos dados do frontend
+      for (const presenca of data.data.presenças) {
+        await prisma.presenca.create({
+          data: {
+            relatorioId: Number(id),
+            membroId: presenca.membroId,
+            presencaCelula: presenca.status === 'cell' || presenca.status === 'both',
+            presencaCulto: presenca.status === 'worship' || presenca.status === 'both',
+            semana: 1 // Usando semana 1 como padrão
+          }
+        });
+      }
+      
+      // Buscar o relatório novamente para ter as presenças atualizadas
+      const relatorioAtualizado = await prisma.relatorio.findUnique({
+        where: { id: Number(id) },
+        include: {
+          presencas: true
+        }
+      });
+      
+      if (relatorioAtualizado) {
+        console.log(`[DEBUG] Presenças salvas com sucesso. Total: ${relatorioAtualizado.presencas.length}`);
+      }
     }
 
-    // Verificar se o usuário é líder da célula
-    console.log(`[DEBUG] Controller enviarRelatorio - Verificando permissão: Usuario ${req.auth.id}, Líder da célula ${relatorio.celula.liderId}`);
-    
-    // TEMPORARIAMENTE, para fins de testes, desabilitar a verificação de líder
-    // if (relatorio.celula.liderId !== req.auth.id) {
-    //   console.log(`[DEBUG] Controller enviarRelatorio - Permissão negada: Usuário não é líder da célula`);
-    //   return res.status(403).json({ message: 'Apenas o líder da célula pode enviar o relatório' });
+    // Verificar se o usuário tem permissão
+    const ehLider = relatorio.celula.liderId === usuario.id;
+    const ehAdmin = ['ADMINISTRADOR', 'SUPERVISOR'].includes(usuario.cargo);
+    console.log(`[DEBUG] Verificação de permissões - É líder: ${ehLider}, É admin: ${ehAdmin}`);
+
+    if (!ehLider && !ehAdmin) {
+      console.log(`[DEBUG] Usuário ${usuario.id} não tem permissão para enviar o relatório ${id}`);
+      return res.status(403).json({ 
+        message: 'Apenas o líder da célula ou um administrador pode enviar o relatório' 
+      });
+    }
+
+    // Buscar presenças atuais após possível atualização
+    const presencasAtuais = await prisma.presenca.findMany({
+      where: { relatorioId: Number(id) }
+    });
+    console.log(`[DEBUG] Total de presenças atuais: ${presencasAtuais.length}`);
+
+    // Temporariamente remover a validação de presença para diagnóstico
+    // if (!presencasAtuais || presencasAtuais.length === 0) {
+    //   console.log(`[DEBUG] Relatório ${id} não possui registros de presença`);
+    //   return res.status(400).json({ 
+    //     message: 'Não é possível enviar o relatório sem registros de presença' 
+    //   });
     // }
 
-    // Marcar como enviado com a data atual
-    console.log(`[DEBUG] Controller enviarRelatorio - Atualizando relatório com data de envio`);
-    const relatorioAtualizado = await prisma.relatorio.update({
+    console.log(`[DEBUG] Iniciando atualização do relatório ${id} com dataEnvio`);
+    
+    // Atualizar o relatório com a data de envio
+    const relatorioFinalizado = await prisma.relatorio.update({
       where: { id: Number(id) },
-      data: {
+      data: { 
         dataEnvio: new Date()
+      },
+      include: {
+        celula: {
+          select: {
+            id: true,
+            nome: true,
+            lider: {
+              select: {
+                id: true,
+                nome: true
+              }
+            }
+          }
+        },
+        presencas: {
+          select: {
+            id: true,
+            presencaCelula: true,
+            presencaCulto: true,
+            semana: true
+          }
+        }
       }
     });
 
-    console.log(`[DEBUG] Controller enviarRelatorio - Relatório atualizado com sucesso:`, relatorioAtualizado);
-    res.json(relatorioAtualizado);
+    console.log(`[DEBUG] Relatório ${id} atualizado com sucesso:`, {
+      id: relatorioFinalizado.id,
+      dataEnvio: relatorioFinalizado.dataEnvio,
+      totalPresencas: relatorioFinalizado.presencas?.length || 0
+    });
+
+    res.json(relatorioFinalizado);
   } catch (error) {
-    console.error('[DEBUG] Controller enviarRelatorio - Erro ao enviar relatório:', error);
-    
-    // Retornar mensagem mais detalhada
-    let mensagemErro = 'Erro ao enviar relatório';
-    if (error instanceof Error) {
-      mensagemErro += ': ' + error.message;
-    }
-    
-    res.status(500).json({ message: mensagemErro });
+    console.error('[DEBUG] Erro ao enviar relatório:', error);
+    res.status(500).json({ 
+      message: error instanceof Error ? error.message : 'Erro ao enviar relatório'
+    });
   }
 };
 

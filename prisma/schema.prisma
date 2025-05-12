@@ -10,13 +10,29 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
+model Account {
+  id          Int       @id @default(autoincrement())
+  nome        String
+  ativo       Boolean   @default(true)
+  createdAt   DateTime  @default(now()) @map("created_at")
+  updatedAt   DateTime  @updatedAt @map("updated_at")
+  usuarios    Usuario[]
+  regioes     Regiao[]
+  celulas     Celula[]
+
+  @@map("accounts")
+}
+
 model Usuario {
   id                 Int       @id @default(autoincrement())
   nome               String
-  email              String    @unique
+  email              String
   senha              String
   cargo              String    // "admin", "pastor", "supervisor", "lider", "colider"
   ativo              Boolean   @default(true)
+  isSuperAdmin       Boolean   @default(false) @map("is_super_admin")
+  accountId          Int       @map("account_id")
+  account            Account   @relation(fields: [accountId], references: [id])
   createdAt          DateTime  @default(now()) @map("created_at")
   updatedAt          DateTime  @updatedAt @map("updated_at")
   celulasLideradas   Celula[]  @relation("lider")
@@ -25,6 +41,7 @@ model Usuario {
   notificacoes       Notificacao[]
   conquistas         Conquista[]
 
+  @@unique([email, accountId])
   @@map("usuarios")
 }
 
@@ -42,6 +59,8 @@ model Celula {
   supervisor      Usuario?      @relation("supervisor", fields: [supervisorId], references: [id])
   regiaoId        Int?          @map("regiao_id")
   regiao          Regiao?       @relation(fields: [regiaoId], references: [id])
+  accountId       Int           @map("account_id")
+  account         Account       @relation(fields: [accountId], references: [id])
   ativo           Boolean       @default(true)
   createdAt       DateTime      @default(now()) @map("created_at")
   updatedAt       DateTime      @updatedAt @map("updated_at")
@@ -73,6 +92,8 @@ model Regiao {
   id              Int           @id @default(autoincrement())
   nome            String
   supervisorId    Int?          @map("supervisor_id")
+  accountId       Int           @map("account_id")
+  account         Account       @relation(fields: [accountId], references: [id])
   ativo           Boolean       @default(true)
   celulas         Celula[]
 

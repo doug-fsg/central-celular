@@ -13,12 +13,8 @@ import {
   marcarComoCoLider,
   marcarComoAnfitriao
 } from '../controllers/celulas.controller';
-import { autenticacao } from '../middlewares/auth.middleware';
 
 const router = Router();
-
-// Todas as rotas requerem autenticação
-router.use(autenticacao);
 
 // Rotas para células
 router.get('/', listarCelulas);

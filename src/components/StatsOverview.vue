@@ -10,18 +10,18 @@ const memberStore = useMemberStore()
 
 const stats = computed(() => {
   const { worship, cell, both, total } = attendanceStore.currentMonthStats
-  const totalMembers = memberStore.getAllMembers.length
+  const totalMembers = total
   
   return [
     {
-      title: 'Presença no Culto',
+      title: 'Frequência no Culto',
       value: worship,
       percentage: Math.round((worship / totalMembers) * 100) || 0,
       color: 'primary',
       icon: 'fire' as IconName
     },
     {
-      title: 'Presença na Célula',
+      title: 'Frequência na Célula',
       value: cell,
       percentage: Math.round((cell / totalMembers) * 100) || 0,
       color: 'secondary',
@@ -35,7 +35,7 @@ const stats = computed(() => {
       icon: 'star' as IconName
     },
     {
-      title: 'Membros Registrados',
+      title: 'Membros Ativos',
       value: totalMembers,
       type: 'total',
       color: 'neutral',

@@ -1,5 +1,5 @@
 import { Request, Response } from 'express';
-import { prisma } from '../index';
+import { prisma } from '../lib/prisma';
 import bcrypt from 'bcryptjs';
 import { z } from 'zod';
 
@@ -36,23 +36,24 @@ export const listarUsuarios = async (req: Request, res: Response) => {
     const limit = Number(req.query.limit) || 10;
     const skip = (page - 1) * limit;
 
-    const cargosPermitidos = ['ADMINISTRADOR', 'SUPERVISOR', 'LIDER'];
+    // Obter o accountId do usuário autenticado
+    const accountId = (req as any).user?.accountId || (req as any).usuario?.accountId;
+    
+    if (!accountId) {
+      return res.status(401).json({ message: 'Conta não identificada' });
+    }
 
-    // Buscar total de registros com filtro de cargos
+    // Buscar total de registros apenas com filtro de accountId
     const total = await prisma.usuario.count({
       where: {
-        cargo: {
-          in: cargosPermitidos
-        }
+        accountId: accountId
       }
     });
 
-    // Buscar usuários com paginação e filtro de cargos
+    // Buscar usuários com paginação e accountId
     const usuarios = await prisma.usuario.findMany({
       where: {
-        cargo: {
-          in: cargosPermitidos
-        }
+        accountId: accountId
       },
       select: {
         id: true,
@@ -61,7 +62,8 @@ export const listarUsuarios = async (req: Request, res: Response) => {
         cargo: true,
         ativo: true,
         createdAt: true,
-        updatedAt: true
+        updatedAt: true,
+        accountId: true
       },
       orderBy: [
         { cargo: 'asc' },
@@ -75,13 +77,15 @@ export const listarUsuarios = async (req: Request, res: Response) => {
     const ordemCargos = {
       'ADMINISTRADOR': 1,
       'SUPERVISOR': 2,
-      'LIDER': 3
+      'LIDER': 3,
+      'MEMBRO': 4,
+      'VISITANTE': 5
     };
 
     const usuariosOrdenados = usuarios
       .sort((a, b) => {
-        const ordemA = ordemCargos[a.cargo as keyof typeof ordemCargos];
-        const ordemB = ordemCargos[b.cargo as keyof typeof ordemCargos];
+        const ordemA = ordemCargos[a.cargo as keyof typeof ordemCargos] || 999;
+        const ordemB = ordemCargos[b.cargo as keyof typeof ordemCargos] || 999;
         if (ordemA !== ordemB) return ordemA - ordemB;
         return a.nome.localeCompare(b.nome);
       })

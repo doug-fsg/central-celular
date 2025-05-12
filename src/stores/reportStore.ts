@@ -292,7 +292,25 @@ export const useReportStore = defineStore('report', () => {
     try {
       console.log(`[DEBUG] reportStore.enviarRelatorio - Iniciando envio do relatório ID=${reportId}`);
       
-      const result = await relatorioService.enviarRelatorio(reportId)
+      // Obter relatório atual para enviar as presenças
+      const report = await relatorioService.obterRelatorio(reportId);
+      console.log(`[DEBUG] reportStore.enviarRelatorio - Relatório obtido do backend:`, report);
+      
+      // Buscar presenças locais para enviar junto com o relatório
+      const attendance = localStorage.getItem(`attendance_${reportId}`);
+      let presencas = [];
+      
+      if (attendance) {
+        try {
+          presencas = JSON.parse(attendance);
+          console.log(`[DEBUG] reportStore.enviarRelatorio - Presenças recuperadas do localStorage:`, presencas);
+        } catch (e) {
+          console.error('Erro ao processar presenças do localStorage:', e);
+        }
+      }
+      
+      // Enviar relatório com presenças
+      const result = await relatorioService.enviarRelatorio(reportId, presencas);
       console.log(`[DEBUG] reportStore.enviarRelatorio - Resposta obtida do serviço:`, result);
       
       if (result) {

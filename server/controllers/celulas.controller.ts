@@ -1,8 +1,7 @@
 import { Request, Response } from 'express';
-import { prisma } from '../index';
+import { prisma } from '../lib/prisma';
 import { z } from 'zod';
 import bcrypt from 'bcryptjs';
-import { PrismaClient } from '@prisma/client';
 
 // Schema de validação para células
 const celulaSchema = z.object({
@@ -30,16 +29,20 @@ const membroSchema = z.object({
 // Listar células (com filtros e paginação)
 export const listarCelulas = async (req: Request, res: Response) => {
   try {
-    console.log('[listarCelulas] Iniciando busca de células');
-    console.log('[listarCelulas] Query params:', req.query);
-    
     const { page = '1', limit = '10', lider, ativo } = req.query;
     const skip = (Number(page) - 1) * Number(limit);
     
-    console.log('[listarCelulas] Parâmetros de paginação:', { page, limit, skip });
+    // Obter o accountId do usuário autenticado
+    const accountId = (req as any).user?.accountId || (req as any).usuario?.accountId;
+    
+    if (!accountId) {
+      return res.status(401).json({ message: 'Conta não identificada' });
+    }
 
     // Construir where clause com os filtros
-    const where: any = {};
+    const where: any = {
+      accountId
+    };
     
     if (lider) {
       where.liderId = Number(lider);
@@ -49,11 +52,8 @@ export const listarCelulas = async (req: Request, res: Response) => {
       where.ativo = ativo === 'true';
     }
 
-    console.log('[listarCelulas] Filtros:', where);
-
     // Buscar total de registros com filtros
     const total = await prisma.celula.count({ where });
-    console.log('[listarCelulas] Total de registros:', total);
 
     // Buscar células com paginação e filtros
     const celulas = await prisma.celula.findMany({
@@ -87,30 +87,18 @@ export const listarCelulas = async (req: Request, res: Response) => {
       }
     });
 
-    console.log('[listarCelulas] Células encontradas:', celulas.length);
-
-    // Calcular total de páginas
-    const pages = Math.ceil(total / Number(limit));
-    
-    const response = {
+    // Retornar no formato esperado pelo frontend
+    res.json({
       celulas,
       pagination: {
         total,
-        pages,
+        pages: Math.ceil(total / Number(limit)),
         currentPage: Number(page),
         perPage: Number(limit)
       }
-    };
-
-    console.log('[listarCelulas] Resposta estruturada:', {
-      totalCelulas: response.celulas.length,
-      pagination: response.pagination
     });
-
-    // Retornar no formato esperado pelo frontend
-    return res.json(response);
   } catch (error) {
-    console.error('[listarCelulas] Erro ao listar células:', error);
+    console.error('Erro ao listar células:', error);
     res.status(500).json({ 
       celulas: [],
       pagination: {
@@ -127,9 +115,20 @@ export const listarCelulas = async (req: Request, res: Response) => {
 export const obterCelula = async (req: Request, res: Response) => {
   try {
     const { id } = req.params;
+    
+    // Obter o accountId do usuário autenticado
+    const accountId = (req as any).user?.accountId || (req as any).usuario?.accountId;
+    
+    if (!accountId) {
+      console.error('[obterCelula] accountId não encontrado no token');
+      return res.status(401).json({ message: 'Conta não identificada' });
+    }
 
-    const celula = await prisma.celula.findUnique({
-      where: { id: Number(id) },
+    const celula = await prisma.celula.findFirst({
+      where: { 
+        id: Number(id),
+        accountId // Adicionar accountId ao filtro
+      },
       include: {
         lider: {
           select: {
@@ -167,39 +166,53 @@ export const obterCelula = async (req: Request, res: Response) => {
 export const criarCelula = async (req: Request, res: Response) => {
   try {
     const data = celulaSchema.parse(req.body);
+    
+    // Obter o accountId do usuário autenticado
+    const accountId = (req as any).user?.accountId || (req as any).usuario?.accountId;
+    
+    if (!accountId) {
+      console.error('[criarCelula] accountId não encontrado no token');
+      return res.status(401).json({ message: 'Conta não identificada' });
+    }
 
-    // Verificar se o líder existe
-    const lider = await prisma.usuario.findUnique({
-      where: { id: data.liderId }
+    // Verificar se o líder existe e pertence à mesma conta
+    const lider = await prisma.usuario.findFirst({
+      where: { 
+        id: data.liderId,
+        accountId // Adicionar accountId ao filtro
+      }
     });
 
     if (!lider) {
-      return res.status(400).json({ message: 'Líder não encontrado' });
+      return res.status(400).json({ message: 'Líder não encontrado ou não pertence à sua conta' });
     }
 
     // Verificar co-líder se fornecido
     if (data.coLiderId) {
-      const colider = await prisma.usuario.findUnique({
-        where: { id: data.coLiderId }
+      const colider = await prisma.usuario.findFirst({
+        where: { 
+          id: data.coLiderId,
+          accountId // Adicionar accountId ao filtro
+        }
       });
 
       if (!colider) {
-        return res.status(400).json({ message: 'Co-líder não encontrado' });
+        return res.status(400).json({ message: 'Co-líder não encontrado ou não pertence à sua conta' });
       }
     }
 
     // Verificar supervisor se fornecido
     if (data.supervisorId) {
-      const supervisor = await prisma.usuario.findUnique({
-        where: { id: data.supervisorId }
+      const supervisor = await prisma.usuario.findFirst({
+        where: { 
+          id: data.supervisorId,
+          accountId, // Adicionar accountId ao filtro
+          cargo: 'SUPERVISOR'
+        }
       });
 
       if (!supervisor) {
-        return res.status(400).json({ message: 'Supervisor não encontrado' });
-      }
-
-      if (supervisor.cargo !== 'supervisor') {
-        return res.status(400).json({ message: 'O usuário selecionado não tem cargo de supervisor' });
+        return res.status(400).json({ message: 'Supervisor não encontrado ou não pertence à sua conta' });
       }
     }
 
@@ -214,9 +227,11 @@ export const criarCelula = async (req: Request, res: Response) => {
       }
     }
 
+    // Criar célula com accountId
     const novaCelula = await prisma.celula.create({
       data: {
         ...data,
+        accountId, // Adicionar accountId
         ativo: true
       },
       include: {

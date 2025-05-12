@@ -1,16 +1,15 @@
-import { Router } from 'express';
-import { login, registrar, verificarToken } from '../controllers/auth.controller';
-import { autenticacao } from '../middlewares/auth.middleware';
+import express from 'express';
+import { authController } from '../controllers/auth.controller';
 
-const router = Router();
+const authRoutes = express.Router();
 
 // Rota para login
-router.post('/login', login);
+authRoutes.post('/login', authController.login);
 
 // Rota para registro (disponível apenas em ambiente de desenvolvimento)
-router.post('/registrar', registrar);
+authRoutes.post('/register', authController.registrar);
 
 // Rota para verificar token
-router.get('/verificar', autenticacao, verificarToken);
+authRoutes.get('/verify', authController.verificarToken);
 
-export default router; 
+export { authRoutes }; 

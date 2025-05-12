@@ -6,64 +6,80 @@ const prisma = new PrismaClient();
 async function main() {
   console.log('Iniciando seeding do banco de dados...');
 
+  // Criar account principal
+  const mainAccount = await prisma.account.create({
+    data: {
+      nome: 'Account Principal',
+      ativo: true
+    }
+  });
+
+  console.log('Account principal criada:', mainAccount);
+
   // Criar usuários
   const adminUser = await prisma.usuario.upsert({
-    where: { email: 'admin@igreja.com' },
+    where: { email_accountId: { email: 'admin@igreja.com', accountId: mainAccount.id } },
     update: {},
     create: {
       nome: 'Administrador',
       email: 'admin@igreja.com',
       senha: await bcrypt.hash('admin123', 10),
       cargo: 'ADMINISTRADOR',
-      ativo: true
+      ativo: true,
+      isSuperAdmin: true,
+      accountId: mainAccount.id
     }
   });
 
   const supervisorUser = await prisma.usuario.upsert({
-    where: { email: 'supervisor@igreja.com' },
+    where: { email_accountId: { email: 'supervisor@igreja.com', accountId: mainAccount.id } },
     update: {},
     create: {
       nome: 'Supervisor Silva',
       email: 'supervisor@igreja.com',
       senha: await bcrypt.hash('supervisor123', 10),
       cargo: 'SUPERVISOR',
-      ativo: true
+      ativo: true,
+      accountId: mainAccount.id
     }
   });
 
   const leaderUser = await prisma.usuario.upsert({
-    where: { email: 'lider@igreja.com' },
+    where: { email_accountId: { email: 'lider@igreja.com', accountId: mainAccount.id } },
     update: {},
     create: {
       nome: 'João Líder',
       email: 'lider@igreja.com',
       senha: await bcrypt.hash('lider123', 10),
       cargo: 'LIDER',
-      ativo: true
+      ativo: true,
+      accountId: mainAccount.id
     }
   });
 
   const coLeaderUser = await prisma.usuario.upsert({
-    where: { email: 'colider@igreja.com' },
+    where: { email_accountId: { email: 'colider@igreja.com', accountId: mainAccount.id } },
     update: {},
     create: {
       nome: 'Maria Auxiliadora',
       email: 'colider@igreja.com',
       senha: await bcrypt.hash('colider123', 10),
       cargo: 'COLIDER',
-      ativo: true
+      ativo: true,
+      accountId: mainAccount.id
     }
   });
 
   const pastorUser = await prisma.usuario.upsert({
-    where: { email: 'pastor@igreja.com' },
+    where: { email_accountId: { email: 'pastor@igreja.com', accountId: mainAccount.id } },
     update: {},
     create: {
       nome: 'Pastor José',
       email: 'pastor@igreja.com',
       senha: await bcrypt.hash('pastor123', 10),
       cargo: 'PASTOR',
-      ativo: true
+      ativo: true,
+      accountId: mainAccount.id
     }
   });
 
@@ -73,7 +89,8 @@ async function main() {
     update: {},
     create: {
       nome: 'Zona Sul',
-      ativo: true
+      ativo: true,
+      accountId: mainAccount.id
     }
   });
 
