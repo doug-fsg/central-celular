@@ -6,6 +6,11 @@ const authRoutes = express.Router();
 // Rota para login
 authRoutes.post('/login', authController.login);
 
+// Rotas para primeiro acesso via WhatsApp
+authRoutes.post('/request-otp', authController.requestOtp);
+authRoutes.post('/verify-otp', authController.verifyOtp);
+authRoutes.post('/create-password', authController.createPassword);
+
 // Rota para registro (disponível apenas em ambiente de desenvolvimento)
 authRoutes.post('/register', authController.registrar);
 

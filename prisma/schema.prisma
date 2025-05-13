@@ -20,6 +20,7 @@ model Account {
   regioes     Regiao[]
   celulas     Celula[]
   whatsappConnections WhatsAppConnection[]
+  otpCodes    OtpCode[]
 
   @@map("accounts")
 }
@@ -27,8 +28,9 @@ model Account {
 model Usuario {
   id                 Int       @id @default(autoincrement())
   nome               String
-  email              String
-  senha              String
+  email              String?   // Agora é opcional
+  whatsapp           String    // Não é mais opcional
+  senha              String?   // Agora é opcional inicialmente
   cargo              String    // "admin", "pastor", "supervisor", "lider", "colider"
   ativo              Boolean   @default(true)
   isSuperAdmin       Boolean   @default(false) @map("is_super_admin")
@@ -43,6 +45,7 @@ model Usuario {
   conquistas         Conquista[]
 
   @@unique([email, accountId])
+  @@unique([whatsapp, accountId])
   @@map("usuarios")
 }
 
@@ -169,4 +172,18 @@ model WhatsAppConnection {
   account     Account  @relation(fields: [accountId], references: [id])
 
   @@map("whatsapp_connections")
+}
+
+model OtpCode {
+  id          Int       @id @default(autoincrement())
+  whatsapp    String
+  code        String    // Código de 4 dígitos
+  expiresAt   DateTime  // Data de expiração
+  used        Boolean   @default(false)
+  createdAt   DateTime  @default(now()) @map("created_at")
+  updatedAt   DateTime  @updatedAt @map("updated_at")
+  accountId   Int       @map("account_id")
+  account     Account   @relation(fields: [accountId], references: [id])
+
+  @@map("otp_codes")
 } 

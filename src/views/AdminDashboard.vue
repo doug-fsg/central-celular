@@ -205,11 +205,11 @@ const handleDeleteUser = async () => {
 }
 
 // Salvar usuário (criar/editar)
-const handleSaveUser = async (userData: Partial<Usuario> & { senha?: string }) => {
+const handleSaveUser = async (userData: Partial<Usuario>) => {
   try {
     if (modalMode.value === 'create') {
       await adminService.criarUsuario(userData as any)
-      showFeedback('Usuário criado com sucesso')
+      showFeedback('Usuário criado com sucesso. Um código de acesso será enviado para o WhatsApp informado.')
     } else {
       await adminService.atualizarUsuario(userData.id!, userData)
       showFeedback('Usuário atualizado com sucesso')

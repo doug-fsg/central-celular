@@ -118,8 +118,27 @@ const fetchApi = async (
 // Métodos simplificados para diferentes tipos de requisições
 const api = {
   // Autenticação
-  async login(email: string, senha: string) {
-    const data = await fetchApi('/auth/login', 'POST', { email, senha }, false);
+  async login(emailOrWhatsapp: string, senha: string) {
+    // Detectar se é email ou WhatsApp
+    const isEmail = emailOrWhatsapp.includes('@');
+    const data = isEmail
+      ? await fetchApi('/auth/login', 'POST', { email: emailOrWhatsapp, senha }, false)
+      : await fetchApi('/auth/login', 'POST', { whatsapp: emailOrWhatsapp, senha }, false);
+    
+    salvarSessao(data);
+    return data;
+  },
+
+  async requestOtp(whatsapp: string) {
+    return fetchApi('/auth/request-otp', 'POST', { whatsapp }, false);
+  },
+
+  async verifyOtp(whatsapp: string, code: string) {
+    return fetchApi('/auth/verify-otp', 'POST', { whatsapp, code }, false);
+  },
+
+  async createPassword(whatsapp: string, nome: string, senha: string) {
+    const data = await fetchApi('/auth/create-password', 'POST', { whatsapp, nome, senha }, false);
     salvarSessao(data);
     return data;
   },

@@ -4,7 +4,8 @@ import { ref, computed } from 'vue'
 export interface UserProfile {
   id: number
   nome: string
-  email: string
+  email?: string
+  whatsapp?: string
   cargo: string
   ativo: boolean
 }

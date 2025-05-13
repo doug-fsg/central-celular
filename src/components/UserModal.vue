@@ -2,6 +2,7 @@
 <script setup lang="ts">
 import { ref, watch } from 'vue'
 import type { Usuario } from '../services/adminService'
+import PhoneInput from './PhoneInput.vue'
 
 const props = defineProps<{
   isOpen: boolean
@@ -11,7 +12,7 @@ const props = defineProps<{
 
 const emit = defineEmits<{
   (e: 'close'): void
-  (e: 'save', data: Partial<Usuario> & { senha?: string }): void
+  (e: 'save', data: Partial<Usuario>): void
 }>()
 
 // Lista de cargos permitidos
@@ -26,9 +27,12 @@ const form = ref({
   id: props.user?.id,
   nome: props.user?.nome || '',
   email: props.user?.email || '',
-  cargo: props.user?.cargo || 'LIDER',
-  senha: ''
+  whatsapp: props.user?.whatsapp || '',
+  cargo: props.user?.cargo || 'LIDER'
 })
+
+// Erro de validação do telefone
+const phoneError = ref<string | null>(null)
 
 // Atualizar formulário quando o usuário mudar
 watch(() => props.user, (newUser) => {
@@ -37,16 +41,16 @@ watch(() => props.user, (newUser) => {
       id: newUser.id,
       nome: newUser.nome || '',
       email: newUser.email || '',
-      cargo: newUser.cargo || 'LIDER',
-      senha: ''
+      whatsapp: newUser.whatsapp || '',
+      cargo: newUser.cargo || 'LIDER'
     }
   } else {
     form.value = {
       id: undefined,
       nome: '',
       email: '',
-      cargo: 'LIDER',
-      senha: ''
+      whatsapp: '',
+      cargo: 'LIDER'
     }
   }
 }, { immediate: true })
@@ -57,9 +61,16 @@ const handleSubmit = () => {
     ...form.value
   }
 
-  // Remover senha se estiver editando
-  if (props.mode === 'edit') {
-    delete dadosParaSalvar.senha
+  // Validar WhatsApp
+  if (!form.value.whatsapp) {
+    alert('O WhatsApp é obrigatório')
+    return
+  }
+
+  // Validar se há erro no telefone
+  if (phoneError.value) {
+    alert('O número de WhatsApp é inválido')
+    return
   }
 
   emit('save', dadosParaSalvar)
@@ -115,11 +126,25 @@ const handleSubmit = () => {
                 />
               </div>
             </div>
+            
+            <!-- WhatsApp -->
+            <div>
+              <label for="whatsapp" class="block text-sm font-medium text-gray-700 mb-1">
+                WhatsApp <span class="text-red-500">*</span>
+              </label>
+              <PhoneInput
+                v-model="form.whatsapp"
+                @error="phoneError = $event"
+              />
+              <p class="mt-1 text-sm text-gray-500">
+                O usuário receberá um código de acesso neste número para criar sua senha
+              </p>
+            </div>
 
-            <!-- Email -->
+            <!-- Email (opcional) -->
             <div>
               <label for="email" class="block text-sm font-medium text-gray-700 mb-1">
-                Email
+                Email <span class="text-gray-400">(opcional)</span>
               </label>
               <div class="relative rounded-md shadow-sm">
                 <div class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
@@ -132,9 +157,8 @@ const handleSubmit = () => {
                   type="email"
                   id="email"
                   v-model="form.email"
-                  required
                   class="pl-10 focus:ring-primary-500 focus:border-primary-500 block w-full sm:text-sm border-gray-300 rounded-md"
-                  placeholder="Digite o email"
+                  placeholder="Digite o email (opcional)"
                 />
               </div>
             </div>
@@ -162,50 +186,21 @@ const handleSubmit = () => {
                 </select>
               </div>
             </div>
-
-            <!-- Senha (apenas na criação) -->
-            <div v-if="mode === 'create'">
-              <label for="senha" class="block text-sm font-medium text-gray-700 mb-1">
-                Senha
-              </label>
-              <div class="relative rounded-md shadow-sm">
-                <div class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                  <svg class="h-5 w-5 text-gray-400" viewBox="0 0 20 20" fill="currentColor">
-                    <path fill-rule="evenodd" d="M5 9V7a5 5 0 0110 0v2a2 2 0 012 2v5a2 2 0 01-2 2H5a2 2 0 01-2-2v-5a2 2 0 012-2zm8-2v2H7V7a3 3 0 016 0z" clip-rule="evenodd" />
-                  </svg>
-                </div>
-                <input
-                  type="password"
-                  id="senha"
-                  v-model="form.senha"
-                  :required="mode === 'create'"
-                  class="pl-10 focus:ring-primary-500 focus:border-primary-500 block w-full sm:text-sm border-gray-300 rounded-md"
-                  placeholder="Digite a senha"
-                />
-              </div>
-              <p class="mt-1 text-sm text-gray-500">
-                Mínimo de 6 caracteres
-              </p>
-            </div>
           </div>
 
-          <!-- Footer -->
-          <div class="mt-8 sm:flex sm:flex-row-reverse">
-            <button
-              type="submit"
-              class="w-full inline-flex justify-center items-center rounded-md border border-transparent shadow-sm px-4 py-2 bg-primary-600 text-base font-medium text-white hover:bg-primary-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500 sm:ml-3 sm:w-auto sm:text-sm"
-            >
-              <svg class="h-4 w-4 mr-1.5" viewBox="0 0 20 20" fill="currentColor">
-                <path fill-rule="evenodd" d="M10 3a1 1 0 011 1v5h5a1 1 0 110 2h-5v5a1 1 0 11-2 0v-5H4a1 1 0 110-2h5V4a1 1 0 011-1z" clip-rule="evenodd" />
-              </svg>
-              {{ mode === 'create' ? 'Criar Usuário' : 'Salvar Alterações' }}
-            </button>
+          <div class="mt-6 flex justify-end space-x-3">
             <button
               type="button"
               @click="$emit('close')"
-              class="mt-3 w-full inline-flex justify-center rounded-md border border-gray-300 shadow-sm px-4 py-2 bg-white text-base font-medium text-gray-700 hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500 sm:mt-0 sm:w-auto sm:text-sm"
+              class="inline-flex justify-center py-2 px-4 border border-gray-300 shadow-sm text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500"
             >
               Cancelar
+            </button>
+            <button
+              type="submit"
+              class="inline-flex justify-center py-2 px-4 border border-transparent shadow-sm text-sm font-medium rounded-md text-white bg-primary-600 hover:bg-primary-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500"
+            >
+              {{ mode === 'create' ? 'Criar' : 'Salvar' }}
             </button>
           </div>
         </form>

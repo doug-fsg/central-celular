@@ -41,7 +41,8 @@ export interface AdminStats {
 export interface Usuario {
   id: number;
   nome: string;
-  email: string;
+  email?: string;
+  whatsapp: string;
   cargo: string;
   ativo: boolean;
   status: string;
@@ -117,9 +118,18 @@ export const adminService = {
   },
 
   // Criar novo usuário
-  async criarUsuario(dados: Omit<Usuario, 'id' | 'status'> & { senha: string }): Promise<Usuario> {
+  async criarUsuario(dados: Omit<Usuario, 'id' | 'status'>): Promise<Usuario> {
     try {
-      return await api.post('/admin/usuarios', dados);
+      // Garantir que o whatsapp tenha apenas números
+      const { whatsapp, nome, email, cargo } = dados
+      const dadosFormatados = {
+        nome,
+        email,
+        cargo,
+        whatsapp: whatsapp.replace(/\D/g, '')
+      }
+      
+      return await api.post('/admin/usuarios', dadosFormatados);
     } catch (error) {
       console.error('Erro ao criar usuário:', error);
       throw error;

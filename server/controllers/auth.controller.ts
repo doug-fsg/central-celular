@@ -7,18 +7,44 @@ import { authService } from '../services/authService';
 
 // Schema de validação para login
 const loginSchema = z.object({
-  email: z.string().email(),
+  email: z.string().email().optional(),
+  whatsapp: z.string().optional(),
   senha: z.string(),
   accountId: z.number().optional()
+}).refine(data => data.email || data.whatsapp, {
+  message: "Email ou WhatsApp deve ser fornecido",
+  path: ['email']
+});
+
+// Schema para solicitação de OTP
+const requestOtpSchema = z.object({
+  whatsapp: z.string().min(8, 'Número de WhatsApp inválido')
+});
+
+// Schema para verificação de OTP
+const verifyOtpSchema = z.object({
+  whatsapp: z.string().min(8, 'Número de WhatsApp inválido'),
+  code: z.string().length(4, 'Código deve ter 4 dígitos')
+});
+
+// Schema para criação de senha
+const createPasswordSchema = z.object({
+  whatsapp: z.string().min(8, 'Número de WhatsApp inválido'),
+  nome: z.string().min(3, 'Nome deve ter pelo menos 3 caracteres'),
+  senha: z.string().min(6, 'Senha deve ter pelo menos 6 caracteres'),
 });
 
 // Schema de validação para registro
 const registroSchema = z.object({
   nome: z.string().min(3, 'Nome deve ter pelo menos 3 caracteres'),
-  email: z.string().email('Email inválido'),
+  email: z.string().email('Email inválido').optional(),
+  whatsapp: z.string().optional(),
   senha: z.string().min(6, 'Senha deve ter pelo menos 6 caracteres'),
   cargo: z.string().min(2, 'Cargo deve ter pelo menos 2 caracteres'),
   accountId: z.number().optional()
+}).refine(data => data.email || data.whatsapp, {
+  message: "Email ou WhatsApp deve ser fornecido",
+  path: ['email']
 });
 
 // Função auxiliar para gerar token JWT
@@ -30,91 +56,31 @@ const gerarToken = (userId: number): string => {
 
 // Controller de autenticação
 export const authController = {
+  // Login com email/whatsapp e senha
   async login(req: Request, res: Response) {
     try {
-      // Manter compatibilidade com o formato antigo
-      const { email, senha, accountId } = req.body;
-      console.log(`Tentativa de login - Email: ${email}, AccountId: ${accountId || 'não fornecido'}`);
+      // Validar dados
+      const validatedData = loginSchema.safeParse(req.body);
       
-      // Se não for fornecido accountId, buscar account padrão
-      if (!accountId) {
-        console.log('AccountId não fornecido, buscando account padrão');
-        // Buscar a primeira account ativa para compatibilidade
-        const defaultAccount = await prisma.account.findFirst({
-          where: { ativo: true },
-          orderBy: { id: 'asc' }
-        });
-        
-        console.log('Account padrão encontrada:', defaultAccount);
-        
-        if (!defaultAccount) {
-          return res.status(400).json({ message: 'Nenhuma account ativa encontrada' });
-        }
-        
-        try {
-          console.log(`Tentando login com accountId padrão: ${defaultAccount.id}`);
-          const result = await authService.login({
-            email,
-            senha,
-            accountId: defaultAccount.id
-          });
-          
-          console.log('Login bem-sucedido com account padrão');
-          return res.json(result);
-        } catch (error) {
-          console.log('Erro no login com account padrão, tentando formato antigo', error);
-          // Tentar o formato antigo em caso de erro
-          const usuario = await prisma.usuario.findFirst({ 
-            where: { email, ativo: true },
-            include: {
-              account: true
-            }
-          });
-          
-          if (!usuario) {
-            console.log('Usuário não encontrado');
-            return res.status(401).json({ message: 'Credenciais inválidas' });
-          }
-          
-          console.log('Usuário encontrado, verificando senha');
-          const senhaValida = await bcrypt.compare(senha, usuario.senha);
-          if (!senhaValida) {
-            console.log('Senha inválida');
-            return res.status(401).json({ message: 'Credenciais inválidas' });
-          }
-          
-          console.log('Gerando token JWT para o formato antigo');
-          const jwtSecret = process.env.JWT_SECRET || 'central-celular-secret';
-          console.log('JWT Secret disponível:', !!jwtSecret);
-          
-          const token = jwt.sign(
-            {
-              userId: usuario.id,
-              accountId: usuario.accountId,
-              isSuperAdmin: usuario.isSuperAdmin
-            },
-            jwtSecret,
-            { expiresIn: '1d' }
-          );
-          
-          console.log('Token gerado com sucesso');
-          const { senha: _, ...usuarioSemSenha } = usuario;
-          return res.json({
-            usuario: usuarioSemSenha,
-            token
-          });
-        }
-      } else {
-        // Usar o novo formato quando accountId for fornecido
-        console.log(`Usando formato novo com accountId: ${accountId}`);
+      if (!validatedData.success) {
+        return res.status(400).json({ errors: validatedData.error.errors });
+      }
+      
+      const { email, whatsapp, senha, accountId } = validatedData.data;
+      
+      try {
+        // Tentar login
         const result = await authService.login({
           email,
+          whatsapp,
           senha,
           accountId
         });
         
-        console.log('Login bem-sucedido com formato novo');
         return res.json(result);
+      } catch (error: any) {
+        console.error('Erro no login:', error);
+        return res.status(401).json({ message: error.message || 'Credenciais inválidas' });
       }
     } catch (error) {
       console.error('Erro ao processar login:', error);
@@ -123,7 +89,121 @@ export const authController = {
         return res.status(400).json({ errors: error.errors });
       }
       
-      return res.status(401).json({ message: 'Erro ao processar requisição' });
+      return res.status(500).json({ message: 'Erro ao processar requisição' });
+    }
+  },
+
+  // Solicitar código OTP para primeiro acesso
+  async requestOtp(req: Request, res: Response) {
+    try {
+      console.log('[AuthController] Recebendo requisição de OTP:', req.body);
+      
+      // Validar dados
+      const validatedData = requestOtpSchema.safeParse(req.body);
+      
+      if (!validatedData.success) {
+        console.log('[AuthController] Dados inválidos:', validatedData.error.errors);
+        return res.status(400).json({ errors: validatedData.error.errors });
+      }
+      
+      const { whatsapp } = validatedData.data;
+      console.log('[AuthController] WhatsApp validado:', whatsapp);
+      
+      // Solicitar OTP
+      const result = await authService.requestOtp(whatsapp);
+      console.log('[AuthController] Resultado da solicitação:', result);
+      
+      if (!result.success) {
+        return res.status(400).json({ message: result.message });
+      }
+      
+      return res.json(result);
+    } catch (error) {
+      console.error('[AuthController] Erro ao processar requisição de OTP:', error);
+      
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ errors: error.errors });
+      }
+      
+      return res.status(500).json({ message: 'Erro ao processar requisição' });
+    }
+  },
+  
+  // Verificar código OTP
+  async verifyOtp(req: Request, res: Response) {
+    try {
+      // Validar dados
+      const validatedData = verifyOtpSchema.safeParse(req.body);
+      
+      if (!validatedData.success) {
+        return res.status(400).json({ errors: validatedData.error.errors });
+      }
+      
+      const { whatsapp, code } = validatedData.data;
+      
+      // Verificar OTP
+      const result = await authService.verifyOtp(whatsapp, code);
+      
+      if (!result.success) {
+        return res.status(400).json({ message: result.message });
+      }
+      
+      return res.json(result);
+    } catch (error) {
+      console.error('Erro ao verificar OTP:', error);
+      
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ errors: error.errors });
+      }
+      
+      return res.status(500).json({ message: 'Erro ao processar requisição' });
+    }
+  },
+  
+  // Criar senha após verificação de OTP
+  async createPassword(req: Request, res: Response) {
+    try {
+      // Validar dados
+      const validatedData = createPasswordSchema.safeParse(req.body);
+      
+      if (!validatedData.success) {
+        return res.status(400).json({ errors: validatedData.error.errors });
+      }
+      
+      const { whatsapp, nome, senha } = validatedData.data;
+      
+      // Buscar account padrão
+      const defaultAccount = await prisma.account.findFirst({
+        where: { ativo: true },
+        orderBy: { id: 'asc' }
+      });
+      
+      if (!defaultAccount) {
+        return res.status(400).json({ message: 'Nenhuma account ativa encontrada' });
+      }
+      
+      try {
+        // Criar usuário e retornar token
+        const result = await authService.createPassword({
+          whatsapp,
+          nome,
+          senha,
+          accountId: defaultAccount.id
+        });
+        
+        return res.status(201).json(result);
+      } catch (error: any) {
+        console.error('Erro ao criar usuário:', error);
+        return res.status(400).json({ message: error.message || 'Erro ao criar usuário' });
+      }
+    } catch (error) {
+      console.error('Erro ao processar criação de senha:', error);
+      
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ errors: error.errors });
+      }
+      
+      return res.status(500).json({ message: 'Erro ao processar requisição' });
     }
   },
 
@@ -151,15 +231,31 @@ export const authController = {
       }
 
       // Verificar se email já existe na mesma account
-      const usuarioExistente = await prisma.usuario.findFirst({
-        where: {
-          email: dados.email,
-          accountId: dados.accountId
-        }
-      });
+      if (dados.email) {
+        const emailExistente = await prisma.usuario.findFirst({
+          where: {
+            email: dados.email,
+            accountId: dados.accountId
+          }
+        });
 
-      if (usuarioExistente) {
-        return res.status(400).json({ error: 'Email já está em uso nesta account' });
+        if (emailExistente) {
+          return res.status(400).json({ error: 'Email já está em uso nesta account' });
+        }
+      }
+      
+      // Verificar se whatsapp já existe na mesma account
+      if (dados.whatsapp) {
+        const whatsappExistente = await prisma.usuario.findFirst({
+          where: {
+            whatsapp: dados.whatsapp,
+            accountId: dados.accountId
+          }
+        });
+
+        if (whatsappExistente) {
+          return res.status(400).json({ error: 'WhatsApp já está em uso nesta account' });
+        }
       }
 
       // Verificar se a account existe e está ativa
@@ -182,6 +278,7 @@ export const authController = {
         data: {
           nome: dados.nome,
           email: dados.email,
+          whatsapp: dados.whatsapp,
           senha: senhaHash,
           cargo: dados.cargo,
           accountId: dados.accountId,

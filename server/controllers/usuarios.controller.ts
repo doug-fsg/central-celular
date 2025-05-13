@@ -6,17 +6,25 @@ import { z } from 'zod';
 // Schema de validação para criar usuário
 const criarUsuarioSchema = z.object({
   nome: z.string().min(3, 'Nome deve ter pelo menos 3 caracteres'),
-  email: z.string().email('Email inválido'),
+  email: z.string().email('Email inválido').optional().or(z.literal('')),
+  whatsapp: z.string()
+    .min(10, 'WhatsApp deve ter pelo menos 10 dígitos')
+    .max(13, 'WhatsApp deve ter no máximo 13 dígitos')
+    .regex(/^\d+$/, 'WhatsApp deve conter apenas números'),
   cargo: z.enum(['ADMINISTRADOR', 'SUPERVISOR', 'LIDER'], {
     errorMap: () => ({ message: 'Cargo deve ser ADMINISTRADOR, SUPERVISOR ou LIDER' })
   }),
-  senha: z.string().min(6, 'Senha deve ter pelo menos 6 caracteres')
+  senha: z.string().min(6, 'Senha deve ter pelo menos 6 caracteres').optional()
 });
 
 // Schema de validação para atualizar usuário
 const atualizarUsuarioSchema = z.object({
   nome: z.string().min(3, 'Nome deve ter pelo menos 3 caracteres'),
-  email: z.string().email('Email inválido'),
+  email: z.string().email('Email inválido').optional().or(z.literal('')),
+  whatsapp: z.string()
+    .min(10, 'WhatsApp deve ter pelo menos 10 dígitos')
+    .max(13, 'WhatsApp deve ter no máximo 13 dígitos')
+    .regex(/^\d+$/, 'WhatsApp deve conter apenas números'),
   cargo: z.enum(['ADMINISTRADOR', 'SUPERVISOR', 'LIDER'], {
     errorMap: () => ({ message: 'Cargo deve ser ADMINISTRADOR, SUPERVISOR ou LIDER' })
   }),
@@ -59,6 +67,7 @@ export const listarUsuarios = async (req: Request, res: Response) => {
         id: true,
         nome: true,
         email: true,
+        whatsapp: true,
         cargo: true,
         ativo: true,
         createdAt: true,
@@ -120,6 +129,7 @@ export const obterUsuario = async (req: Request, res: Response) => {
         id: true,
         nome: true,
         email: true,
+        whatsapp: true,
         cargo: true,
         ativo: true,
         createdAt: true,
@@ -144,26 +154,48 @@ export const criarUsuario = async (req: Request, res: Response) => {
     // Validar dados de entrada
     const dados = criarUsuarioSchema.parse(req.body);
 
-    // Verificar se email já existe
-    const usuarioExistente = await prisma.usuario.findUnique({ 
-      where: { email: dados.email } 
-    });
+    // Verificar se já existe usuário com mesmo email ou whatsapp na account
+    const accountId = (req as any).user?.accountId || (req as any).usuario?.accountId;
     
-    if (usuarioExistente) {
-      return res.status(400).json({ message: 'Email já está em uso' });
+    if (!accountId) {
+      return res.status(401).json({ message: 'Conta não identificada' });
     }
 
-    // Hash da senha
-    const salt = await bcrypt.genSalt(10);
-    const senhaHash = await bcrypt.hash(dados.senha, salt);
+    if (dados.email) {
+      const usuarioExistente = await prisma.usuario.findFirst({
+        where: {
+          email: dados.email,
+          accountId: accountId
+        }
+      });
+
+      if (usuarioExistente) {
+        return res.status(400).json({ message: 'Já existe um usuário com este email' });
+      }
+    }
+
+    if (dados.whatsapp) {
+      const usuarioExistente = await prisma.usuario.findFirst({
+        where: {
+          whatsapp: dados.whatsapp,
+          accountId: accountId
+        }
+      });
+
+      if (usuarioExistente) {
+        return res.status(400).json({ message: 'Já existe um usuário com este WhatsApp' });
+      }
+    }
 
     // Criar usuário
     const novoUsuario = await prisma.usuario.create({
       data: {
         nome: dados.nome,
-        email: dados.email,
-        senha: senhaHash,
+        email: dados.email || null,
+        whatsapp: dados.whatsapp,
         cargo: dados.cargo,
+        senha: dados.senha ? await bcrypt.hash(dados.senha, 10) : null,
+        accountId: accountId,
         ativo: true
       }
     });
@@ -215,7 +247,8 @@ export const atualizarUsuario = async (req: Request, res: Response) => {
     // Dados para atualização
     const dadosAtualizacao: any = {
       nome: dados.nome,
-      email: dados.email,
+      email: dados.email || null,
+      whatsapp: dados.whatsapp,
       cargo: dados.cargo
     };
 
