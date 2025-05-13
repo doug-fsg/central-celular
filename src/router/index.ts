@@ -10,6 +10,7 @@ import Reports from '../views/Reports.vue'
 import Profile from '../views/Profile.vue'
 import AdminDashboard from '../views/AdminDashboard.vue'
 import SupervisorDashboard from '../views/SupervisorDashboard.vue'
+import WhatsAppConnections from '../components/WhatsAppConnections.vue'
 
 const router = createRouter({
   history: createWebHistory(),
@@ -35,6 +36,12 @@ const router = createRouter({
       path: '/admin',
       name: 'admin-dashboard',
       component: AdminDashboard,
+      meta: { requiresAuth: true, requiresAdmin: true }
+    },
+    {
+      path: '/admin/whatsapp',
+      name: 'whatsapp-connections',
+      component: WhatsAppConnections,
       meta: { requiresAuth: true, requiresAdmin: true }
     },
     {

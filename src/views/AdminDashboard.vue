@@ -5,9 +5,11 @@ import CellModal from '../components/CellModal.vue'
 import { useUserStore } from '../stores/userStore'
 import { adminService } from '../services/adminService'
 import type { AdminStats, Usuario } from '../services/adminService'
+import WhatsAppConnections from '../components/WhatsAppConnections.vue'
 
 const userStore = useUserStore()
-const activeTab = ref('dashboard') // 'dashboard', 'users' ou 'cells'
+const activeTab = ref('dashboard') // 'dashboard', 'users', 'cells' ou 'whatsapp'
+const whatsappRef = ref(null)
 
 // Estado para os dados
 const loading = ref(true)
@@ -447,6 +449,13 @@ const handleCellPageChange = (page: number) => {
 watch(activeTab, (newTab) => {
   if (newTab === 'cells') {
     loadCells()
+  } else if (newTab === 'whatsapp') {
+    // Verificar conexões do WhatsApp quando a aba for selecionada
+    setTimeout(() => {
+      if (whatsappRef.value && typeof whatsappRef.value.checkActiveConnection === 'function') {
+        whatsappRef.value.checkActiveConnection()
+      }
+    }, 100) // Pequeno timeout para garantir que o componente está montado
   }
 })
 </script>
@@ -490,6 +499,17 @@ watch(activeTab, (newTab) => {
               ]"
             >
               Células
+            </button>
+            <button
+              @click="activeTab = 'whatsapp'"
+              :class="[
+                activeTab === 'whatsapp'
+                  ? 'border-primary-500 text-primary-600'
+                  : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300',
+                'whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm'
+              ]"
+            >
+              Conexões WhatsApp
             </button>
           </nav>
         </div>
@@ -1029,6 +1049,11 @@ watch(activeTab, (newTab) => {
               </nav>
             </div>
           </div>
+        </div>
+
+        <!-- Conexões WhatsApp -->
+        <div v-if="activeTab === 'whatsapp'">
+          <WhatsAppConnections ref="whatsappRef" />
         </div>
       </div>
     </main>

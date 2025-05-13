@@ -3,6 +3,7 @@ import express from 'express';
 import cors from 'cors';
 import { router } from './routes/index';
 import { adminRouter } from './routes/admin.routes';
+import { whatsappRoutes } from './routes/whatsapp.routes';
 
 // Inicializar variáveis de ambiente
 dotenv.config();
@@ -35,6 +36,11 @@ console.log('Rotas da API registradas');
 console.log('Registrando rotas de administração...');
 app.use('/api/admin', adminRouter);
 console.log('Rotas de administração registradas');
+
+// Registrar rotas do WhatsApp
+console.log('Registrando rotas do WhatsApp...');
+app.use('/api/whatsapp', whatsappRoutes);
+console.log('Rotas do WhatsApp registradas');
 
 // Manipulador de erros 404
 app.use((req, res, next) => {
