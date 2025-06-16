@@ -187,30 +187,32 @@ export const whatsappService = {
     try {
       console.log('[WhatsApp Service] Iniciando deleção da conexão com token:', token);
       
-      // Deletar no QuePasa primeiro
-      const quepasaResponse = await fetch('/whatsapp-api/info', {
-        method: 'DELETE',
-        headers: {
-          'X-QUEPASA-TOKEN': token,
-          'Accept': 'application/json'
-        }
-      });
+      try {
+        // Tentar deletar no QuePasa primeiro
+        const quepasaResponse = await fetch('/whatsapp-api/info', {
+          method: 'DELETE',
+          headers: {
+            'X-QUEPASA-TOKEN': token,
+            'Accept': 'application/json'
+          }
+        });
 
-      if (!quepasaResponse.ok) {
-        console.error('[WhatsApp Service] Erro ao deletar no QuePasa:', quepasaResponse.status, quepasaResponse.statusText);
-        
-        // Se o erro for 404, podemos continuar e apagar no banco local, pois a conexão já não existe no QuePasa
-        if (quepasaResponse.status !== 404) {
-          throw new Error(`Erro ao deletar conexão no servidor QuePasa: ${quepasaResponse.status} ${quepasaResponse.statusText}`);
+        // Se a resposta for 404, significa que a conexão já não existe no QuePasa
+        // Nesse caso, continuamos com a deleção no banco local
+        if (!quepasaResponse.ok && quepasaResponse.status !== 404) {
+          console.error('[WhatsApp Service] Erro ao deletar no QuePasa:', quepasaResponse.status, quepasaResponse.statusText);
+          const responseText = await quepasaResponse.text();
+          console.error('[WhatsApp Service] Detalhes do erro:', responseText);
+        } else {
+          console.log('[WhatsApp Service] Conexão deletada ou já não existia no QuePasa');
         }
+      } catch (quepasaError) {
+        // Se houver erro ao comunicar com o QuePasa, logamos mas continuamos
+        console.error('[WhatsApp Service] Erro ao tentar deletar no QuePasa:', quepasaError);
+        console.log('[WhatsApp Service] Continuando com a deleção no banco local...');
       }
 
-      // Verificar resposta do QuePasa
-      const quepasaData = await quepasaResponse.json();
-      console.log('[WhatsApp Service] Resposta da deleção QuePasa:', quepasaData);
-
-      // Mesmo com erro no QuePasa, continuamos com a deleção no banco local
-      // Deletar no banco de dados
+      // Sempre deletar do banco local, independente do resultado no QuePasa
       await api.delete(`/whatsapp/connections/${token}`);
       console.log('[WhatsApp Service] Conexão deletada com sucesso do banco de dados');
 
@@ -218,6 +220,51 @@ export const whatsappService = {
     } catch (error) {
       console.error('[WhatsApp Service] Erro ao deletar conexão:', error);
       throw error;
+    }
+  },
+
+  // Verificar status real da conexão no QuePasa
+  async checkQuePasaStatus(token: string): Promise<boolean> {
+    try {
+      console.log('[WhatsApp Service] Verificando status no QuePasa para token:', token);
+      
+      const response = await fetch('/whatsapp-api/info', {
+        method: 'GET',
+        headers: {
+          'X-QUEPASA-TOKEN': token,
+          'Accept': 'application/json'
+        }
+      });
+
+      if (!response.ok) {
+        console.log('[WhatsApp Service] Conexão não está ativa no QuePasa:', response.status);
+        // Atualizar status no banco como desconectado
+        await api.patch(`/whatsapp/connections/${token}`, {
+          status: 'disconnected'
+        });
+        return false;
+      }
+
+      const data = await response.json();
+      console.log('[WhatsApp Service] Resposta do QuePasa:', data);
+
+      // Verifica se a resposta foi bem sucedida e se o servidor está verificado
+      const isConnected = data.success === true && 
+                         data.server?.verified === true && 
+                         data.server?.wid != null;
+
+      console.log('[WhatsApp Service] Status da conexão:', { isConnected, data });
+      
+      // Atualizar status no banco
+      await api.patch(`/whatsapp/connections/${token}`, {
+        status: isConnected ? 'connected' : 'disconnected',
+        phoneNumber: data.server?.wid
+      });
+
+      return isConnected;
+    } catch (error) {
+      console.error('[WhatsApp Service] Erro ao verificar status no QuePasa:', error);
+      return false;
     }
   }
 }; 

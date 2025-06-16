@@ -19,6 +19,7 @@ const router = useRouter()
 const consolidators = computed(() => memberStore.getConsolidators)
 const coLeaders = computed(() => memberStore.getCoLeaders)
 const showLateReportsAlert = ref(true)
+const activeTab = ref('consolidators')
 
 // Verificar se o relatório do mês atual está pendente e fora do prazo
 const hasLateReports = computed(() => {
@@ -50,123 +51,126 @@ function closeLateReportsAlert() {
 function goToAttendance() {
   router.push({ name: 'attendance' });
 }
+
+function setActiveTab(tab) {
+  activeTab.value = tab
+}
 </script>
 
 <template>
   <div class="min-h-screen bg-neutral-50">
     <main class="container-layout">
-      <div class="flex items-center justify-between mb-6">
-        <h1 class="text-2xl font-bold text-neutral-800 tracking-tight">
-          Central Celular
-        </h1>
+      <!-- Cabeçalho mais discreto -->
+      <div class="flex items-center justify-end mb-4">
         <LeadershipBadge />
       </div>
 
-      <!-- Alerta de relatórios atrasados -->
-      <div v-if="hasLateReports && showLateReportsAlert" 
-           class="mb-6 p-4 bg-red-50 border-l-4 border-red-400 rounded-lg flex items-center justify-between shadow-soft">
-        <div class="flex items-center">
-          <AppIcon name="warning" class="text-red-500 mr-3" size="md" />
-          <p class="text-sm text-red-700 font-medium">
-            Relatórios pendentes. Por favor, atualize seus registros.
-          </p>
-        </div>
-        <button @click="closeLateReportsAlert" class="btn-icon text-red-400 hover:text-red-600">
-          <AppIcon name="close" />
-        </button>
-      </div>
+      <!-- Lembretes e alertas consolidados -->
+      <ReportReminder />
       
-      <div class="flex flex-col md:flex-row md:items-center justify-between mb-8">
+      <!-- Visão geral do mês com botão de ação -->
+      <div class="flex flex-col md:flex-row md:items-center justify-between mb-6">
         <div>
-          <h2 class="text-xl font-semibold text-neutral-800">Painel de Controle</h2>
-          <p class="mt-1 text-neutral-500">
-            Visão geral do mês de {{ attendanceStore.formattedCurrentMonth }}
+          <h2 class="text-lg font-semibold text-neutral-800">Visão geral</h2>
+          <p class="mt-1 text-sm text-neutral-500">
+            {{ attendanceStore.formattedCurrentMonth }}
           </p>
         </div>
         
-        <div class="mt-4 md:mt-0">
-          <button 
-            @click="goToAttendance"
-            class="btn btn-primary flex items-center"
-          >
-            <AppIcon name="calendar" class="mr-1.5" />
-            Registrar Frequência
-          </button>
-        </div>
+        <button 
+          @click="goToAttendance"
+          class="mt-3 md:mt-0 btn btn-primary btn-sm flex items-center"
+        >
+          <AppIcon name="calendar" class="mr-1.5" size="sm" />
+          Registrar Frequência
+        </button>
       </div>
       
-      <ReportReminder />
+      <!-- Estatísticas mais compactas -->
+      <StatsOverview class="mb-6" />
       
-      <StatsOverview class="mb-8" />
-      
-      <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        <!-- Consolidators -->
-        <div class="card">
-          <div class="flex items-center mb-4">
-            <AppIcon name="star" class="text-primary-500 mr-2" />
-            <h2 class="text-xl font-semibold text-neutral-800">Consolidadores</h2>
-          </div>
-          
+      <!-- Sistema de tabs para consolidadores e co-líderes -->
+      <div class="card p-4">
+        <div class="flex border-b border-neutral-200 mb-4">
+          <button 
+            @click="setActiveTab('consolidators')" 
+            class="pb-2 px-4 text-sm font-medium transition-colors"
+            :class="activeTab === 'consolidators' ? 'border-b-2 border-primary-500 text-primary-700' : 'text-neutral-500 hover:text-neutral-700'"
+          >
+            <div class="flex items-center">
+              <AppIcon name="star" class="mr-1.5" size="sm" :color="activeTab === 'consolidators' ? '#0074ff' : undefined" />
+              Consolidadores
+            </div>
+          </button>
+          <button 
+            @click="setActiveTab('coleaders')" 
+            class="pb-2 px-4 text-sm font-medium transition-colors"
+            :class="activeTab === 'coleaders' ? 'border-b-2 border-accent-500 text-accent-700' : 'text-neutral-500 hover:text-neutral-700'"
+          >
+            <div class="flex items-center">
+              <AppIcon name="heart" class="mr-1.5" size="sm" :color="activeTab === 'coleaders' ? '#ff4081' : undefined" />
+              Co-Líderes
+            </div>
+          </button>
+        </div>
+        
+        <!-- Conteúdo da tab de consolidadores -->
+        <div v-if="activeTab === 'consolidators'">
           <div v-if="consolidators.length > 0">
             <ul class="divide-y divide-neutral-100">
-              <li v-for="member in consolidators" :key="member.id" class="py-3 flex items-center justify-between">
+              <li v-for="member in consolidators" :key="member.id" class="py-2 flex items-center justify-between">
                 <div class="flex items-center">
-                  <div class="w-8 h-8 rounded-full bg-primary-100 text-primary-600 flex items-center justify-center font-bold mr-3">
+                  <div class="w-7 h-7 rounded-full bg-primary-100 text-primary-600 flex items-center justify-center font-medium text-xs mr-2">
                     {{ member.name.charAt(0) }}
                   </div>
-                  <p class="text-sm font-medium text-neutral-800">{{ member.name }}</p>
+                  <p class="text-sm text-neutral-800">{{ member.name }}</p>
                 </div>
-                <span class="badge badge-primary">
+                <span class="text-xs py-1 px-2 bg-primary-50 text-primary-700 rounded-full">
                   Consolidador
                 </span>
               </li>
             </ul>
           </div>
           
-          <div v-else class="text-center py-6 rounded-lg bg-neutral-50">
-            <AppIcon name="users" class="mx-auto text-neutral-300" size="xl" />
-            <p class="mt-2 text-neutral-500">Nenhum consolidador cadastrado</p>
+          <div v-else class="text-center py-4 rounded-lg bg-neutral-50">
+            <AppIcon name="users" class="mx-auto text-neutral-300" size="md" />
+            <p class="mt-2 text-sm text-neutral-500">Nenhum consolidador cadastrado</p>
             <button 
-              @click="router.push({ name: 'members' })"
-              class="mt-3 btn btn-outline inline-flex items-center text-sm"
+              @click="router.push({ name: 'minha-celula' })"
+              class="mt-3 btn btn-sm btn-outline inline-flex items-center text-xs"
             >
-              <AppIcon name="plus" class="mr-1" size="sm" />
+              <AppIcon name="plus" class="mr-1" size="xs" />
               Adicionar
             </button>
           </div>
         </div>
         
-        <!-- Co-Leaders -->
-        <div class="card">
-          <div class="flex items-center mb-4">
-            <AppIcon name="heart" class="text-accent-500 mr-2" />
-            <h2 class="text-xl font-semibold text-neutral-800">Co-Líderes</h2>
-          </div>
-          
+        <!-- Conteúdo da tab de co-líderes -->
+        <div v-if="activeTab === 'coleaders'">
           <div v-if="coLeaders.length > 0">
             <ul class="divide-y divide-neutral-100">
-              <li v-for="member in coLeaders" :key="member.id" class="py-3 flex items-center justify-between">
+              <li v-for="member in coLeaders" :key="member.id" class="py-2 flex items-center justify-between">
                 <div class="flex items-center">
-                  <div class="w-8 h-8 rounded-full bg-accent-100 text-accent-600 flex items-center justify-center font-bold mr-3">
+                  <div class="w-7 h-7 rounded-full bg-accent-100 text-accent-600 flex items-center justify-center font-medium text-xs mr-2">
                     {{ member.name.charAt(0) }}
                   </div>
-                  <p class="text-sm font-medium text-neutral-800">{{ member.name }}</p>
+                  <p class="text-sm text-neutral-800">{{ member.name }}</p>
                 </div>
-                <span class="badge badge-accent">
+                <span class="text-xs py-1 px-2 bg-accent-50 text-accent-700 rounded-full">
                   Co-Líder
                 </span>
               </li>
             </ul>
           </div>
           
-          <div v-else class="text-center py-6 rounded-lg bg-neutral-50">
-            <AppIcon name="users" class="mx-auto text-neutral-300" size="xl" />
-            <p class="mt-2 text-neutral-500">Nenhum co-líder cadastrado</p>
+          <div v-else class="text-center py-4 rounded-lg bg-neutral-50">
+            <AppIcon name="users" class="mx-auto text-neutral-300" size="md" />
+            <p class="mt-2 text-sm text-neutral-500">Nenhum co-líder cadastrado</p>
             <button 
-              @click="router.push({ name: 'members' })"
-              class="mt-3 btn btn-outline inline-flex items-center text-sm"
+              @click="router.push({ name: 'minha-celula' })"
+              class="mt-3 btn btn-sm btn-outline inline-flex items-center text-xs"
             >
-              <AppIcon name="plus" class="mr-1" size="sm" />
+              <AppIcon name="plus" class="mr-1" size="xs" />
               Adicionar
             </button>
           </div>

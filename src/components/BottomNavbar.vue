@@ -15,10 +15,11 @@ type NavItem = {
 
 const navItems: NavItem[] = [
   { name: 'dashboard', label: 'Início', icon: 'home' },
-  { name: 'members', label: 'Membros', icon: 'users' },
+  { name: 'minha-celula', label: 'Minha Célula', icon: 'users' },
   { name: 'attendance', label: 'Frequência', icon: 'calendar' },
   { name: 'reports', label: 'Relatórios', icon: 'chart-bar' },
-  { name: 'profile', label: 'Perfil', icon: 'settings' }
+  { name: 'profile', label: 'Perfil', icon: 'user' },
+  { name: 'configuracoes', label: 'Config', icon: 'settings' }
 ];
 
 function navigateTo(routeName: string) {

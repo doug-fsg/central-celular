@@ -11,7 +11,8 @@ import {
   toggleAtivoMembro,
   marcarComoConsolidador,
   marcarComoCoLider,
-  marcarComoAnfitriao
+  marcarComoAnfitriao,
+  atualizarMembro
 } from '../controllers/celulas.controller';
 
 const router = Router();
@@ -25,6 +26,7 @@ router.patch('/:id/desativar', desativarCelula);
 
 // Rotas para membros da célula
 router.post('/:id/membros', adicionarMembro);
+router.patch('/:id/membros/:membroId', atualizarMembro);
 router.delete('/:id/membros/:membroId', removerMembro);
 router.patch('/:id/membros/:membroId/status', atualizarStatusMembro);
 router.patch('/:id/membros/:membroId/ativo', toggleAtivoMembro);

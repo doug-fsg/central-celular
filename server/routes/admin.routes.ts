@@ -111,7 +111,10 @@ adminRouter.get('/estatisticas', async (req, res) => {
     ] = await Promise.all([
       // Total de células ativas
       prisma.celula.count({
-        where: { ativo: true }
+        where: { 
+          ativo: true,
+          accountId: (req as any).user?.accountId
+        }
       }),
       
       // Total de supervisores ativos
@@ -181,14 +184,20 @@ adminRouter.get('/estatisticas', async (req, res) => {
 
       // Células por região
       prisma.regiao.findMany({
-        where: { ativo: true },
+        where: { 
+          ativo: true,
+          accountId: (req as any).user?.accountId
+        },
         select: {
           id: true,
           nome: true,
           _count: {
             select: {
               celulas: {
-                where: { ativo: true }
+                where: { 
+                  ativo: true,
+                  accountId: (req as any).user?.accountId
+                }
               }
             }
           }
@@ -197,12 +206,18 @@ adminRouter.get('/estatisticas', async (req, res) => {
 
       // Membros por região
       prisma.regiao.findMany({
-        where: { ativo: true },
+        where: { 
+          ativo: true,
+          accountId: (req as any).user?.accountId
+        },
         select: {
           id: true,
           nome: true,
           celulas: {
-            where: { ativo: true },
+            where: { 
+              ativo: true,
+              accountId: (req as any).user?.accountId
+            },
             select: {
               _count: {
                 select: {

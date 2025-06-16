@@ -1,248 +1,107 @@
+// Seed.js - Arquivo para popular o banco de dados com dados iniciais
 import { PrismaClient } from '@prisma/client';
 import bcrypt from 'bcryptjs';
+import dotenv from 'dotenv';
+
+// Carregar variáveis de ambiente
+dotenv.config();
 
 const prisma = new PrismaClient();
 
 async function main() {
-  console.log('Iniciando seeding do banco de dados...');
+  console.log('Iniciando seed...');
 
-  // Criar account principal
-  const mainAccount = await prisma.account.create({
-    data: {
-      nome: 'Account Principal',
-      ativo: true
-    }
-  });
-
-  console.log('Account principal criada:', mainAccount);
-
-  // Criar usuários
-  const adminUser = await prisma.usuario.upsert({
-    where: { email_accountId: { email: 'admin@igreja.com', accountId: mainAccount.id } },
-    update: {},
-    create: {
-      nome: 'Administrador',
-      email: 'admin@igreja.com',
-      senha: await bcrypt.hash('admin123', 10),
-      cargo: 'ADMINISTRADOR',
-      ativo: true,
-      isSuperAdmin: true,
-      accountId: mainAccount.id
-    }
-  });
-
-  const supervisorUser = await prisma.usuario.upsert({
-    where: { email_accountId: { email: 'supervisor@igreja.com', accountId: mainAccount.id } },
-    update: {},
-    create: {
-      nome: 'Supervisor Silva',
-      email: 'supervisor@igreja.com',
-      senha: await bcrypt.hash('supervisor123', 10),
-      cargo: 'SUPERVISOR',
-      ativo: true,
-      accountId: mainAccount.id
-    }
-  });
-
-  const leaderUser = await prisma.usuario.upsert({
-    where: { email_accountId: { email: 'lider@igreja.com', accountId: mainAccount.id } },
-    update: {},
-    create: {
-      nome: 'João Líder',
-      email: 'lider@igreja.com',
-      senha: await bcrypt.hash('lider123', 10),
-      cargo: 'LIDER',
-      ativo: true,
-      accountId: mainAccount.id
-    }
-  });
-
-  const coLeaderUser = await prisma.usuario.upsert({
-    where: { email_accountId: { email: 'colider@igreja.com', accountId: mainAccount.id } },
-    update: {},
-    create: {
-      nome: 'Maria Auxiliadora',
-      email: 'colider@igreja.com',
-      senha: await bcrypt.hash('colider123', 10),
-      cargo: 'COLIDER',
-      ativo: true,
-      accountId: mainAccount.id
-    }
-  });
-
-  const pastorUser = await prisma.usuario.upsert({
-    where: { email_accountId: { email: 'pastor@igreja.com', accountId: mainAccount.id } },
-    update: {},
-    create: {
-      nome: 'Pastor José',
-      email: 'pastor@igreja.com',
-      senha: await bcrypt.hash('pastor123', 10),
-      cargo: 'PASTOR',
-      ativo: true,
-      accountId: mainAccount.id
-    }
-  });
-
-  // Criar região
-  const regiao = await prisma.regiao.upsert({
-    where: { id: 1 },
-    update: {},
-    create: {
-      nome: 'Zona Sul',
-      ativo: true,
-      accountId: mainAccount.id
-    }
-  });
-
-  // Criar célula
-  const celula = await prisma.celula.upsert({
-    where: { id: 1 },
-    update: {},
-    create: {
-      nome: 'Célula Vida Nova',
-      endereco: 'Rua das Flores, 123',
-      diaSemana: 'QUARTA',
-      horario: '19:30',
-      regiaoId: regiao.id,
-      liderId: leaderUser.id,
-      coLiderId: coLeaderUser.id,
-      ativo: true
-    }
-  });
-
-  // Criar membros da célula
-  const membros = [];
-  const nomes = ['Ana Silva', 'Carlos Oliveira', 'Mariana Santos', 'Pedro Costa', 'Juliana Lima', 'Rafael Souza', 'Fernanda Almeida', 'Lucas Pereira'];
-  
-  for (let i = 0; i < 8; i++) {
-    // Criar membro diretamente na tabela Membro
-    const membro = await prisma.$executeRaw`
-      INSERT INTO membros (
-        celula_id, 
-        nome, 
-        email, 
-        telefone, 
-        eh_consolidador, 
-        observacoes, 
-        ativo,
-        data_cadastro
-      ) 
-      VALUES (
-        ${celula.id}, 
-        ${nomes[i]}, 
-        ${`membro${i+1}@email.com`}, 
-        ${`119${i+1}${i+2}${i+3}${i+4}${i+5}${i+6}${i+7}${i+8}`},
-        ${i < 3}, 
-        ${i < 3 ? 'Consolidador ativo' : null}, 
-        ${true},
-        ${new Date()}
-      )
-      RETURNING id
-    `;
-    
-    // Extrair o ID retornado
-    const membroId = Array.isArray(membro) && membro.length > 0 ? membro[0].id : i + 1;
-    
-    membros.push({ id: membroId });
-  }
-
-  // Criar relatórios para os últimos 3 meses
-  const hoje = new Date();
-  for (let i = 0; i < 3; i++) {
-    const mes = hoje.getMonth() - i;
-    const ano = hoje.getFullYear() - (mes < 0 ? 1 : 0);
-    const mesAjustado = (mes < 0 ? mes + 12 : mes) + 1; // Ajuste para 1-12
-    
-    const relatorio = await prisma.relatorio.upsert({
-      where: { 
-        celulaId_mes_ano: {
-          celulaId: celula.id,
-          mes: mesAjustado,
-          ano: ano
-        }
-      },
-      update: {},
-      create: {
-        celulaId: celula.id,
-        mes: mesAjustado,
-        ano: ano,
-        observacoes: `Relatório do mês ${mesAjustado}/${ano}`,
-        dataEnvio: new Date(ano, mesAjustado - 1, 15) // Enviado no dia 15 do mês
-      }
+  try {
+    // Usar especificamente a conta com ID 1
+    let account = await prisma.account.findUnique({
+      where: { id: 1 }
     });
-    
-    // Adicionar presenças para cada membro, para cada semana do mês
-    for (const membro of membros) {
-      for (let semana = 1; semana <= 4; semana++) {
-        // Gerar presença aleatória
-        const presencaCelula = Math.random() > 0.3; // 70% de chance de presente
-        const presencaCulto = Math.random() > 0.4; // 60% de chance de presente
-        
-        await prisma.$executeRaw`
-          INSERT INTO presencas (
-            relatorio_id,
-            membro_id,
-            presenca_celula,
-            presenca_culto,
-            semana,
-            observacoes
-          )
-          VALUES (
-            ${relatorio.id},
-            ${membro.id},
-            ${presencaCelula},
-            ${presencaCulto},
-            ${semana},
-            ${!presencaCelula && !presencaCulto ? 'Ausente por motivo de viagem' : null}
-          )
-        `;
+
+    if (!account) {
+      console.log('Conta com ID 1 não encontrada. Criando nova conta...');
+      account = await prisma.account.create({
+        data: {
+          id: 1,
+          nome: 'Central Celular',
+          ativo: true
+        }
+      });
+      console.log('Conta criada com sucesso:', account.id, account.nome);
+    } else {
+      console.log('Usando conta existente com ID:', account.id, account.nome);
+    }
+
+    // Senha padrão para líderes (poderá ser alterada posteriormente)
+    const senhaHasheada = await bcrypt.hash('lider123', 10);
+
+    // Lista de líderes a serem cadastrados
+    const lideres = [
+      { nome: 'Sandra Mara Conceição Tessis', whatsapp: '555599994218' },
+      { nome: 'Andrew Gomes Gorges', whatsapp: '5555996614943' },
+      { nome: 'Ednilson Costa Machado', whatsapp: '5555999437225' },
+      { nome: 'Bruno Porto Wellicks', whatsapp: '5555999580505' },
+      { nome: 'Douglas', whatsapp: '5555999067484' },
+      { nome: 'Katia Cilene Rosa da Silva', whatsapp: '5555999986650' },
+      { nome: 'Emanuelle da Silva Leães Gonçalves', whatsapp: '5555996645198' },
+      { nome: 'Janeti Ansini Roballo', whatsapp: '5555996096261' },
+      { nome: 'Elielker Rodrigues de Oliveira', whatsapp: '5555984630346' },
+      { nome: 'Alice Rodrigues Martins', whatsapp: '5555984469096' },
+      { nome: 'Fernanda Oliveira', whatsapp: '5555992027427' },
+      { nome: 'Cristina Gonçalves Gomes', whatsapp: '5555996355675' },
+      { nome: 'Gabriela Lamberti', whatsapp: '5555984233664' },
+      { nome: 'Josiane Maia', whatsapp: '5555984564771' },
+      { nome: 'Maurício Juliano Rucks Alves', whatsapp: '5555984166832' },
+      { nome: 'Clenair Jauris Fagundes', whatsapp: '5555996453088' },
+      { nome: 'Fernanda Ali Trindade', whatsapp: '5555996333608' },
+      { nome: 'Jessyca da Silva Capilheira Dorneles', whatsapp: '5555997217848' },
+      { nome: 'Nátally Vitória dos Santos Rios Davila', whatsapp: '5562994110752' },
+      { nome: 'Marceli Abadi Siqueira', whatsapp: '5555999993423' },
+      { nome: 'Francielle da Silva dos Santos Araujo', whatsapp: '5555991469803' },
+      { nome: 'Fabiano Pereira', whatsapp: '5555996750973' },
+      { nome: 'Flavio Alex Siqueira', whatsapp: '5555999270702' },
+      { nome: 'Augusto Dias', whatsapp: '5555999020109' },
+      { nome: 'Sabrina Abertol Wellicks', whatsapp: '5555996435625' },
+      { nome: 'Joana Terezinha Gomes', whatsapp: '5555999780536' },
+    ];
+
+    console.log(`Cadastrando ${lideres.length} líderes...`);
+
+    // Para cada líder, verificar se já existe e criar se não existir
+    for (const lider of lideres) {
+      const usuarioExistente = await prisma.usuario.findFirst({
+      where: { 
+          whatsapp: lider.whatsapp,
+          accountId: account.id
+        }
+      });
+
+      if (!usuarioExistente) {
+        await prisma.usuario.create({
+          data: {
+            nome: lider.nome,
+            whatsapp: lider.whatsapp,
+            senha: senhaHasheada,
+            cargo: 'LIDER',
+            ativo: true,
+            accountId: account.id
+          }
+        });
+        console.log(`Líder ${lider.nome} cadastrado com sucesso.`);
+      } else {
+        console.log(`Líder ${lider.nome} já existe no banco de dados.`);
       }
     }
+
+    console.log('Seed finalizado com sucesso!');
+  } catch (error) {
+    console.error('Erro durante o seed:', error);
+  } finally {
+    await prisma.$disconnect();
   }
-
-  // Adicionar conquista para o líder
-  await prisma.conquista.create({
-    data: {
-      usuarioId: leaderUser.id,
-      tipo: 'lider_destaque',
-      descricao: '4 meses consecutivos com relatórios em dia',
-      dataConclusao: new Date(hoje.getFullYear(), hoje.getMonth() - 1, 20),
-      mes: hoje.getMonth(),
-      ano: hoje.getFullYear()
-    }
-  });
-
-  // Adicionar notificação para o líder
-  await prisma.notificacao.create({
-    data: {
-      usuarioId: leaderUser.id,
-      titulo: 'Nova Conquista',
-      mensagem: 'Parabéns! Você recebeu a conquista Líder Destaque.',
-      tipo: 'conquista',
-      lida: false
-    }
-  });
-
-  // Limpar dados antigos (descomente para resetar o banco)
-  /*
-  await prisma.presenca.deleteMany();
-  await prisma.relatorio.deleteMany();
-  await prisma.membro.deleteMany();
-  await prisma.notificacao.deleteMany();
-  await prisma.conquista.deleteMany();
-  await prisma.celula.deleteMany();
-  await prisma.regiao.deleteMany();
-  await prisma.usuario.deleteMany();
-  */
-
-  console.log('Seeding concluído!');
 }
 
 main()
   .catch((e) => {
     console.error(e);
     process.exit(1);
-  })
-  .finally(async () => {
-    await prisma.$disconnect();
   });

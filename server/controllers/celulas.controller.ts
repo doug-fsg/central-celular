@@ -19,7 +19,39 @@ const celulaSchema = z.object({
 const membroSchema = z.object({
   nome: z.string().min(2, 'Nome deve ter pelo menos 2 caracteres'),
   telefone: z.string().optional(),
-  email: z.string().email('Email inválido').optional(),
+  dataNascimento: z.string().optional()
+    .refine(val => {
+      if (!val) return true;
+      
+      // Extrai apenas a parte da data, removendo o timezone se existir
+      const dataLimpa = val.split('T')[0];
+      
+      // Verifica se está no formato correto YYYY-MM-DD
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(dataLimpa)) return false;
+      
+      const [year, month, day] = dataLimpa.split('-').map(Number);
+      
+      // Verifica se os números são válidos
+      if (year < 1900 || year > 2100) return false;
+      if (month < 1 || month > 12) return false;
+      if (day < 1 || day > 31) return false;
+      
+      // Verifica se é uma data válida
+      const date = new Date(year, month - 1, day);
+      if (isNaN(date.getTime())) return false;
+      
+      // Verifica se os componentes da data correspondem ao que foi passado
+      return (
+        date.getFullYear() === year &&
+        date.getMonth() === month - 1 &&
+        date.getDate() === day
+      );
+    }, 'Data de nascimento inválida')
+    .transform(val => {
+      if (!val) return null;
+      // Retorna apenas a parte da data YYYY-MM-DD
+      return val.split('T')[0];
+    }),
   ehConsolidador: z.boolean().optional(),
   ehCoLider: z.boolean().optional(),
   ehAnfitriao: z.boolean().optional(),
@@ -124,17 +156,18 @@ export const obterCelula = async (req: Request, res: Response) => {
       return res.status(401).json({ message: 'Conta não identificada' });
     }
 
+    console.log('[obterCelula] Buscando célula:', { id, accountId });
+
     const celula = await prisma.celula.findFirst({
       where: { 
         id: Number(id),
-        accountId // Adicionar accountId ao filtro
+        accountId
       },
       include: {
         lider: {
           select: {
             id: true,
             nome: true,
-            email: true,
             cargo: true
           }
         },
@@ -142,19 +175,33 @@ export const obterCelula = async (req: Request, res: Response) => {
           select: {
             id: true,
             nome: true,
-            email: true,
             cargo: true
           }
         },
         regiao: true,
-        membros: true
+        membros: {
+          select: {
+            id: true,
+            nome: true,
+            telefone: true,
+            dataNascimento: true,
+            ehConsolidador: true,
+            ehCoLider: true,
+            ehAnfitriao: true,
+            ativo: true,
+            observacoes: true,
+            dataCadastro: true
+          }
+        }
       }
     });
 
     if (!celula) {
+      console.log('[obterCelula] Célula não encontrada:', { id, accountId });
       return res.status(404).json({ message: 'Célula não encontrada' });
     }
 
+    console.log('[obterCelula] Célula encontrada:', celula.id);
     res.json(celula);
   } catch (error) {
     console.error('Erro ao obter célula:', error);
@@ -366,7 +413,15 @@ export const desativarCelula = async (req: Request, res: Response) => {
 export const adicionarMembro = async (req: Request, res: Response) => {
   try {
     const { id } = req.params; // ID da célula
+    console.log('[adicionarMembro] Dados recebidos:', req.body);
+    
     const data = membroSchema.parse(req.body);
+    console.log('[adicionarMembro] Dados após parse:', data);
+    console.log('[adicionarMembro] Data de nascimento:', {
+      original: req.body.dataNascimento,
+      parsed: data.dataNascimento,
+      type: data.dataNascimento ? typeof data.dataNascimento : 'null/undefined'
+    });
 
     // Verificar se a célula existe
     const celula = await prisma.celula.findUnique({
@@ -376,34 +431,52 @@ export const adicionarMembro = async (req: Request, res: Response) => {
     if (!celula) {
       return res.status(404).json({ message: 'Célula não encontrada' });
     }
-    
-    // Se o email for fornecido, verificar se já existe um membro com este email nesta célula
-    if (data.email) {
-      const membroExistente = await prisma.$queryRaw`
-        SELECT * FROM membros 
-        WHERE celula_id = ${Number(id)} 
-        AND email = ${data.email}
-      `;
-
-      if (Array.isArray(membroExistente) && membroExistente.length > 0) {
-        return res.status(400).json({ message: 'Já existe um membro com este email nesta célula' });
-      }
-    }
 
     // Adicionar novo membro usando executeRaw para contornar o problema temporário com o modelo não reconhecido
+    console.log('[adicionarMembro] Executando query SQL com params:', {
+      celulaId: Number(id),
+      nome: data.nome,
+      telefone: data.telefone,
+      dataNascimento: data.dataNascimento,
+      ehConsolidador: data.ehConsolidador || false,
+      ehCoLider: data.ehCoLider || false,
+      ehAnfitriao: data.ehAnfitriao || false,
+      observacoes: data.observacoes
+    });
+
     const novoMembro = await prisma.$queryRaw`
-      INSERT INTO membros (celula_id, nome, email, telefone, eh_consolidador, eh_colider, eh_anfitriao, observacoes)
-      VALUES (${Number(id)}, ${data.nome}, ${data.email}, ${data.telefone}, ${data.ehConsolidador || false}, ${data.ehCoLider || false}, ${data.ehAnfitriao || false}, ${data.observacoes})
+      INSERT INTO membros (
+        celula_id, 
+        nome, 
+        telefone, 
+        data_nascimento,
+        eh_consolidador, 
+        eh_colider, 
+        eh_anfitriao, 
+        observacoes
+      )
+      VALUES (
+        ${Number(id)},
+        ${data.nome},
+        ${data.telefone},
+        ${data.dataNascimento}::date,
+        ${data.ehConsolidador || false},
+        ${data.ehCoLider || false},
+        ${data.ehAnfitriao || false},
+        ${data.observacoes}
+      )
       RETURNING *
     `;
 
+    console.log('[adicionarMembro] Membro criado:', novoMembro);
     res.status(201).json(Array.isArray(novoMembro) ? novoMembro[0] : novoMembro);
   } catch (error) {
     if (error instanceof z.ZodError) {
+      console.error('[adicionarMembro] Erro de validação:', error.errors);
       return res.status(400).json({ errors: error.errors });
     }
     
-    console.error('Erro ao adicionar membro:', error);
+    console.error('[adicionarMembro] Erro ao adicionar membro:', error);
     res.status(500).json({ message: 'Erro ao adicionar membro' });
   }
 };
@@ -614,5 +687,63 @@ export const marcarComoAnfitriao = async (req: Request, res: Response) => {
   } catch (error) {
     console.error('Erro ao marcar membro como anfitrião:', error);
     res.status(500).json({ message: 'Erro ao atualizar status de anfitrião' });
+  }
+};
+
+// Atualizar membro
+export const atualizarMembro = async (req: Request, res: Response) => {
+  try {
+    const { id, membroId } = req.params;
+    console.log('[atualizarMembro] Dados recebidos:', req.body);
+    
+    const data = membroSchema.parse(req.body);
+    console.log('[atualizarMembro] Dados após parse:', data);
+    console.log('[atualizarMembro] Data de nascimento:', {
+      original: req.body.dataNascimento,
+      parsed: data.dataNascimento,
+      type: data.dataNascimento ? typeof data.dataNascimento : 'null/undefined'
+    });
+
+    // Verificar se o membro existe na célula
+    const membro = await prisma.$queryRaw`
+      SELECT * FROM membros 
+      WHERE id = ${Number(membroId)} 
+      AND celula_id = ${Number(id)}
+    `;
+
+    if (Array.isArray(membro) && membro.length === 0) {
+      return res.status(404).json({ message: 'Membro não encontrado nesta célula' });
+    }
+
+    // Atualizar membro usando executeRaw para contornar o problema temporário com o modelo não reconhecido
+    const membroAtualizado = await prisma.$queryRaw`
+      UPDATE membros 
+      SET 
+        nome = ${data.nome},
+        telefone = ${data.telefone},
+        data_nascimento = ${data.dataNascimento}::date,
+        eh_consolidador = ${data.ehConsolidador || false},
+        eh_colider = ${data.ehCoLider || false},
+        eh_anfitriao = ${data.ehAnfitriao || false},
+        observacoes = ${data.observacoes}
+      WHERE id = ${Number(membroId)} AND celula_id = ${Number(id)}
+      RETURNING *
+    `;
+
+    // Buscar o membro atualizado para retornar
+    const membroRetorno = await prisma.$queryRaw`
+      SELECT * FROM membros 
+      WHERE id = ${Number(membroId)}
+    `;
+
+    res.json(Array.isArray(membroRetorno) ? membroRetorno[0] : membroRetorno);
+  } catch (error) {
+    if (error instanceof z.ZodError) {
+      console.error('[atualizarMembro] Erro de validação:', error.errors);
+      return res.status(400).json({ errors: error.errors });
+    }
+    
+    console.error('[atualizarMembro] Erro ao atualizar membro:', error);
+    res.status(500).json({ message: 'Erro ao atualizar membro' });
   }
 }; 

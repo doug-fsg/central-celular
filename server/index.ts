@@ -4,6 +4,7 @@ import cors from 'cors';
 import { router } from './routes/index';
 import { adminRouter } from './routes/admin.routes';
 import { whatsappRoutes } from './routes/whatsapp.routes';
+import { initJobs } from './jobs';
 
 // Inicializar variáveis de ambiente
 dotenv.config();
@@ -51,4 +52,12 @@ app.use((req, res, next) => {
 // Iniciar o servidor
 app.listen(port, () => {
   console.log(`Servidor rodando na porta ${port}`);
+  
+  // Inicializar jobs
+  try {
+    initJobs();
+    console.log('Jobs inicializados com sucesso');
+  } catch (error) {
+    console.error('Erro ao inicializar jobs:', error);
+  }
 }); 

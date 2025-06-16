@@ -565,7 +565,7 @@ defineExpose({
       <div v-else class="bg-white rounded-lg p-8 text-center">
         <h3 class="text-lg font-medium text-gray-900 mb-2">Nenhum membro cadastrado</h3>
         <p class="text-gray-500 mb-4">Adicione membros para registrar a frequência</p>
-        <router-link :to="{ name: 'members' }" class="btn btn-primary">
+        <router-link :to="{ name: 'minha-celula' }" class="btn btn-primary">
           Cadastrar Membros
         </router-link>
       </div>

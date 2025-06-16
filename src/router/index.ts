@@ -11,6 +11,7 @@ import Profile from '../views/Profile.vue'
 import AdminDashboard from '../views/AdminDashboard.vue'
 import SupervisorDashboard from '../views/SupervisorDashboard.vue'
 import WhatsAppConnections from '../components/WhatsAppConnections.vue'
+import ConfiguracoesView from '../views/ConfiguracoesView.vue'
 
 const router = createRouter({
   history: createWebHistory(),
@@ -51,8 +52,8 @@ const router = createRouter({
       meta: { requiresAuth: true, requiresSupervisor: true }
     },
     {
-      path: '/members',
-      name: 'members',
+      path: '/minha-celula',
+      name: 'minha-celula',
       component: MemberList,
       meta: { requiresAuth: true, requiresLeader: true }
     },
@@ -72,6 +73,12 @@ const router = createRouter({
       path: '/profile',
       name: 'profile',
       component: Profile,
+      meta: { requiresAuth: true }
+    },
+    {
+      path: '/configuracoes',
+      name: 'configuracoes',
+      component: ConfiguracoesView,
       meta: { requiresAuth: true }
     }
   ]

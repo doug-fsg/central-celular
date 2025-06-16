@@ -1,9 +1,25 @@
 <script setup lang="ts">
-import { ref, computed } from 'vue'
+import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { useUserStore } from '../stores/userStore'
 import { useLeaderStore } from '../stores/leaderStore'
 import api from '../services/api'
+
+const dropdownRef = ref<HTMLElement | null>(null)
+
+function handleClickOutside(event: MouseEvent) {
+  if (dropdownRef.value && !dropdownRef.value.contains(event.target as Node)) {
+    showDropdown.value = false
+  }
+}
+
+onMounted(() => {
+  document.addEventListener('click', handleClickOutside)
+})
+
+onUnmounted(() => {
+  document.removeEventListener('click', handleClickOutside)
+})
 
 const router = useRouter()
 const userStore = useUserStore()
@@ -26,13 +42,13 @@ const navLinks = computed(() => {
     return []
   } else if (userStore.isSupervisor) {
     return [
-      { name: 'supervisor-dashboard', label: 'Dashboard' },
+      { name: 'supervisor-dashboard', label: 'Início' },
       { name: 'reports', label: 'Relatórios' }
     ]
   } else {
     return [
-      { name: 'dashboard', label: 'Dashboard' },
-      { name: 'members', label: 'Membros' },
+      { name: 'dashboard', label: 'Início' },
+      { name: 'minha-celula', label: 'Minha Célula' },
       { name: 'attendance', label: 'Frequência' },
       { name: 'reports', label: 'Relatórios' }
     ]
@@ -69,7 +85,7 @@ function toggleDropdown() {
               :to="userStore.isAdmin ? { name: 'admin-dashboard' } : { name: 'home' }" 
               class="flex flex-col items-start"
             >
-              <span class="text-primary-600 font-bold text-xl">Central</span>
+              <span class="text-primary-600 font-bold text-xl"></span>
               <span v-if="userStore.isAdmin" class="text-xs text-gray-500">Painel Administrativo</span>
             </router-link>
           </div>
@@ -88,7 +104,7 @@ function toggleDropdown() {
         
         <div class="ml-6 flex items-center">
           <!-- Menu perfil -->
-          <div class="ml-3 relative">
+          <div class="ml-3 relative" ref="dropdownRef">
             <div>
               <button @click="toggleDropdown" type="button" class="bg-white rounded-full flex text-sm focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500" id="user-menu-button" aria-expanded="false" aria-haspopup="true">
                 <span class="sr-only">Abrir menu do usuário</span>
@@ -115,6 +131,7 @@ function toggleDropdown() {
                 </div>
               </div>
               <router-link :to="{ name: 'profile' }" class="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100" role="menuitem" tabindex="-1">Meu Perfil</router-link>
+              <router-link :to="{ name: 'configuracoes' }" class="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100" role="menuitem" tabindex="-1">Configurações</router-link>
               <button @click="handleLogout" class="w-full text-left block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100" role="menuitem" tabindex="-1">Sair</button>
             </div>
           </div>

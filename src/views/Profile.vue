@@ -1,7 +1,6 @@
 <script setup lang="ts">
 import { ref, reactive } from 'vue'
 import { useUserStore } from '../stores/userStore'
-import Navbar from '../components/Navbar.vue'
 import api from '../services/api'
 
 const userStore = useUserStore()
@@ -51,8 +50,6 @@ const saveProfile = async () => {
 
 <template>
   <div>
-    <Navbar />
-    
     <main class="max-w-7xl mx-auto py-6 sm:px-6 lg:px-8">
       <div class="px-4 py-6 sm:px-0">
         <div class="bg-white shadow rounded-lg">

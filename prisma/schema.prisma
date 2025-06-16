@@ -43,6 +43,7 @@ model Usuario {
   celulasSupervisao  Celula[]  @relation("supervisor")
   notificacoes       Notificacao[]
   conquistas         Conquista[]
+  config             UsuarioConfig?
 
   @@unique([email, accountId])
   @@unique([whatsapp, accountId])
@@ -79,8 +80,8 @@ model Membro {
   celulaId        Int           @map("celula_id")
   celula          Celula        @relation(fields: [celulaId], references: [id])
   nome            String
-  email           String?
   telefone        String?
+  dataNascimento  DateTime?     @map("data_nascimento") @db.Date
   ehConsolidador  Boolean       @default(false) @map("eh_consolidador")
   ehCoLider       Boolean       @default(false) @map("eh_colider")
   ehAnfitriao     Boolean       @default(false) @map("eh_anfitriao")
@@ -186,4 +187,17 @@ model OtpCode {
   account     Account   @relation(fields: [accountId], references: [id])
 
   @@map("otp_codes")
+}
+
+model UsuarioConfig {
+  id                      Int       @id @default(autoincrement())
+  usuarioId               Int       @unique @map("usuario_id")
+  usuario                 Usuario   @relation(fields: [usuarioId], references: [id])
+  notificacaoAniversarioAtiva Boolean @default(true) @map("notificacao_aniversario_ativa")
+  diasAntecedencia1       Int       @default(3) @map("dias_antecedencia_1")
+  diasAntecedencia2       Int       @default(0) @map("dias_antecedencia_2")
+  createdAt               DateTime  @default(now()) @map("created_at")
+  updatedAt               DateTime  @updatedAt @map("updated_at")
+
+  @@map("usuario_configs")
 } 

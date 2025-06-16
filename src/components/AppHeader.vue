@@ -16,8 +16,8 @@ function closeMobileMenu() {
 }
 
 const navItems = [
-  { name: 'dashboard', label: 'Dashboard', icon: 'home' },
-  { name: 'members', label: 'Membros', icon: 'users' },
+  { name: 'dashboard', label: 'Início', icon: 'home' },
+  { name: 'minha-celula', label: 'Minha Célula', icon: 'users' },
   { name: 'attendance', label: 'Frequência', icon: 'calendar' },
   { name: 'reports', label: 'Relatórios', icon: 'chart-bar' }
 ]
@@ -33,10 +33,7 @@ function navigateTo(routeName: string) {
     <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
       <div class="flex justify-between h-16 items-center">
         <div class="flex items-center">
-          <div class="flex-shrink-0 flex items-center">
-            <h1 class="text-2xl font-bold text-primary-500 tracking-tight">Central</h1>
-          </div>
-          <nav class="hidden sm:ml-10 sm:flex sm:space-x-6">
+          <nav class="hidden sm:flex sm:space-x-6">
             <template v-for="item in navItems" :key="item.name">
               <button 
                 @click="navigateTo(item.name)"

@@ -17,19 +17,16 @@ export interface Celula {
   lider?: {
     id: number;
     nome: string;
-    email: string;
     cargo: string;
   };
   coLider?: {
     id: number;
     nome: string;
-    email: string;
     cargo: string;
   };
   supervisor?: {
     id: number;
     nome: string;
-    email: string;
     cargo: string;
   };
   _count?: {
@@ -41,8 +38,10 @@ export interface Membro {
   id: number;
   celulaId: number;
   nome: string;
-  email?: string;
   telefone?: string;
+  // A data de nascimento é armazenada como timestamp without timezone
+  // Formato esperado: YYYY-MM-DD
+  dataNascimento?: string;
   ehConsolidador: boolean;
   ehCoLider: boolean;
   ehAnfitriao: boolean;
@@ -54,7 +53,7 @@ export interface Membro {
 export interface NovoMembroInput {
   nome: string;
   telefone?: string;
-  email?: string;
+  dataNascimento?: string;
   ehConsolidador?: boolean;
   ehCoLider?: boolean;
   ehAnfitriao?: boolean;
@@ -95,10 +94,19 @@ const celulaService = {
   // Adicionar um novo membro à célula
   async adicionarMembro(celulaId: number, dadosMembro: NovoMembroInput) {
     try {
+      console.log('[celulaService] Adicionando membro à célula:', celulaId);
+      console.log('[celulaService] Dados do membro:', dadosMembro);
+      console.log('[celulaService] Data de nascimento:', {
+        valor: dadosMembro.dataNascimento,
+        tipo: dadosMembro.dataNascimento ? typeof dadosMembro.dataNascimento : 'null/undefined'
+      });
+      
       // Usar o endpoint padrão para membros
-      return await api.post(`/celulas/${celulaId}/membros`, dadosMembro) as Membro;
+      const response = await api.post(`/celulas/${celulaId}/membros`, dadosMembro) as Membro;
+      console.log('[celulaService] Resposta do servidor:', response);
+      return response;
     } catch(error) {
-      console.error('Erro ao adicionar membro:', error);
+      console.error('[celulaService] Erro ao adicionar membro:', error);
       
       // Fallback para simular adição quando offline
       return {
@@ -106,8 +114,10 @@ const celulaService = {
         celulaId,
         nome: dadosMembro.nome,
         telefone: dadosMembro.telefone,
-        email: dadosMembro.email,
+        dataNascimento: dadosMembro.dataNascimento,
         ehConsolidador: dadosMembro.ehConsolidador || false,
+        ehCoLider: dadosMembro.ehCoLider || false,
+        ehAnfitriao: dadosMembro.ehAnfitriao || false,
         dataCadastro: new Date().toISOString(),
         ativo: true,
         observacoes: dadosMembro.observacoes
@@ -180,6 +190,17 @@ const celulaService = {
       return await api.patch(`/celulas/${celulaId}/membros/${membroId}/ativo`, { ativo });
     } catch(error) {
       console.error('Erro ao atualizar status do membro:', error);
+      throw error;
+    }
+  },
+
+  // Atualizar dados de um membro
+  async atualizarMembro(celulaId: number, membroId: number, dadosMembro: NovoMembroInput) {
+    try {
+      const response = await api.patch(`/celulas/${celulaId}/membros/${membroId}`, dadosMembro);
+      return response.data;
+    } catch(error) {
+      console.error('Erro ao atualizar membro:', error);
       throw error;
     }
   }

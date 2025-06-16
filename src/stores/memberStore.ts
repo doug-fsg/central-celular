@@ -6,8 +6,8 @@ import celulaService, { Membro, NovoMembroInput } from '../services/celulaServic
 export interface Member {
   id: string
   name: string
-  email?: string
   telefone?: string
+  dataNascimento?: string
   isConsolidator: boolean
   isCoLeader: boolean
   isHost: boolean
@@ -116,18 +116,30 @@ export const useMemberStore = defineStore('members', () => {
         return;
       }
 
+      console.log('[memberStore] Membros recebidos do backend:', celulaDetalhes.membros);
+
       // Transformar os membros da célula para o formato usado pelo store
       members.value = celulaDetalhes.membros
-        .map(membro => ({
-          id: membro.id.toString(),
-          name: membro.nome,
-          email: membro.email,
-          telefone: membro.telefone,
-          isConsolidator: membro.ehConsolidador,
-          isCoLeader: membro.ehCoLider,
-          isHost: membro.ehAnfitriao,
-          isActive: membro.ativo
-        }));
+        .map(membro => {
+          console.log('[memberStore] Processando membro:', membro.nome);
+          console.log('[memberStore] Data de nascimento:', {
+            valor: membro.dataNascimento,
+            tipo: typeof membro.dataNascimento
+          });
+
+          return {
+            id: membro.id.toString(),
+            name: membro.nome,
+            telefone: membro.telefone,
+            dataNascimento: membro.dataNascimento,
+            isConsolidator: membro.ehConsolidador,
+            isCoLeader: membro.ehCoLider,
+            isHost: membro.ehAnfitriao,
+            isActive: membro.ativo
+          };
+        });
+
+      console.log('[memberStore] Membros transformados:', members.value);
     } catch (err) {
       console.error('Erro ao carregar membros:', err);
       error.value = 'Falha ao carregar membros da célula';
@@ -145,6 +157,12 @@ export const useMemberStore = defineStore('members', () => {
       return
     }
 
+    console.log('[memberStore] Adicionando membro com dados:', memberData);
+    console.log('[memberStore] Data de nascimento recebida:', {
+      valor: memberData.dataNascimento,
+      tipo: memberData.dataNascimento ? typeof memberData.dataNascimento : 'null/undefined'
+    });
+
     loading.value = true
     error.value = null
 
@@ -152,13 +170,19 @@ export const useMemberStore = defineStore('members', () => {
       // Converter do formato da interface Member para NovoMembroInput
       const dadosMembro: NovoMembroInput = {
         nome: memberData.name,
-        email: memberData.email,
         telefone: memberData.telefone,
+        dataNascimento: memberData.dataNascimento,
         ehConsolidador: memberData.isConsolidator,
         ehCoLider: memberData.isCoLeader,
         ehAnfitriao: memberData.isHost,
         observacoes: ''
       }
+      
+      console.log('[memberStore] Dados convertidos para envio:', dadosMembro);
+      console.log('[memberStore] Data de nascimento para envio:', {
+        valor: dadosMembro.dataNascimento,
+        tipo: dadosMembro.dataNascimento ? typeof dadosMembro.dataNascimento : 'null/undefined'
+      });
       
       // Adicionar membro via serviço
       const novoMembro = await celulaService.adicionarMembro(celulaId.value, dadosMembro)
@@ -167,8 +191,8 @@ export const useMemberStore = defineStore('members', () => {
       members.value.push({
         id: novoMembro.id.toString(),
         name: novoMembro.nome,
-        email: novoMembro.email,
         telefone: novoMembro.telefone,
+        dataNascimento: novoMembro.dataNascimento,
         isConsolidator: novoMembro.ehConsolidador,
         isCoLeader: novoMembro.ehCoLider,
         isHost: novoMembro.ehAnfitriao,
@@ -208,30 +232,96 @@ export const useMemberStore = defineStore('members', () => {
     }
   }
   
-  // Atualizar status de um membro (consolidador)
+  // Atualizar dados de um membro
   async function updateMember(id: string, updates: Partial<Omit<Member, 'id'>>) {
     if (!celulaId.value) {
       error.value = 'Célula não selecionada'
       return
     }
 
+    if (!updates.name) {
+      error.value = 'Nome é obrigatório'
+      return
+    }
+
+    loading.value = true
+    error.value = null
+
     try {
-      if ('isConsolidator' in updates) {
-        await celulaService.marcarComoConsolidador(
-          celulaId.value,
-          parseInt(id),
-          !!updates.isConsolidator
-        )
+      // Converter do formato da interface Member para NovoMembroInput
+      const dadosMembro: NovoMembroInput = {
+        nome: updates.name,
+        telefone: updates.telefone,
+        dataNascimento: updates.dataNascimento,
+        ehConsolidador: updates.isConsolidator,
+        ehCoLider: updates.isCoLeader,
+        ehAnfitriao: updates.isHost,
+        observacoes: ''
       }
 
-      // Atualizar localmente
-      const index = members.value.findIndex((member: Member) => member.id === id)
-      if (index !== -1) {
-        members.value[index] = { ...members.value[index], ...updates }
+      console.log('[memberStore] Atualizando membro:', id);
+      console.log('[memberStore] Dados para atualização:', dadosMembro);
+      
+      try {
+        // Atualizar membro via serviço
+        const membroAtualizado = await celulaService.atualizarMembro(
+          celulaId.value,
+          parseInt(id),
+          dadosMembro
+        )
+
+        // Atualizar localmente se recebemos uma resposta válida
+        if (membroAtualizado && membroAtualizado.id) {
+          const index = members.value.findIndex((member: Member) => member.id === id)
+          if (index !== -1) {
+            members.value[index] = {
+              id: membroAtualizado.id.toString(),
+              name: membroAtualizado.nome,
+              telefone: membroAtualizado.telefone,
+              dataNascimento: membroAtualizado.dataNascimento,
+              isConsolidator: membroAtualizado.ehConsolidador,
+              isCoLeader: membroAtualizado.ehCoLider,
+              isHost: membroAtualizado.ehAnfitriao,
+              isActive: membroAtualizado.ativo
+            }
+          }
+        } else {
+          // Se não recebemos uma resposta válida, atualizamos com os dados locais
+          const index = members.value.findIndex((member: Member) => member.id === id)
+          if (index !== -1) {
+            members.value[index] = {
+              ...members.value[index],
+              name: updates.name!,
+              telefone: updates.telefone,
+              dataNascimento: updates.dataNascimento,
+              isConsolidator: updates.isConsolidator || false,
+              isCoLeader: updates.isCoLeader || false,
+              isHost: updates.isHost || false
+            }
+          }
+        }
+      } catch (serviceError) {
+        console.error('[memberStore] Erro no serviço de atualização:', serviceError)
+        
+        // Mesmo com erro no serviço, atualizamos a UI para melhor experiência
+        const index = members.value.findIndex((member: Member) => member.id === id)
+        if (index !== -1) {
+          members.value[index] = {
+            ...members.value[index],
+            name: updates.name!,
+            telefone: updates.telefone,
+            dataNascimento: updates.dataNascimento,
+            isConsolidator: updates.isConsolidator || false,
+            isCoLeader: updates.isCoLeader || false,
+            isHost: updates.isHost || false
+          }
+        }
       }
     } catch (err) {
       console.error('Erro ao atualizar membro:', err)
       error.value = 'Falha ao atualizar membro'
+    } finally {
+      loading.value = false
     }
   }
 

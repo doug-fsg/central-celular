@@ -22,6 +22,7 @@ const activeConnectionDetails = ref<{
   status: string;
   connectedAt?: string;
 } | null>(null)
+const statusCheckInterval = ref(null as any)
 
 // Computados
 const countdownProgress = computed(() => {
@@ -39,29 +40,64 @@ onMounted(async () => {
   await checkActiveConnection()
 })
 
+// Verificar status real da conexão no QuePasa
+async function checkQuePasaStatus() {
+  if (!activeConnectionToken.value) return;
+  
+  try {
+    const isConnected = await whatsappService.checkQuePasaStatus(activeConnectionToken.value);
+    
+    if (activeConnectionDetails.value) {
+      activeConnectionDetails.value.status = isConnected ? 'connected' : 'disconnected';
+    }
+    
+    // Se não estiver conectado, atualizar o estado
+    if (!isConnected) {
+      hasActiveConnection.value = false;
+    }
+  } catch (error) {
+    console.error('Erro ao verificar status no QuePasa:', error);
+  }
+}
+
 // Verificar se existe conexão ativa
 async function checkActiveConnection() {
   try {
     loading.value = true
     error.value = ''
     
-    hasActiveConnection.value = await whatsappService.hasActiveConnection();
+    // Buscar todas as conexões
+    const connections = await whatsappService.getAccountConnections();
     
-    // Se tiver conexão ativa, buscar detalhes
-    if (hasActiveConnection.value) {
-      const connections = await whatsappService.getAccountConnections();
-      const activeConnection = connections.find((c) => c.status === 'connected');
-      if (activeConnection && activeConnection.token) {
-        activeConnectionToken.value = activeConnection.token;
-        activeConnectionDetails.value = {
-          name: activeConnection.name,
-          phoneNumber: activeConnection.phoneNumber,
-          status: activeConnection.status,
-          connectedAt: activeConnection.connectedAt
-        };
+    // Encontrar a primeira conexão (independente do status)
+    const connection = connections[0];
+    if (connection && connection.token) {
+      activeConnectionToken.value = connection.token;
+      activeConnectionDetails.value = {
+        name: connection.name,
+        phoneNumber: connection.phoneNumber,
+        status: connection.status,
+        connectedAt: connection.connectedAt
+      };
+      
+      // Verificar status real no QuePasa
+      await checkQuePasaStatus();
+      
+      // Iniciar verificação periódica
+      if (!statusCheckInterval.value) {
+        statusCheckInterval.value = setInterval(checkQuePasaStatus, 30000); // Verificar a cada 30 segundos
       }
+      
+      // Atualizar hasActiveConnection baseado no status real
+      hasActiveConnection.value = activeConnectionDetails.value.status === 'connected';
     } else {
       activeConnectionDetails.value = null;
+      hasActiveConnection.value = false;
+      // Limpar intervalo se não houver conexão
+      if (statusCheckInterval.value) {
+        clearInterval(statusCheckInterval.value);
+        statusCheckInterval.value = null;
+      }
     }
   } catch (error) {
     console.error('Erro ao verificar conexão ativa:', error);
@@ -174,6 +210,10 @@ onUnmounted(() => {
   if (countdownInterval.value) {
     clearInterval(countdownInterval.value)
   }
+  if (statusCheckInterval.value) {
+    clearInterval(statusCheckInterval.value)
+    statusCheckInterval.value = null
+  }
 })
 </script>
 
@@ -260,32 +300,83 @@ onUnmounted(() => {
         </div>
       </div>
 
-      <!-- Alerta de conexão ativa -->
-      <div v-if="hasActiveConnection" class="mb-6 rounded-md bg-green-50 p-4">
+      <!-- Alerta de conexão -->
+      <div v-if="activeConnectionDetails" class="mb-6 rounded-md p-4" :class="{
+        'bg-green-50': activeConnectionDetails.status === 'connected',
+        'bg-red-50': activeConnectionDetails.status === 'disconnected',
+        'bg-yellow-50': activeConnectionDetails.status === 'pending'
+      }">
         <div class="flex">
           <div class="flex-shrink-0">
-            <svg class="h-5 w-5 text-green-400" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor">
+            <!-- Ícone de conectado -->
+            <svg 
+              v-if="activeConnectionDetails.status === 'connected'"
+              class="h-5 w-5 text-green-400" 
+              xmlns="http://www.w3.org/2000/svg" 
+              viewBox="0 0 20 20" 
+              fill="currentColor"
+            >
               <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd" />
+            </svg>
+            <!-- Ícone de desconectado -->
+            <svg 
+              v-else-if="activeConnectionDetails.status === 'disconnected'"
+              class="h-5 w-5 text-red-400" 
+              xmlns="http://www.w3.org/2000/svg" 
+              viewBox="0 0 20 20" 
+              fill="currentColor"
+            >
+              <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clip-rule="evenodd" />
+            </svg>
+            <!-- Ícone de pendente -->
+            <svg 
+              v-else
+              class="h-5 w-5 text-yellow-400" 
+              xmlns="http://www.w3.org/2000/svg" 
+              viewBox="0 0 20 20" 
+              fill="currentColor"
+            >
+              <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm1-12a1 1 0 10-2 0v4a1 1 0 00.293.707l2.828 2.829a1 1 0 101.415-1.415L11 9.586V6z" clip-rule="evenodd" />
             </svg>
           </div>
           <div class="ml-3 flex-grow">
-            <h3 class="text-sm font-medium text-green-800">
-              Conexão WhatsApp Ativa
+            <h3 class="text-sm font-medium" :class="{
+              'text-green-800': activeConnectionDetails.status === 'connected',
+              'text-red-800': activeConnectionDetails.status === 'disconnected',
+              'text-yellow-800': activeConnectionDetails.status === 'pending'
+            }">
+              Conexão WhatsApp {{ 
+                activeConnectionDetails.status === 'connected' ? 'Ativa' : 
+                activeConnectionDetails.status === 'disconnected' ? 'Desconectada' : 
+                'Pendente'
+              }}
             </h3>
-            <div class="mt-2 text-sm text-green-700 space-y-1">
-              <p v-if="activeConnectionDetails?.name">
+            <div class="mt-2 text-sm space-y-1" :class="{
+              'text-green-700': activeConnectionDetails.status === 'connected',
+              'text-red-700': activeConnectionDetails.status === 'disconnected',
+              'text-yellow-700': activeConnectionDetails.status === 'pending'
+            }">
+              <p v-if="activeConnectionDetails.name">
                 <span class="font-semibold">Nome:</span> {{ activeConnectionDetails.name }}
               </p>
-              <p v-if="activeConnectionDetails?.phoneNumber">
+              <p v-if="activeConnectionDetails.phoneNumber">
                 <span class="font-semibold">Telefone:</span> {{ activeConnectionDetails.phoneNumber }}
               </p>
-              <p v-if="activeConnectionDetails?.connectedAt">
+              <p v-if="activeConnectionDetails.connectedAt">
                 <span class="font-semibold">Conectado em:</span> {{ new Date(activeConnectionDetails.connectedAt).toLocaleString() }}
               </p>
               <p>
                 <span class="font-semibold">Status:</span> 
-                <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800">
-                  Conectado
+                <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium" :class="{
+                  'bg-green-100 text-green-800': activeConnectionDetails.status === 'connected',
+                  'bg-red-100 text-red-800': activeConnectionDetails.status === 'disconnected',
+                  'bg-yellow-100 text-yellow-800': activeConnectionDetails.status === 'pending'
+                }">
+                  {{ 
+                    activeConnectionDetails.status === 'connected' ? 'Conectado' : 
+                    activeConnectionDetails.status === 'disconnected' ? 'Desconectado' : 
+                    'Pendente'
+                  }}
                 </span>
               </p>
             </div>
@@ -305,6 +396,13 @@ onUnmounted(() => {
             </button>
           </div>
         </div>
+      </div>
+
+      <!-- Mensagem quando não há conexão -->
+      <div v-if="!activeConnectionDetails && !verifyingConnection && !qrCode" class="text-center py-8">
+        <p class="text-gray-500">
+          Não há conexão WhatsApp configurada. Gere um QR Code para conectar.
+        </p>
       </div>
 
       <!-- Modal de confirmação -->
@@ -422,13 +520,6 @@ onUnmounted(() => {
           </button>
         </div>
       </form>
-
-      <!-- Mensagem informativa quando já existe conexão ativa -->
-      <div v-if="hasActiveConnection && !verifyingConnection && !qrCode" class="text-center py-8">
-        <p class="text-gray-500">
-          Já existe uma conexão WhatsApp ativa. Se desejar criar uma nova conexão, delete a conexão atual.
-        </p>
-      </div>
 
       <!-- QR Code -->
       <div v-if="qrCode" class="mt-8">

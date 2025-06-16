@@ -5,9 +5,8 @@ import { autenticacao } from '../middlewares/auth.middleware';
 import { accountMiddleware } from '../middlewares/accountMiddleware';
 import celulasRoutes from './celulas.routes';
 import relatoriosRoutes from './relatorios.routes';
-
-// Em vez de verificar se os arquivos existem, simplesmente importe
 import usuariosRoutes from './usuarios.routes';
+import usuarioConfigRoutes from './usuarioConfig';
 
 // Crie o router principal
 const router = Router();
@@ -22,6 +21,7 @@ router.use('/api', autenticacao);
 router.use('/api/celulas', celulasRoutes);
 router.use('/api/relatorios', relatoriosRoutes);
 router.use('/api/usuarios', usuariosRoutes);
+router.use('/api/usuario/config', usuarioConfigRoutes);
 
 // Rotas de account (usando middleware específico)
 router.use('/api/accounts', accountMiddleware, accountRoutes);
