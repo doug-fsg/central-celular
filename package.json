@@ -4,9 +4,9 @@
   "version": "0.1.0",
   "type": "module",
   "scripts": {
-    "dev": "vite",
-    "build": "vue-tsc -b && vite build",
-    "preview": "vite preview",
+    "dev": "vite --host",
+    "build": "vite build",
+    "preview": "vite preview --host",
     "dev:server": "tsx watch server/index.ts",
     "generate": "prisma generate",
     "migrate:dev": "prisma migrate dev",
@@ -14,7 +14,8 @@
     "db:push": "prisma db push",
     "prisma:studio": "prisma studio",
     "seed": "tsx server/seed.js",
-    "start": "concurrently \"yarn dev:server\" \"yarn dev\""
+    "start:dev": "concurrently \"yarn dev:server\" \"yarn dev\"",
+    "start": "concurrently \"yarn dev:server\" \"yarn preview\""
   },
   "dependencies": {
     "@headlessui/vue": "^1.7.19",

@@ -1,0 +1,67 @@
+version: "3.8"
+
+services:
+
+  app:
+    image: douglagoncalves/central-celular:latest
+    restart: always
+    networks:
+      - inove_public
+      - traefik_public
+    volumes:
+      - central_celular_data:/app/data  # ajuste conforme o volume necessário
+    environment:
+      - NODE_ENV=production
+      - DATABASE_URL=postgresql://postgres:84476291@db:5432/central_celular
+      - VITE_HOST=0.0.0.0
+      - HOST=0.0.0.0
+      - VITE_ALLOWED_HOSTS=central.manytalks.com.br
+      - VITE_FORCE_PREVIEW=true
+      # outras variáveis específicas do app que precisar
+    depends_on:
+      - db
+    deploy:
+      mode: replicated
+      replicas: 1
+      placement:
+        constraints:
+          - node.role == manager
+      labels:
+        - "traefik.enable=true"
+        - "traefik.http.routers.central.rule=Host(`central.manytalks.com.br`)"
+        - "traefik.http.routers.central.entrypoints=websecure"
+        - "traefik.http.routers.central.tls=true"
+        - "traefik.http.routers.central.tls.certresolver=le"
+        - "traefik.http.services.central.loadbalancer.server.port=5173"
+        - "traefik.http.middlewares.https-redirect.redirectscheme.scheme=https"
+        - "traefik.http.middlewares.https-redirect.redirectscheme.permanent=true"
+        - "traefik.http.middlewares.central-headers.headers.customrequestheaders.X-Forwarded-Proto=https"
+        - "traefik.http.routers.central.middlewares=central-headers,https-redirect"
+
+  db:
+    image: postgres:15-alpine
+    restart: always
+    networks:
+      - inove_public
+    environment:
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=84476291
+      - POSTGRES_DB=central_celular
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+
+networks:
+  inove_public:
+    external: true
+    attachable: true
+    name: inove_public
+
+  traefik_public:
+    external: true
+    name: traefik_public
+
+volumes:
+  postgres_data:
+    external: false
+  central_celular_data:
+    external: false 

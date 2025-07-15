@@ -81,3 +81,58 @@ O backend estará disponível em: http://localhost:3000
 This template should help get you started developing with Vue 3 and TypeScript in Vite. The template uses Vue 3 `<script setup>` SFCs, check out the [script setup docs](https://v3.vuejs.org/api/sfc-script-setup.html#sfc-script-setup) to learn more.
 
 Learn more about the recommended Project Setup and IDE Support in the [Vue Docs TypeScript Guide](https://vuejs.org/guide/typescript/overview.html#project-setup).
+
+## Executando com Docker
+
+### Pré-requisitos
+
+- Docker
+- Docker Compose
+
+### Configuração
+
+1. Crie um arquivo `.env` com as seguintes variáveis:
+```env
+POSTGRES_USER=postgres
+POSTGRES_PASSWORD=sua_senha_aqui
+POSTGRES_DB=central_db
+```
+
+2. Execute o sistema:
+```bash
+docker-compose -f docker-compose.prod.yml up -d
+```
+
+3. Execute as migrações do banco de dados:
+```bash
+docker-compose exec app yarn migrate:dev
+```
+
+4. (Opcional) Popule o banco com dados iniciais:
+```bash
+docker-compose exec app yarn seed
+```
+
+### Acessando o sistema
+
+- Frontend: http://localhost:5173
+- Backend: http://localhost:3000
+
+### Credenciais padrão
+
+- Admin: admin@igreja.com / admin123
+- Supervisor: supervisor@igreja.com / super123
+- Líder: lider@igreja.com / lider123
+- Co-Líder: colider@igreja.com / colider123
+
+## Desenvolvimento
+
+Para desenvolvimento local, use:
+
+```bash
+docker-compose up
+```
+
+## Licença
+
+Este projeto está sob a licença MIT.

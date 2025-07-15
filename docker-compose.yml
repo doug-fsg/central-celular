@@ -1,0 +1,41 @@
+version: '3.8'
+
+services:
+  app:
+    build: .
+    image: douglagoncalves/central-celular:latest
+    ports:
+      - "5173:5173"  # porta do frontend
+      - "3000:3000"  # porta do backend
+    environment:
+      - DATABASE_URL=postgresql://postgres:84476291@db:5432/central_db
+      - NODE_ENV=production
+      - VITE_HOST=0.0.0.0
+      - HOST=0.0.0.0
+    depends_on:
+      - db
+    volumes:
+      - .:/app
+      - /app/node_modules
+    networks:
+      - central-network
+
+  db:
+    image: postgres:15-alpine
+    ports:
+      - "5432:5432"
+    environment:
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=84476291
+      - POSTGRES_DB=central_db
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    networks:
+      - central-network
+
+volumes:
+  postgres_data:
+
+networks:
+  central-network:
+    driver: bridge 
