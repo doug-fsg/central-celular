@@ -12,7 +12,8 @@ import {
   marcarComoConsolidador,
   marcarComoCoLider,
   marcarComoAnfitriao,
-  atualizarMembro
+  atualizarMembro,
+  listarMembros
 } from '../controllers/celulas.controller';
 
 const router = Router();
@@ -20,6 +21,7 @@ const router = Router();
 // Rotas para células
 router.get('/', listarCelulas);
 router.get('/:id', obterCelula);
+router.get('/:id/membros', listarMembros);
 router.post('/', criarCelula);
 router.put('/:id', atualizarCelula);
 router.patch('/:id/desativar', desativarCelula);

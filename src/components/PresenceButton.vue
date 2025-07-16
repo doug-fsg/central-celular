@@ -37,7 +37,7 @@ const icon = computed(() => {
 })
 
 const label = computed(() => {
-  return props.type === 'culto' ? 'Culto' : 'Célula'
+  return props.type === 'culto' ? 'Presente no Culto' : 'Presente na Célula'
 })
 </script>
 
@@ -46,6 +46,8 @@ const label = computed(() => {
     :class="buttonClasses"
     @click="emit('click')"
     :disabled="disabled"
+    :title="label"
+    :aria-label="label"
   >
     <span class="mr-2">{{ icon }}</span>
     {{ label }}

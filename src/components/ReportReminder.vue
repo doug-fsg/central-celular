@@ -1,72 +1,99 @@
 <script setup lang="ts">
-import { ref, computed } from 'vue'
-import { useAttendanceStore } from '../stores/attendanceStore'
+import { ref, computed, onMounted } from 'vue'
 import { useLeaderStore } from '../stores/leaderStore'
 import { useReportStore } from '../stores/reportStore'
-import { format, addMonths, setDate, differenceInDays } from 'date-fns'
+import { format, parseISO, differenceInDays } from 'date-fns'
 import { ptBR } from 'date-fns/locale'
 import AppIcon from '../components/AppIcon.vue'
 import { useRouter } from 'vue-router'
+import relatorioService, { STATUS_RELATORIO } from '../services/relatorioService'
 
-const attendanceStore = useAttendanceStore()
 const leaderStore = useLeaderStore()
 const reportStore = useReportStore()
 const router = useRouter()
 
 const showReminder = ref(true)
+const loading = ref(true)
+const relatorios = ref<any[]>([])
 
-const deadlineDay = 10
+// Carregar os relatórios da semana atual
+onMounted(async () => {
+  try {
+    await carregarRelatorios()
+  } finally {
+    loading.value = false
+  }
+})
+
 const today = new Date()
-const currentMonth = today.getMonth()
-const currentYear = today.getFullYear()
 
-// Definir o prazo (dia 10 do mês atual)
-const deadline = setDate(new Date(currentYear, currentMonth), deadlineDay)
-
-// Se já passou do dia 10, mover o prazo para o dia 10 do próximo mês
-const adjustedDeadline = computed(() => {
-  if (today.getDate() > deadlineDay) {
-    return setDate(addMonths(today, 1), deadlineDay)
+// Carregar relatórios da semana atual
+async function carregarRelatorios() {
+  try {
+    const result = await relatorioService.listarRelatorios({
+      celula: leaderStore.celulaId,
+      dataInicio: reportStore.currentWeek.dataInicio,
+      dataFim: reportStore.currentWeek.dataFim
+    })
+    
+    relatorios.value = result
+  } catch (error) {
+    console.error('Erro ao carregar relatórios:', error)
   }
-  return deadline
+}
+
+// Calcular dias até o final da semana
+const diasAteFimPeriodo = computed(() => {
+  const dataFim = reportStore.currentWeek.dataFim
+  return differenceInDays(dataFim, today)
 })
 
-const daysUntilDeadline = computed(() => {
-  return differenceInDays(adjustedDeadline.value, today)
+// Verificar se o relatório para a semana atual já foi enviado
+const relatorioEnviado = computed(() => {
+  return relatorios.value.some(r => r.status === STATUS_RELATORIO.ENVIADO)
 })
 
-// Usar o novo sistema de mensagens baseado no dia do mês
-const deadlineText = computed(() => {
-  // Se já enviou o relatório deste mês, exibe mensagem simplificada
-  if (reportStore.hasSubmittedReportForMonth(currentMonth, currentYear)) {
-    return `Relatório de ${format(today, 'MMMM', { locale: ptBR })} enviado`
-  }
-  
-  // Senão usamos a lógica de mensagens da reportStore
-  return reportStore.reportMessage || 'Lembre-se de enviar seu relatório mensal.'
-})
-
+// Determinar o tipo de lembrete baseado no tempo restante
 const reminderType = computed(() => {
-  // Se já enviou o relatório, mostra como informação
-  if (reportStore.hasReportForMonth(currentMonth, currentYear)) {
+  if (loading.value) return 'info'
+  
+  if (relatorioEnviado.value) {
     return 'info'
   }
   
-  const currentDay = today.getDate()
+  if (!reportStore.isDentroDoPeriodoEnvio) {
+    return 'info'
+  }
   
-  if (currentDay > deadlineDay) {
-    // Após o dia 18, mostrar como urgente
-    if (currentDay >= 18) {
-      return 'urgent'
-    }
-    // Entre 11 e 17, mostrar como aviso
-    return 'warning'
-  } else if (daysUntilDeadline.value <= 1) {
+  // Baseado nos dias restantes
+  if (reportStore.diasParaFimPeriodo <= 1) {
     return 'urgent'
-  } else if (daysUntilDeadline.value <= 3) {
+  } else if (reportStore.diasParaFimPeriodo <= 2) {
     return 'warning'
   }
+  
   return 'info'
+})
+
+// Texto do lembrete
+const deadlineText = computed(() => {
+  if (loading.value) return 'Carregando informações...'
+  
+  if (relatorioEnviado.value) {
+    return `Relatório enviado para a semana anterior`
+  }
+  
+  if (!reportStore.isDentroDoPeriodoEnvio) {
+    return `O período para envio de relatórios está fechado. Aguarde o próximo período que inicia na quinta-feira.`
+  }
+  
+  if (reportStore.diasParaFimPeriodo === 0) {
+    return `Hoje é o último dia para enviar o relatório da semana anterior`
+  } else if (reportStore.diasParaFimPeriodo === 1) {
+    return `Falta 1 dia para o fim do período de envio`
+  } else {
+    return `Faltam ${reportStore.diasParaFimPeriodo} dias para o fim do período de envio`
+  }
 })
 
 const reminderClasses = computed(() => {
@@ -80,16 +107,18 @@ const reminderClasses = computed(() => {
   }
 })
 
+function formatarSemana() {
+  const dataInicio = reportStore.currentWeek.dataInicio
+  return `Semana ${format(dataInicio, 'w', { locale: ptBR })}`
+}
+
 function dismissReminder() {
   showReminder.value = false
 }
 
-function goToReports() {
-  router.push({ name: 'reports' })
+function goToattendance() {
+  router.push({ name: 'attendance' })
 }
-
-// Verificar se o relatório já foi enviado
-const isReportSent = computed(() => reportStore.hasSubmittedReportForMonth(currentMonth, currentYear))
 </script>
 
 <template>
@@ -110,8 +139,8 @@ const isReportSent = computed(() => reportStore.hasSubmittedReportForMonth(curre
     
     <div class="flex items-center">
       <button 
-        v-if="!isReportSent && today.getDate() >= 1"
-        @click="goToReports"
+        v-if="!loading && !relatorioEnviado"
+        @click="goToattendance"
         class="text-xs mr-2 py-1 px-2 rounded"
         :class="reminderType === 'urgent' ? 'bg-red-500 text-white' : 'bg-transparent border border-current text-gray-500'"
       >

@@ -747,3 +747,29 @@ export const atualizarMembro = async (req: Request, res: Response) => {
     res.status(500).json({ message: 'Erro ao atualizar membro' });
   }
 }; 
+
+// Listar membros de uma célula
+export const listarMembros = async (req: Request, res: Response) => {
+  try {
+    const { id } = req.params;
+
+    const celula = await prisma.celula.findUnique({
+      where: { id: Number(id) },
+      include: {
+        membros: {
+          where: { ativo: true },
+          orderBy: { nome: 'asc' }
+        }
+      }
+    });
+
+    if (!celula) {
+      return res.status(404).json({ message: 'Célula não encontrada' });
+    }
+
+    res.json(celula.membros);
+  } catch (error) {
+    console.error('Erro ao listar membros:', error);
+    res.status(500).json({ message: 'Erro ao listar membros' });
+  }
+}; 

@@ -57,11 +57,10 @@ const navLinks = computed(() => {
 
 async function handleLogout() {
   try {
-    await api.logout()
-    userStore.clearUser()
-    router.push({ name: 'login' })
+    await userStore.logout();
+    router.push({ name: 'login' });
   } catch (error) {
-    console.error('Erro ao fazer logout:', error)
+    console.error('Erro ao fazer logout:', error);
   }
 }
 
@@ -110,7 +109,7 @@ function toggleDropdown() {
                 <span class="sr-only">Abrir menu do usuário</span>
                 <div class="relative">
                   <div class="h-8 w-8 rounded-full bg-primary-100 flex items-center justify-center text-primary-800 font-bold">
-                    {{ userStore.userName.charAt(0).toUpperCase() }}
+                    {{ userStore.userName ? userStore.userName.charAt(0).toUpperCase() : '' }}
                   </div>
                   <div v-if="badgeIcon && !userStore.isAdmin" class="absolute -top-1 -right-1 text-xs">
                     {{ badgeIcon }}

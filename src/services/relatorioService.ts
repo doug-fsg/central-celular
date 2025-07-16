@@ -1,14 +1,35 @@
 import api from './api';
 import { Membro } from './celulaService';
+import { format, startOfWeek, endOfWeek, addDays } from 'date-fns';
+import { ptBR } from 'date-fns/locale';
+
+// Constantes para os tipos de evento e status
+export const TIPO_EVENTO = {
+  CELULA: 0,
+  CULTO: 1
+};
+
+export const STATUS_RELATORIO = {
+  RASCUNHO: 0,
+  ENVIADO: 1
+};
+
+export const STATUS_PRESENCA = {
+  AUSENTE: 0,
+  PRESENTE: 1
+};
 
 // Interfaces para representar os dados
 export interface Relatorio {
   id: number;
   celulaId: number;
-  mes: number;
-  ano: number;
-  observacoes: string;
-  dataEnvio?: Date;
+  dataInicio: string | Date;
+  dataFim: string | Date;
+  evento: number; // 0 = célula, 1 = culto
+  status: number; // 0 = rascunho, 1 = enviado
+  dataEnvio?: string | Date;
+  observacoes?: string;
+  teveCelula: boolean;
   celula?: {
     id: number;
     nome: string;
@@ -26,10 +47,7 @@ export interface Presenca {
   id: number;
   relatorioId: number;
   membroId: number;
-  presencaCelula: boolean;
-  presencaCulto: boolean;
-  semana: number;
-  observacoes?: string;
+  status: number; // 0 = ausente, 1 = presente
   membro?: Membro;
 }
 
@@ -37,54 +55,67 @@ export interface RelatorioEstatisticas {
   totalMembros: number;
   presencaCulto: number;
   presencaCelula: number;
-  presencaAmbos: number;
   taxaPresenca: number;
-  taxaCrescimento?: number;
-  taxaRetencao?: number;
 }
 
 // Serviço de relatórios
 const relatorioService = {
-  // Listar relatórios com filtros opcionais
-  async listarRelatorios(filtros?: { celula?: number; mes?: number; ano?: number }) {
+  // Obter a data de início e fim da semana atual
+  obterSemanaAtual() {
+    const hoje = new Date();
+    const inicioSemana = startOfWeek(hoje, { weekStartsOn: 1 }); // Segunda-feira
+    const fimSemana = endOfWeek(hoje, { weekStartsOn: 1 }); // Domingo
+    
+    return {
+      dataInicio: inicioSemana,
+      dataFim: fimSemana
+    };
+  },
+  
+  // Formatar período para exibição
+  formatarPeriodo(dataInicio: Date | string, dataFim: Date | string) {
+    const inicio = typeof dataInicio === 'string' ? new Date(dataInicio) : dataInicio;
+    const fim = typeof dataFim === 'string' ? new Date(dataFim) : dataFim;
+    
+    return `${format(inicio, 'dd/MM', { locale: ptBR })} - ${format(fim, 'dd/MM/yyyy', { locale: ptBR })}`;
+  },
+  
+  // Listar relatórios com filtros obrigatórios
+  async listarRelatorios(filtros: { 
+    celulaId: number; 
+    dataInicio: Date | string; 
+    dataFim: Date | string;
+    evento?: number;
+    status?: number;
+  }) {
     try {
-      let endpoint = '/relatorios';
-      
-      // Adicionar parâmetros de filtro se fornecidos
-      if (filtros) {
-        const params = new URLSearchParams();
-        
-        if (filtros.celula) params.append('celula', filtros.celula.toString());
-        if (filtros.mes !== undefined) params.append('mes', filtros.mes.toString());
-        if (filtros.ano !== undefined) params.append('ano', filtros.ano.toString());
-        
-        // Adicionar parâmetros à URL se existirem
-        if (params.toString()) {
-          endpoint += `?${params.toString()}`;
-        }
+      if (!filtros.celulaId || !filtros.dataInicio || !filtros.dataFim) {
+        console.error('Parâmetros obrigatórios não fornecidos');
+        return [];
       }
+
+      const params = new URLSearchParams();
       
-      const response = await api.get(endpoint) as Relatorio[];
+      params.append('celulaId', filtros.celulaId.toString());
       
-      // Converter os meses de 1-12 para 0-11
-      const relatoriosAjustados = response.map((relatorio: Relatorio) => ({
-        ...relatorio,
-        mes: relatorio.mes - 1
-      }));
+      const dataInicio = typeof filtros.dataInicio === 'string' 
+        ? filtros.dataInicio 
+        : format(filtros.dataInicio, 'yyyy-MM-dd');
+      params.append('dataInicio', dataInicio);
       
-      // Validar se os resultados atendem aos filtros fornecidos
-      if (filtros && filtros.mes !== undefined && filtros.ano !== undefined) {
-        // Filtrar localmente para garantir que corresponda aos critérios solicitados
-        return relatoriosAjustados.filter((r: Relatorio) => 
-          r.mes === (filtros.mes as number - 1) && 
-          r.ano === filtros.ano
-        );
-      }
+      const dataFim = typeof filtros.dataFim === 'string' 
+        ? filtros.dataFim 
+        : format(filtros.dataFim, 'yyyy-MM-dd');
+      params.append('dataFim', dataFim);
       
-      return relatoriosAjustados;
+      if (filtros.evento !== undefined) params.append('evento', filtros.evento.toString());
+      if (filtros.status !== undefined) params.append('status', filtros.status.toString());
+      
+      const response = await api.get(`/relatorios?${params.toString()}`) as Relatorio[];
+      return response;
     } catch (error) {
       console.error('Erro ao listar relatórios:', error);
-      return [];
+      throw error;
     }
   },
   
@@ -98,25 +129,26 @@ const relatorioService = {
     }
   },
   
-  // Verificar se existe um relatório para o mês/ano/célula específicos
-  async verificarRelatorioExistente(celulaId: number, mes: number, ano: number) {
+  // Verificar se existe um relatório para a semana/evento/célula específicos
+  async verificarRelatorioExistente(celulaId: number, dataInicio: Date | string, dataFim: Date | string, evento: number) {
     try {
-      // Converter mês de 0-11 para 1-12 para o backend
-      const mesAjustado = mes + 1;
+      const dataInicioFormatada = typeof dataInicio === 'string' 
+        ? dataInicio 
+        : format(dataInicio, 'yyyy-MM-dd');
+      
+      const dataFimFormatada = typeof dataFim === 'string' 
+        ? dataFim 
+        : format(dataFim, 'yyyy-MM-dd');
       
       const relatorios = await this.listarRelatorios({
-        celula: celulaId,
-        mes: mesAjustado,
-        ano
+        celulaId,
+        dataInicio: dataInicioFormatada,
+        dataFim: dataFimFormatada,
+        evento
       });
       
       if (relatorios && relatorios.length > 0) {
-        // Converter o mês de volta para 0-11 ao retornar
-        const relatorio = relatorios[0];
-        if (relatorio.mes) {
-          relatorio.mes = relatorio.mes - 1;
-        }
-        return relatorio;
+        return relatorios[0];
       }
       
       return null;
@@ -127,45 +159,51 @@ const relatorioService = {
   },
   
   // Criar um novo relatório
-  async criarRelatorio(celulaId: number, mes: number, ano: number, observacoes?: string) {
+  async criarRelatorio(dados: {
+    celulaId: number;
+    dataInicio: Date | string;
+    dataFim: Date | string;
+    evento: number;
+    teveCelula: boolean;
+    observacoes?: string;
+  }) {
     try {
-      // Converter mês de 0-11 para 1-12 para o backend
-      const mesAjustado = mes + 1;
-      
-      const resultado = await api.post('/relatorios', {
-        celulaId,
-        mes: mesAjustado,
-        ano,
-        observacoes
+      const response = await api.post('/relatorios', {
+        celulaId: dados.celulaId,
+        dataInicio: typeof dados.dataInicio === 'string' ? dados.dataInicio : format(dados.dataInicio, 'yyyy-MM-dd'),
+        dataFim: typeof dados.dataFim === 'string' ? dados.dataFim : format(dados.dataFim, 'yyyy-MM-dd'),
+        evento: dados.evento,
+        teveCelula: dados.teveCelula,
+        observacoes: dados.observacoes
       }) as Relatorio;
-      
-      // Converter o mês de volta para 0-11 ao retornar
-      if (resultado.mes) {
-        resultado.mes = resultado.mes - 1;
-      }
-      
-      console.log(`[DEBUG] criarRelatorio resposta:`, resultado);
-      return resultado;
+      return response;
     } catch (error) {
-      console.error("Erro ao criar relatório:", error);
+      console.error('Erro ao criar relatório:', error);
+      throw error;
+    }
+  },
+
+  // Atualizar um relatório
+  async atualizarRelatorio(id: number, dados: {
+    observacoes?: string;
+    teveCelula?: boolean;
+  }) {
+    try {
+      const response = await api.put(`/relatorios/${id}`, dados) as Relatorio;
+      return response;
+    } catch (error) {
+      console.error('Erro ao atualizar relatório:', error);
       throw error;
     }
   },
   
   // Registrar presença de um membro
-  async registrarPresenca(relatorioId: number, membroId: number, dados: {
-    presencaCelula: boolean;
-    presencaCulto: boolean;
-    semana: number;
-    observacoes?: string;
-  }) {
+  async registrarPresenca(relatorioId: number, membroId: number, status: number, tipo: number) {
     try {
       return await api.post(`/relatorios/${relatorioId}/presencas`, {
-        membroId: membroId,
-        presencaCelula: dados.presencaCelula,
-        presencaCulto: dados.presencaCulto,
-        semana: dados.semana,
-        observacoes: dados.observacoes
+        membroId,
+        status,
+        tipo
       }) as Presenca;
     } catch (error) {
       console.error("Erro ao registrar presença:", error);
@@ -173,16 +211,39 @@ const relatorioService = {
     }
   },
   
+  // Atualizar presença de um membro
+  async atualizarPresenca(relatorioId: number, membroId: number, status: number, tipo: number) {
+    try {
+      // Reutiliza a mesma lógica do upsert do backend, então podemos usar o mesmo endpoint
+      return await api.post(`/relatorios/${relatorioId}/presencas`, {
+        membroId,
+        status,
+        tipo
+      }) as Presenca;
+    } catch (error) {
+      console.error("Erro ao atualizar presença:", error);
+      throw error;
+    }
+  },
+  
+  // Marcar todos os membros como presentes ou ausentes
+  async marcarTodosMembros(relatorioId: number, status: number) {
+    try {
+      return await api.post(`/relatorios/${relatorioId}/presencas/todos`, {
+        status
+      });
+    } catch (error) {
+      console.error("Erro ao marcar todos os membros:", error);
+      throw error;
+    }
+  },
+  
   // Enviar relatório (finalizar)
-  async enviarRelatorio(id: number, presencas?: Array<{memberId: number, status: string}>): Promise<Relatorio> {
+  async enviarRelatorio(id: number): Promise<Relatorio> {
     try {
       console.log(`[DEBUG] relatorioService.enviarRelatorio - Iniciando envio do relatório ID=${id}`);
-      console.log(`[DEBUG] relatorioService.enviarRelatorio - Chamando endpoint: /relatorios/${id}/enviar`);
-      console.log(`[DEBUG] relatorioService.enviarRelatorio - Enviando ${presencas?.length || 0} presenças`);
       
-      const resposta = await api.post(`/relatorios/${id}/enviar`, {
-        presenças: presencas || []
-      });
+      const resposta = await api.post(`/relatorios/${id}/enviar`, {});
       console.log(`[DEBUG] relatorioService.enviarRelatorio - Resposta do servidor:`, resposta);
       
       return resposta as Relatorio;
@@ -194,7 +255,7 @@ const relatorioService = {
   
   // Verificar se um relatório foi enviado
   isRelatorioEnviado(relatorio: Relatorio | null): boolean {
-    return relatorio?.dataEnvio != null;
+    return relatorio?.status === STATUS_RELATORIO.ENVIADO;
   },
   
   // Obter estatísticas para uma célula
@@ -207,10 +268,18 @@ const relatorioService = {
     }
   },
   
-  // Obter estatísticas de líderes para um mês/ano específico
-  async obterEstatisticasLideres(mes: number, ano: number) {
+  // Obter estatísticas de líderes para um período específico
+  async obterEstatisticasLideres(dataInicio: Date | string, dataFim: Date | string) {
     try {
-      return await api.get(`/relatorios/estatisticas/lideres/${mes}/${ano}`);
+      const dataInicioFormatada = typeof dataInicio === 'string' 
+        ? dataInicio 
+        : format(dataInicio, 'yyyy-MM-dd');
+      
+      const dataFimFormatada = typeof dataFim === 'string' 
+        ? dataFim 
+        : format(dataFim, 'yyyy-MM-dd');
+      
+      return await api.get(`/relatorios/estatisticas/lideres?dataInicio=${dataInicioFormatada}&dataFim=${dataFimFormatada}`);
     } catch (error) {
       console.error("Erro ao obter estatísticas de líderes:", error);
       throw error;

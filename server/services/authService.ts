@@ -2,6 +2,7 @@ import { prisma } from '../lib/prisma';
 import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
 import { otpService } from './otpService';
+import { whatsappService } from './whatsappService';
 
 interface LoginData {
   email?: string;
@@ -37,8 +38,18 @@ interface CreatePasswordData {
 export const authService = {
   // Função para padronizar o formato do número
   formatWhatsApp(whatsapp: string): string {
-    // Remove o + se existir e quaisquer caracteres não numéricos
-    return whatsapp.replace(/^\+/, '').replace(/\D/g, '');
+    // Usa a nova função de formatação do whatsappService
+    return whatsappService.formatFullPhoneNumber(whatsapp);
+  },
+
+  // Gerar um token JWT
+  generateJwtToken({ userId, accountId, isSuperAdmin }: { userId: number; accountId: number; isSuperAdmin: boolean }): string {
+    const jwtSecret = process.env.JWT_SECRET || 'central-celular-secret';
+    return jwt.sign(
+      { userId, accountId, isSuperAdmin },
+      jwtSecret,
+      { expiresIn: '1d' }
+    );
   },
 
   async login({ email, whatsapp, senha, accountId }: LoginData): Promise<LoginResult> {
@@ -95,20 +106,11 @@ export const authService = {
     }
 
     console.log('[AuthService] Gerando token JWT');
-    const jwtSecret = process.env.JWT_SECRET || 'central-celular-secret';
-    console.log('[AuthService] JWT Secret disponível:', !!jwtSecret);
-    
-    const token = jwt.sign(
-      {
-        userId: user.id,
-        accountId: user.accountId,
-        isSuperAdmin: user.isSuperAdmin
-      },
-      jwtSecret,
-      {
-        expiresIn: '1d'
-      }
-    );
+    const token = this.generateJwtToken({
+      userId: user.id,
+      accountId: user.accountId,
+      isSuperAdmin: user.isSuperAdmin || false
+    });
 
     console.log('[AuthService] Token gerado com sucesso');
     

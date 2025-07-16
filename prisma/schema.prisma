@@ -21,6 +21,7 @@ model Account {
   celulas     Celula[]
   whatsappConnections WhatsAppConnection[]
   otpCodes    OtpCode[]
+  config      AccountConfig?
 
   @@map("accounts")
 }
@@ -44,6 +45,7 @@ model Usuario {
   notificacoes       Notificacao[]
   conquistas         Conquista[]
   config             UsuarioConfig?
+  ssoLinks           SsoLink[]
 
   @@unique([email, accountId])
   @@unique([whatsapp, accountId])
@@ -106,31 +108,32 @@ model Regiao {
 }
 
 model Relatorio {
-  id              Int           @id @default(autoincrement())
-  celulaId        Int           @map("celula_id")
-  celula          Celula        @relation(fields: [celulaId], references: [id])
-  mes             Int
-  ano             Int
-  dataEnvio       DateTime?     @map("data_envio")
-  observacoes     String?
-  presencas       Presenca[]
+  id          Int       @id @default(autoincrement())
+  celulaId    Int       @map("celula_id")
+  celula      Celula    @relation(fields: [celulaId], references: [id])
+  dataInicio  DateTime  @map("data_inicio")
+  dataFim     DateTime  @map("data_fim")
+  evento      Int       // 0 = célula, 1 = culto
+  status      Int       // 0 = rascunho, 1 = enviado
+  dataEnvio   DateTime? @map("data_envio")
+  observacoes String?
+  teveCelula  Boolean   @default(true) @map("teve_celula") // Indica se houve célula naquela semana
+  presencas   Presenca[]
 
-  @@unique([celulaId, mes, ano])
+  @@unique([celulaId, dataInicio, dataFim, evento])
   @@map("relatorios")
 }
 
 model Presenca {
-  id                Int           @id @default(autoincrement())
-  relatorioId       Int           @map("relatorio_id")
-  relatorio         Relatorio     @relation(fields: [relatorioId], references: [id])
-  membroId          Int           @map("membro_id")
-  membro            Membro        @relation(fields: [membroId], references: [id])
-  presencaCelula    Boolean       @default(false) @map("presenca_celula")
-  presencaCulto     Boolean       @default(false) @map("presenca_culto")
-  semana            Int           // 1, 2, 3, 4 ou 5 (semana do mês)
-  observacoes       String?
+  id           Int       @id @default(autoincrement())
+  relatorioId  Int       @map("relatorio_id")
+  relatorio    Relatorio @relation(fields: [relatorioId], references: [id], onDelete: Cascade)
+  membroId     Int       @map("membro_id")
+  membro       Membro    @relation(fields: [membroId], references: [id])
+  status       Int       // 0 = ausente, 1 = presente
+  tipo         Int       @default(0) // 0 = celula, 1 = culto
 
-  @@unique([relatorioId, membroId, semana])
+  @@unique([relatorioId, membroId, tipo])
   @@map("presencas")
 }
 
@@ -200,4 +203,30 @@ model UsuarioConfig {
   updatedAt               DateTime  @updatedAt @map("updated_at")
 
   @@map("usuario_configs")
+}
+
+model AccountConfig {
+  id                      Int       @id @default(autoincrement())
+  accountId               Int       @unique @map("account_id")
+  account                 Account   @relation(fields: [accountId], references: [id])
+  envioLinkSsoAtivo       Boolean   @default(false) @map("envio_link_sso_ativo")
+  createdAt               DateTime  @default(now()) @map("created_at")
+  updatedAt               DateTime  @updatedAt @map("updated_at")
+
+  @@map("account_configs")
+}
+
+model SsoLink {
+  id              Int       @id @default(autoincrement())
+  token           String    @unique
+  usuarioId       Int       @map("usuario_id")
+  usuario         Usuario   @relation(fields: [usuarioId], references: [id])
+  dataInicio      DateTime  @map("data_inicio")
+  dataFim         DateTime  @map("data_fim")
+  expiresAt       DateTime  @map("expires_at")
+  usado           Boolean   @default(false)
+  createdAt       DateTime  @default(now()) @map("created_at")
+  updatedAt       DateTime  @updatedAt @map("updated_at")
+
+  @@map("sso_links")
 } 

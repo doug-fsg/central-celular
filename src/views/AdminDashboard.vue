@@ -6,6 +6,7 @@ import { useUserStore } from '../stores/userStore'
 import { adminService } from '../services/adminService'
 import type { AdminStats, Usuario } from '../services/adminService'
 import WhatsAppConnections from '../components/WhatsAppConnections.vue'
+import { ssoLinkService } from '../services/ssoLinkService'
 
 const userStore = useUserStore()
 const activeTab = ref('dashboard') // 'dashboard', 'users', 'cells' ou 'whatsapp'
@@ -458,6 +459,32 @@ watch(activeTab, (newTab) => {
     }, 100) // Pequeno timeout para garantir que o componente está montado
   }
 })
+
+// Estado para envio de link SSO
+const sendingLink = ref(false)
+const userSendingLink = ref<number | null>(null)
+
+// Enviar link SSO para um líder
+const handleSendSsoLink = async (userId: number) => {
+  try {
+    sendingLink.value = true
+    userSendingLink.value = userId
+    
+    const result = await ssoLinkService.gerarEnviarLink(userId)
+    
+    if (result.success) {
+      showFeedback('Link enviado com sucesso para o líder')
+    } else {
+      showFeedback('Erro ao enviar link: ' + result.message, 'error')
+    }
+  } catch (error) {
+    console.error('Erro ao enviar link SSO:', error)
+    showFeedback('Erro ao enviar link SSO', 'error')
+  } finally {
+    sendingLink.value = false
+    userSendingLink.value = null
+  }
+}
 </script>
 
 <template>
@@ -827,8 +854,23 @@ watch(activeTab, (newTab) => {
                         user.status === 'ativo' ? 'text-red-600 hover:text-red-900' : 'text-green-600 hover:text-green-900'
                       ]"
                       @click="toggleUserStatus(user.id, user.status === 'ativo' ? false : true)"
+                      class="mr-3"
                     >
                       {{ user.status === 'ativo' ? 'Desativar' : 'Ativar' }}
+                    </button>
+                    <!-- Botão para enviar link SSO (apenas para líderes ativos) -->
+                    <button 
+                      v-if="user.cargo.toUpperCase() === 'LIDER' && user.status === 'ativo'"
+                      @click="handleSendSsoLink(user.id)"
+                      class="text-blue-600 hover:text-blue-900"
+                      :disabled="sendingLink && userSendingLink === user.id"
+                    >
+                      <span v-if="sendingLink && userSendingLink === user.id">
+                        Enviando...
+                      </span>
+                      <span v-else>
+                        Enviar Link
+                      </span>
                     </button>
                   </td>
                 </tr>

@@ -1,4 +1,5 @@
 import { prisma } from '../lib/prisma';
+import { whatsappService } from './whatsappService';
 
 interface CreateOtpParams {
   whatsapp: string;
@@ -8,8 +9,8 @@ interface CreateOtpParams {
 export const otpService = {
   // Função para padronizar o formato do número
   formatWhatsApp(whatsapp: string): string {
-    // Remove o + se existir e quaisquer caracteres não numéricos
-    return whatsapp.replace(/^\+/, '').replace(/\D/g, '');
+    // Usa a nova função de formatação do whatsappService
+    return whatsappService.formatFullPhoneNumber(whatsapp);
   },
 
   // Gerar um código OTP de 4 dígitos
@@ -32,7 +33,7 @@ export const otpService = {
     
     try {
       // Verificar se já existe um código válido
-      const existingCode = await prisma.OtpCode.findFirst({
+      const existingCode = await prisma.otpCode.findFirst({
         where: {
           whatsapp: formattedWhatsApp,
           accountId,
@@ -46,7 +47,7 @@ export const otpService = {
       }
 
       // Salvar o OTP no banco de dados
-      const createdOtp = await prisma.OtpCode.create({
+      const createdOtp = await prisma.otpCode.create({
         data: {
           whatsapp: formattedWhatsApp,
           code,
@@ -71,7 +72,7 @@ export const otpService = {
     
     try {
       // Buscar todos os códigos para este WhatsApp para debug
-      const allCodes = await prisma.OtpCode.findMany({
+      const allCodes = await prisma.otpCode.findMany({
         where: { whatsapp: formattedWhatsApp },
         orderBy: { createdAt: 'desc' }
       });
@@ -86,7 +87,7 @@ export const otpService = {
         }))
       );
 
-      const otpRecord = await prisma.OtpCode.findFirst({
+      const otpRecord = await prisma.otpCode.findFirst({
         where: {
           whatsapp: formattedWhatsApp,
           code,
@@ -98,7 +99,7 @@ export const otpService = {
     
       if (!otpRecord) {
         // Buscar o registro sem as restrições para identificar o problema
-        const anyOtpRecord = await prisma.OtpCode.findFirst({
+        const anyOtpRecord = await prisma.otpCode.findFirst({
           where: { whatsapp: formattedWhatsApp }
         });
       
@@ -131,7 +132,7 @@ export const otpService = {
       }
     
       // Marcar OTP como usado
-      await prisma.OtpCode.update({
+      await prisma.otpCode.update({
         where: { id: otpRecord.id },
         data: { used: true }
       });
@@ -151,7 +152,7 @@ export const otpService = {
     
     try {
       // Buscar conexão WhatsApp ativa da account
-      const whatsappConnection = await prisma.WhatsAppConnection.findFirst({
+      const whatsappConnection = await prisma.whatsAppConnection.findFirst({
         where: {
           accountId,
           status: 'connected'

@@ -10,6 +10,7 @@ const props = defineProps<{
   status?: AttendanceStatus
   observation?: string
   disabled?: boolean
+  teveCelula?: boolean
 }>()
 
 const attendanceStore = useAttendanceStore()
@@ -136,6 +137,7 @@ function toggleObservationInput() {
           @click="toggleCulto"
         />
         <PresenceButton
+          v-if="teveCelula"
           type="celula"
           :active="isCelulaActive"
           :disabled="disabled"

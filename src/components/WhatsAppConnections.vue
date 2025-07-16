@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { ref, onMounted, computed, onUnmounted } from 'vue'
 import { whatsappService } from '../services/whatsappService'
+import { ssoLinkService } from '../services/ssoLinkService'
 
 // Estados
 const connectionName = ref('')
@@ -24,6 +25,13 @@ const activeConnectionDetails = ref<{
 } | null>(null)
 const statusCheckInterval = ref(null as any)
 
+// Estado para configuração de links SSO
+const ssoLinkConfig = ref({
+  envioLinkSsoAtivo: false,
+  loading: false,
+  error: ''
+})
+
 // Computados
 const countdownProgress = computed(() => {
   return ((20 - countdown.value) / 20) * 100
@@ -38,6 +46,7 @@ const countdownColor = computed(() => {
 // Verificar conexão ativa ao montar o componente
 onMounted(async () => {
   await checkActiveConnection()
+  await loadSsoLinkConfig()
 })
 
 // Verificar status real da conexão no QuePasa
@@ -205,6 +214,40 @@ async function handleGenerateQRCode() {
   }
 }
 
+// Carregar configuração de links SSO
+async function loadSsoLinkConfig() {
+  try {
+    ssoLinkConfig.value.loading = true
+    ssoLinkConfig.value.error = ''
+    
+    const config = await ssoLinkService.getConfig()
+    ssoLinkConfig.value.envioLinkSsoAtivo = config.envioLinkSsoAtivo
+  } catch (error) {
+    console.error('Erro ao carregar configuração de links SSO:', error)
+    ssoLinkConfig.value.error = 'Erro ao carregar configuração de links SSO'
+  } finally {
+    ssoLinkConfig.value.loading = false
+  }
+}
+
+// Atualizar configuração de links SSO
+async function toggleSsoLinkConfig() {
+  try {
+    ssoLinkConfig.value.loading = true
+    ssoLinkConfig.value.error = ''
+    
+    const novoValor = !ssoLinkConfig.value.envioLinkSsoAtivo
+    
+    const config = await ssoLinkService.updateConfig(novoValor)
+    ssoLinkConfig.value.envioLinkSsoAtivo = config.envioLinkSsoAtivo
+  } catch (error) {
+    console.error('Erro ao atualizar configuração de links SSO:', error)
+    ssoLinkConfig.value.error = 'Erro ao atualizar configuração de links SSO'
+  } finally {
+    ssoLinkConfig.value.loading = false
+  }
+}
+
 // Limpar intervalo ao desmontar o componente
 onUnmounted(() => {
   if (countdownInterval.value) {
@@ -218,322 +261,369 @@ onUnmounted(() => {
 </script>
 
 <template>
-  <div class="bg-white shadow-sm rounded-lg">
-    <div class="px-4 py-5 sm:p-6">
-      <div class="flex items-center justify-between mb-6">
-        <h2 class="text-lg font-medium text-gray-900">Gerar QR Code</h2>
-        <button
-          type="button"
-          class="inline-flex items-center text-sm text-primary-600 hover:text-primary-500"
-          @click="showInstructions = !showInstructions"
-        >
-          <svg 
-            class="h-5 w-5 mr-1" 
-            xmlns="http://www.w3.org/2000/svg" 
-            viewBox="0 0 20 20" 
-            fill="currentColor"
+  <div>
+    <div class="bg-white shadow-sm rounded-lg">
+      <div class="px-4 py-5 sm:p-6">
+        <div class="flex items-center justify-between mb-6">
+          <h2 class="text-lg font-medium text-gray-900">Gerar QR Code</h2>
+          <button
+            type="button"
+            class="inline-flex items-center text-sm text-primary-600 hover:text-primary-500"
+            @click="showInstructions = !showInstructions"
           >
-            <path fill-rule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z" clip-rule="evenodd" />
-          </svg>
-          {{ showInstructions ? 'Ocultar ajuda' : 'Preciso de ajuda' }}
-        </button>
-      </div>
-
-      <!-- Instruções (colapsável) -->
-      <div
-        v-show="showInstructions"
-        class="mb-6 bg-blue-50 rounded-lg p-4 transition-all duration-200 ease-in-out"
-      >
-        <div class="text-sm text-blue-700">
-          <ol class="list-decimal list-inside space-y-1">
-            <li>Digite um nome para identificar esta conexão</li>
-            <li>Clique em "Gerar QR Code"</li>
-            <li>Abra o WhatsApp no seu celular</li>
-            <li>Toque em Menu (⋮) > WhatsApp Web</li>
-            <li>Aponte a câmera do celular para o QR Code</li>
-          </ol>
-        </div>
-      </div>
-
-      <!-- Status da Conexão com Cronômetro -->
-      <div v-if="verifyingConnection" class="mb-6">
-        <div class="flex items-center justify-center mb-4">
-          <div class="relative">
-            <!-- Círculo de progresso -->
-            <svg class="w-20 h-20 transform -rotate-90">
-              <circle
-                class="text-gray-200"
-                stroke-width="5"
-                stroke="currentColor"
-                fill="transparent"
-                r="30"
-                cx="40"
-                cy="40"
-              />
-              <circle
-                :class="countdownColor"
-                stroke-width="5"
-                :stroke-dasharray="188.5"
-                :stroke-dashoffset="188.5 - (188.5 * countdownProgress) / 100"
-                stroke-linecap="round"
-                stroke="currentColor"
-                fill="transparent"
-                r="30"
-                cx="40"
-                cy="40"
-              />
-            </svg>
-            <!-- Número do countdown -->
-            <div 
-              class="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 text-2xl font-bold"
-              :class="countdownColor"
+            <svg 
+              class="h-5 w-5 mr-1" 
+              xmlns="http://www.w3.org/2000/svg" 
+              viewBox="0 0 20 20" 
+              fill="currentColor"
             >
-              {{ countdown }}
+              <path fill-rule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z" clip-rule="evenodd" />
+            </svg>
+            {{ showInstructions ? 'Ocultar ajuda' : 'Preciso de ajuda' }}
+          </button>
+        </div>
+
+        <!-- Instruções (colapsável) -->
+        <div
+          v-show="showInstructions"
+          class="mb-6 bg-blue-50 rounded-lg p-4 transition-all duration-200 ease-in-out"
+        >
+          <div class="text-sm text-blue-700">
+            <ol class="list-decimal list-inside space-y-1">
+              <li>Digite um nome para identificar esta conexão</li>
+              <li>Clique em "Gerar QR Code"</li>
+              <li>Abra o WhatsApp no seu celular</li>
+              <li>Toque em Menu (⋮) > WhatsApp Web</li>
+              <li>Aponte a câmera do celular para o QR Code</li>
+            </ol>
+          </div>
+        </div>
+
+        <!-- Status da Conexão com Cronômetro -->
+        <div v-if="verifyingConnection" class="mb-6">
+          <div class="flex items-center justify-center mb-4">
+            <div class="relative">
+              <!-- Círculo de progresso -->
+              <svg class="w-20 h-20 transform -rotate-90">
+                <circle
+                  class="text-gray-200"
+                  stroke-width="5"
+                  stroke="currentColor"
+                  fill="transparent"
+                  r="30"
+                  cx="40"
+                  cy="40"
+                />
+                <circle
+                  :class="countdownColor"
+                  stroke-width="5"
+                  :stroke-dasharray="188.5"
+                  :stroke-dashoffset="188.5 - (188.5 * countdownProgress) / 100"
+                  stroke-linecap="round"
+                  stroke="currentColor"
+                  fill="transparent"
+                  r="30"
+                  cx="40"
+                  cy="40"
+                />
+              </svg>
+              <!-- Número do countdown -->
+              <div 
+                class="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 text-2xl font-bold"
+                :class="countdownColor"
+              >
+                {{ countdown }}
+              </div>
+            </div>
+          </div>
+
+          <div class="text-center">
+            <p class="text-sm font-medium" :class="countdownColor">
+              {{ connectionStatus }}
+            </p>
+          </div>
+        </div>
+
+        <!-- Alerta de conexão -->
+        <div v-if="activeConnectionDetails" class="mb-6 rounded-md p-4" :class="{
+          'bg-green-50': activeConnectionDetails.status === 'connected',
+          'bg-red-50': activeConnectionDetails.status === 'disconnected',
+          'bg-yellow-50': activeConnectionDetails.status === 'pending'
+        }">
+          <div class="flex">
+            <div class="flex-shrink-0">
+              <!-- Ícone de conectado -->
+              <svg 
+                v-if="activeConnectionDetails.status === 'connected'"
+                class="h-5 w-5 text-green-400" 
+                xmlns="http://www.w3.org/2000/svg" 
+                viewBox="0 0 20 20" 
+                fill="currentColor"
+              >
+                <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd" />
+              </svg>
+              <!-- Ícone de desconectado -->
+              <svg 
+                v-else-if="activeConnectionDetails.status === 'disconnected'"
+                class="h-5 w-5 text-red-400" 
+                xmlns="http://www.w3.org/2000/svg" 
+                viewBox="0 0 20 20" 
+                fill="currentColor"
+              >
+                <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clip-rule="evenodd" />
+              </svg>
+              <!-- Ícone de pendente -->
+              <svg 
+                v-else
+                class="h-5 w-5 text-yellow-400" 
+                xmlns="http://www.w3.org/2000/svg" 
+                viewBox="0 0 20 20" 
+                fill="currentColor"
+              >
+                <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm1-12a1 1 0 10-2 0v4a1 1 0 00.293.707l2.828 2.829a1 1 0 101.415-1.415L11 9.586V6z" clip-rule="evenodd" />
+              </svg>
+            </div>
+            <div class="ml-3 flex-grow">
+              <h3 class="text-sm font-medium" :class="{
+                'text-green-800': activeConnectionDetails.status === 'connected',
+                'text-red-800': activeConnectionDetails.status === 'disconnected',
+                'text-yellow-800': activeConnectionDetails.status === 'pending'
+              }">
+                Conexão WhatsApp {{ 
+                  activeConnectionDetails.status === 'connected' ? 'Ativa' : 
+                  activeConnectionDetails.status === 'disconnected' ? 'Desconectada' : 
+                  'Pendente'
+                }}
+              </h3>
+              <div class="mt-2 text-sm space-y-1" :class="{
+                'text-green-700': activeConnectionDetails.status === 'connected',
+                'text-red-700': activeConnectionDetails.status === 'disconnected',
+                'text-yellow-700': activeConnectionDetails.status === 'pending'
+              }">
+                <p v-if="activeConnectionDetails.name">
+                  <span class="font-semibold">Nome:</span> {{ activeConnectionDetails.name }}
+                </p>
+                <p v-if="activeConnectionDetails.phoneNumber">
+                  <span class="font-semibold">Telefone:</span> {{ activeConnectionDetails.phoneNumber }}
+                </p>
+                <p v-if="activeConnectionDetails.connectedAt">
+                  <span class="font-semibold">Conectado em:</span> {{ new Date(activeConnectionDetails.connectedAt).toLocaleString() }}
+                </p>
+                <p>
+                  <span class="font-semibold">Status:</span> 
+                  <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium" :class="{
+                    'bg-green-100 text-green-800': activeConnectionDetails.status === 'connected',
+                    'bg-red-100 text-red-800': activeConnectionDetails.status === 'disconnected',
+                    'bg-yellow-100 text-yellow-800': activeConnectionDetails.status === 'pending'
+                  }">
+                    {{ 
+                      activeConnectionDetails.status === 'connected' ? 'Conectado' : 
+                      activeConnectionDetails.status === 'disconnected' ? 'Desconectado' : 
+                      'Pendente'
+                    }}
+                  </span>
+                </p>
+              </div>
+            </div>
+            <div class="ml-3">
+              <button
+                type="button"
+                @click="confirmDeleteConnection"
+                class="inline-flex items-center px-3 py-1.5 border border-transparent text-xs font-medium rounded-md text-white bg-red-600 hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-500"
+                :disabled="deleting"
+              >
+                <svg v-if="deleting" class="animate-spin -ml-1 mr-2 h-4 w-4 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                  <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                  <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                </svg>
+                {{ deleting ? 'Deletando...' : 'Deletar Conexão' }}
+              </button>
             </div>
           </div>
         </div>
 
-        <div class="text-center">
-          <p class="text-sm font-medium" :class="countdownColor">
-            {{ connectionStatus }}
+        <!-- Mensagem quando não há conexão -->
+        <div v-if="!activeConnectionDetails && !verifyingConnection && !qrCode" class="text-center py-8">
+          <p class="text-gray-500">
+            Não há conexão WhatsApp configurada. Gere um QR Code para conectar.
           </p>
         </div>
-      </div>
 
-      <!-- Alerta de conexão -->
-      <div v-if="activeConnectionDetails" class="mb-6 rounded-md p-4" :class="{
-        'bg-green-50': activeConnectionDetails.status === 'connected',
-        'bg-red-50': activeConnectionDetails.status === 'disconnected',
-        'bg-yellow-50': activeConnectionDetails.status === 'pending'
-      }">
-        <div class="flex">
-          <div class="flex-shrink-0">
-            <!-- Ícone de conectado -->
-            <svg 
-              v-if="activeConnectionDetails.status === 'connected'"
-              class="h-5 w-5 text-green-400" 
-              xmlns="http://www.w3.org/2000/svg" 
-              viewBox="0 0 20 20" 
-              fill="currentColor"
-            >
-              <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd" />
-            </svg>
-            <!-- Ícone de desconectado -->
-            <svg 
-              v-else-if="activeConnectionDetails.status === 'disconnected'"
-              class="h-5 w-5 text-red-400" 
-              xmlns="http://www.w3.org/2000/svg" 
-              viewBox="0 0 20 20" 
-              fill="currentColor"
-            >
-              <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clip-rule="evenodd" />
-            </svg>
-            <!-- Ícone de pendente -->
-            <svg 
-              v-else
-              class="h-5 w-5 text-yellow-400" 
-              xmlns="http://www.w3.org/2000/svg" 
-              viewBox="0 0 20 20" 
-              fill="currentColor"
-            >
-              <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm1-12a1 1 0 10-2 0v4a1 1 0 00.293.707l2.828 2.829a1 1 0 101.415-1.415L11 9.586V6z" clip-rule="evenodd" />
-            </svg>
-          </div>
-          <div class="ml-3 flex-grow">
-            <h3 class="text-sm font-medium" :class="{
-              'text-green-800': activeConnectionDetails.status === 'connected',
-              'text-red-800': activeConnectionDetails.status === 'disconnected',
-              'text-yellow-800': activeConnectionDetails.status === 'pending'
-            }">
-              Conexão WhatsApp {{ 
-                activeConnectionDetails.status === 'connected' ? 'Ativa' : 
-                activeConnectionDetails.status === 'disconnected' ? 'Desconectada' : 
-                'Pendente'
-              }}
-            </h3>
-            <div class="mt-2 text-sm space-y-1" :class="{
-              'text-green-700': activeConnectionDetails.status === 'connected',
-              'text-red-700': activeConnectionDetails.status === 'disconnected',
-              'text-yellow-700': activeConnectionDetails.status === 'pending'
-            }">
-              <p v-if="activeConnectionDetails.name">
-                <span class="font-semibold">Nome:</span> {{ activeConnectionDetails.name }}
-              </p>
-              <p v-if="activeConnectionDetails.phoneNumber">
-                <span class="font-semibold">Telefone:</span> {{ activeConnectionDetails.phoneNumber }}
-              </p>
-              <p v-if="activeConnectionDetails.connectedAt">
-                <span class="font-semibold">Conectado em:</span> {{ new Date(activeConnectionDetails.connectedAt).toLocaleString() }}
-              </p>
-              <p>
-                <span class="font-semibold">Status:</span> 
-                <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium" :class="{
-                  'bg-green-100 text-green-800': activeConnectionDetails.status === 'connected',
-                  'bg-red-100 text-red-800': activeConnectionDetails.status === 'disconnected',
-                  'bg-yellow-100 text-yellow-800': activeConnectionDetails.status === 'pending'
-                }">
-                  {{ 
-                    activeConnectionDetails.status === 'connected' ? 'Conectado' : 
-                    activeConnectionDetails.status === 'disconnected' ? 'Desconectado' : 
-                    'Pendente'
-                  }}
-                </span>
-              </p>
+        <!-- Modal de confirmação -->
+        <div v-if="showDeleteConfirmation" class="fixed inset-0 z-10 overflow-y-auto" aria-labelledby="modal-title" role="dialog" aria-modal="true">
+          <div class="flex items-end justify-center min-h-screen pt-4 px-4 pb-20 text-center sm:block sm:p-0">
+            <!-- Background overlay -->
+            <div class="fixed inset-0 bg-gray-500 bg-opacity-75 transition-opacity" aria-hidden="true"></div>
+
+            <!-- Modal panel -->
+            <div class="inline-block align-bottom bg-white rounded-lg px-4 pt-5 pb-4 text-left overflow-hidden shadow-xl transform transition-all sm:my-8 sm:align-middle sm:max-w-lg sm:w-full sm:p-6">
+              <div>
+                <div class="mx-auto flex items-center justify-center h-12 w-12 rounded-full bg-red-100">
+                  <svg class="h-6 w-6 text-red-600" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                  </svg>
+                </div>
+                <div class="mt-3 text-center sm:mt-5">
+                  <h3 class="text-lg leading-6 font-medium text-gray-900" id="modal-title">
+                    Confirmar exclusão
+                  </h3>
+                  <div class="mt-2">
+                    <p class="text-sm text-gray-500">
+                      Tem certeza que deseja deletar esta conexão? Esta ação não pode ser desfeita e você perderá o acesso a este dispositivo WhatsApp.
+                    </p>
+                  </div>
+                </div>
+              </div>
+              <div class="mt-5 sm:mt-6 sm:grid sm:grid-cols-2 sm:gap-3 sm:grid-flow-row-dense">
+                <button 
+                  type="button" 
+                  @click="deleteConnection"
+                  class="w-full inline-flex justify-center rounded-md border border-transparent shadow-sm px-4 py-2 bg-red-600 text-base font-medium text-white hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-500 sm:col-start-2 sm:text-sm"
+                  :disabled="deleting"
+                >
+                  {{ deleting ? 'Deletando...' : 'Deletar' }}
+                </button>
+                <button 
+                  type="button" 
+                  @click="showDeleteConfirmation = false"
+                  class="mt-3 w-full inline-flex justify-center rounded-md border border-gray-300 shadow-sm px-4 py-2 bg-white text-base font-medium text-gray-700 hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 sm:mt-0 sm:col-start-1 sm:text-sm"
+                  :disabled="deleting"
+                >
+                  Cancelar
+                </button>
+              </div>
             </div>
           </div>
-          <div class="ml-3">
-            <button
-              type="button"
-              @click="confirmDeleteConnection"
-              class="inline-flex items-center px-3 py-1.5 border border-transparent text-xs font-medium rounded-md text-white bg-red-600 hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-500"
-              :disabled="deleting"
-            >
-              <svg v-if="deleting" class="animate-spin -ml-1 mr-2 h-4 w-4 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
-                <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-              </svg>
-              {{ deleting ? 'Deletando...' : 'Deletar Conexão' }}
-            </button>
-          </div>
         </div>
-      </div>
 
-      <!-- Mensagem quando não há conexão -->
-      <div v-if="!activeConnectionDetails && !verifyingConnection && !qrCode" class="text-center py-8">
-        <p class="text-gray-500">
-          Não há conexão WhatsApp configurada. Gere um QR Code para conectar.
-        </p>
-      </div>
+        <!-- Formulário -->
+        <form v-if="!hasActiveConnection" @submit.prevent="handleGenerateQRCode" class="space-y-6">
+          <div>
+            <label for="connectionName" class="block text-sm font-medium text-gray-700">
+              Nome da Conexão
+            </label>
+            <div class="mt-1">
+              <input
+                type="text"
+                id="connectionName"
+                v-model="connectionName"
+                :disabled="loading"
+                class="block w-full rounded-md border-gray-300 shadow-sm focus:border-primary-500 focus:ring-primary-500 sm:text-sm"
+                placeholder="Ex: WhatsApp Principal"
+              />
+            </div>
+          </div>
 
-      <!-- Modal de confirmação -->
-      <div v-if="showDeleteConfirmation" class="fixed inset-0 z-10 overflow-y-auto" aria-labelledby="modal-title" role="dialog" aria-modal="true">
-        <div class="flex items-end justify-center min-h-screen pt-4 px-4 pb-20 text-center sm:block sm:p-0">
-          <!-- Background overlay -->
-          <div class="fixed inset-0 bg-gray-500 bg-opacity-75 transition-opacity" aria-hidden="true"></div>
-
-          <!-- Modal panel -->
-          <div class="inline-block align-bottom bg-white rounded-lg px-4 pt-5 pb-4 text-left overflow-hidden shadow-xl transform transition-all sm:my-8 sm:align-middle sm:max-w-lg sm:w-full sm:p-6">
-            <div>
-              <div class="mx-auto flex items-center justify-center h-12 w-12 rounded-full bg-red-100">
-                <svg class="h-6 w-6 text-red-600" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+          <!-- Mensagem de erro -->
+          <div v-if="error" class="rounded-md bg-red-50 p-4">
+            <div class="flex">
+              <div class="flex-shrink-0">
+                <svg class="h-5 w-5 text-red-400" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor">
+                  <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clip-rule="evenodd" />
                 </svg>
               </div>
-              <div class="mt-3 text-center sm:mt-5">
-                <h3 class="text-lg leading-6 font-medium text-gray-900" id="modal-title">
-                  Confirmar exclusão
+              <div class="ml-3">
+                <h3 class="text-sm font-medium text-red-800">
+                  Erro
                 </h3>
-                <div class="mt-2">
-                  <p class="text-sm text-gray-500">
-                    Tem certeza que deseja deletar esta conexão? Esta ação não pode ser desfeita e você perderá o acesso a este dispositivo WhatsApp.
-                  </p>
+                <div class="mt-2 text-sm text-red-700">
+                  <p>{{ error }}</p>
                 </div>
               </div>
             </div>
-            <div class="mt-5 sm:mt-6 sm:grid sm:grid-cols-2 sm:gap-3 sm:grid-flow-row-dense">
-              <button 
-                type="button" 
-                @click="deleteConnection"
-                class="w-full inline-flex justify-center rounded-md border border-transparent shadow-sm px-4 py-2 bg-red-600 text-base font-medium text-white hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-500 sm:col-start-2 sm:text-sm"
-                :disabled="deleting"
+          </div>
+
+          <div class="flex justify-end">
+            <button
+              type="submit"
+              :disabled="loading"
+              class="inline-flex items-center px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-primary-600 hover:bg-primary-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500 disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              <svg
+                v-if="loading"
+                class="animate-spin -ml-1 mr-2 h-4 w-4 text-white"
+                xmlns="http://www.w3.org/2000/svg"
+                fill="none"
               >
-                {{ deleting ? 'Deletando...' : 'Deletar' }}
-              </button>
-              <button 
-                type="button" 
-                @click="showDeleteConfirmation = false"
-                class="mt-3 w-full inline-flex justify-center rounded-md border border-gray-300 shadow-sm px-4 py-2 bg-white text-base font-medium text-gray-700 hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 sm:mt-0 sm:col-start-1 sm:text-sm"
-                :disabled="deleting"
-              >
-                Cancelar
-              </button>
+                <circle
+                  class="opacity-25"
+                  cx="12"
+                  cy="12"
+                  r="10"
+                  stroke="currentColor"
+                  stroke-width="4"
+                ></circle>
+                <path
+                  class="opacity-75"
+                  fill="currentColor"
+                  d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
+                ></path>
+              </svg>
+              {{ loading ? 'Gerando...' : 'Gerar QR Code' }}
+            </button>
+          </div>
+        </form>
+
+        <!-- QR Code -->
+        <div v-if="qrCode" class="mt-8">
+          <div class="rounded-lg bg-white p-6 shadow-sm border border-gray-200">
+            <h2 class="text-lg font-medium text-gray-900 mb-4">QR Code Gerado</h2>
+            <div class="flex justify-center">
+              <img
+                :src="qrCode"
+                alt="QR Code para conexão do WhatsApp"
+                class="max-w-full h-auto"
+              />
             </div>
+            <p class="mt-4 text-sm text-gray-500 text-center">
+              Escaneie este QR Code com seu WhatsApp para estabelecer a conexão
+            </p>
           </div>
         </div>
       </div>
-
-      <!-- Formulário -->
-      <form v-if="!hasActiveConnection" @submit.prevent="handleGenerateQRCode" class="space-y-6">
-        <div>
-          <label for="connectionName" class="block text-sm font-medium text-gray-700">
-            Nome da Conexão
-          </label>
-          <div class="mt-1">
-            <input
-              type="text"
-              id="connectionName"
-              v-model="connectionName"
-              :disabled="loading"
-              class="block w-full rounded-md border-gray-300 shadow-sm focus:border-primary-500 focus:ring-primary-500 sm:text-sm"
-              placeholder="Ex: WhatsApp Principal"
-            />
-          </div>
+    </div>
+    
+    <!-- Configuração de Links SSO -->
+    <div class="bg-white shadow-sm rounded-lg mt-6">
+      <div class="px-4 py-5 sm:p-6">
+        <h2 class="text-lg font-medium text-gray-900 mb-4">Configuração de Links SSO para Relatórios</h2>
+        
+        <p class="text-sm text-gray-600 mb-4">
+          Ative esta opção para enviar automaticamente links de acesso direto ao formulário de relatório para os líderes toda segunda-feira às 9h.
+          Os links são válidos até quarta-feira às 23:59.
+        </p>
+        
+        <div v-if="ssoLinkConfig.error" class="mb-4 bg-red-50 p-3 rounded-md">
+          <p class="text-sm text-red-700">{{ ssoLinkConfig.error }}</p>
         </div>
-
-        <!-- Mensagem de erro -->
-        <div v-if="error" class="rounded-md bg-red-50 p-4">
-          <div class="flex">
-            <div class="flex-shrink-0">
-              <svg class="h-5 w-5 text-red-400" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor">
-                <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clip-rule="evenodd" />
-              </svg>
-            </div>
-            <div class="ml-3">
-              <h3 class="text-sm font-medium text-red-800">
-                Erro
-              </h3>
-              <div class="mt-2 text-sm text-red-700">
-                <p>{{ error }}</p>
-              </div>
-            </div>
-          </div>
-        </div>
-
-        <div class="flex justify-end">
-          <button
-            type="submit"
-            :disabled="loading"
-            class="inline-flex items-center px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-primary-600 hover:bg-primary-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500 disabled:opacity-50 disabled:cursor-not-allowed"
+        
+        <div class="flex items-center">
+          <button 
+            type="button"
+            class="relative inline-flex flex-shrink-0 h-6 w-11 border-2 border-transparent rounded-full cursor-pointer transition-colors ease-in-out duration-200 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500"
+            :class="ssoLinkConfig.envioLinkSsoAtivo ? 'bg-primary-600' : 'bg-gray-200'"
+            @click="toggleSsoLinkConfig"
+            :disabled="ssoLinkConfig.loading"
           >
-            <svg
-              v-if="loading"
-              class="animate-spin -ml-1 mr-2 h-4 w-4 text-white"
-              xmlns="http://www.w3.org/2000/svg"
-              fill="none"
-              viewBox="0 0 24 24"
-            >
-              <circle
-                class="opacity-25"
-                cx="12"
-                cy="12"
-                r="10"
-                stroke="currentColor"
-                stroke-width="4"
-              ></circle>
-              <path
-                class="opacity-75"
-                fill="currentColor"
-                d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
-              ></path>
-            </svg>
-            {{ loading ? 'Gerando...' : 'Gerar QR Code' }}
+            <span 
+              class="pointer-events-none inline-block h-5 w-5 rounded-full bg-white shadow transform ring-0 transition ease-in-out duration-200"
+              :class="ssoLinkConfig.envioLinkSsoAtivo ? 'translate-x-5' : 'translate-x-0'"
+            ></span>
           </button>
+          <span class="ml-3 text-sm font-medium text-gray-900">
+            {{ ssoLinkConfig.envioLinkSsoAtivo ? 'Envio automático ativado' : 'Envio automático desativado' }}
+          </span>
+          <span v-if="ssoLinkConfig.loading" class="ml-2 inline-block">
+            <svg class="animate-spin h-4 w-4 text-primary-600" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+              <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+              <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+            </svg>
+          </span>
         </div>
-      </form>
-
-      <!-- QR Code -->
-      <div v-if="qrCode" class="mt-8">
-        <div class="rounded-lg bg-white p-6 shadow-sm border border-gray-200">
-          <h2 class="text-lg font-medium text-gray-900 mb-4">QR Code Gerado</h2>
-          <div class="flex justify-center">
-            <img
-              :src="qrCode"
-              alt="QR Code para conexão do WhatsApp"
-              class="max-w-full h-auto"
-            />
-          </div>
-          <p class="mt-4 text-sm text-gray-500 text-center">
-            Escaneie este QR Code com seu WhatsApp para estabelecer a conexão
+        
+        <div class="mt-4 text-sm text-gray-600">
+          <p>
+            <strong>Importante:</strong> Para que o envio funcione corretamente, é necessário ter uma conexão WhatsApp ativa.
           </p>
         </div>
       </div>

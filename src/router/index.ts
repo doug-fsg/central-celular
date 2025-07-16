@@ -1,6 +1,7 @@
 import type { RouteLocationNormalized, NavigationGuardNext } from 'vue-router'
 import { createRouter, createWebHistory } from 'vue-router'
 import { useUserStore } from '../stores/userStore'
+import { ssoLinkService } from '../services/ssoLinkService'
 import LandingPage from '../views/LandingPage.vue'
 import LoginPage from '../views/LoginPage.vue'
 import Dashboard from '../views/Dashboard.vue'
@@ -80,13 +81,45 @@ const router = createRouter({
       name: 'configuracoes',
       component: ConfiguracoesView,
       meta: { requiresAuth: true }
+    },
+    {
+      path: '/sso/:token',
+      name: 'sso-link',
+      component: AttendanceForm,
+      meta: { requiresSSO: true }
     }
   ]
 })
 
 // Navegação Guards
-router.beforeEach((to: RouteLocationNormalized, from: RouteLocationNormalized, next: NavigationGuardNext) => {
+router.beforeEach(async (to: RouteLocationNormalized, from: RouteLocationNormalized, next: NavigationGuardNext) => {
   const userStore = useUserStore()
+  
+  // Verificar se é uma rota SSO
+  if (to.meta.requiresSSO) {
+    const token = to.params.token as string
+    
+    try {
+      // Validar o token SSO
+      const result = await ssoLinkService.validarLink(token)
+      
+      if (result.valid && result.usuario && result.token) {
+        // Autenticar o usuário com base nas informações do token
+        await userStore.loginWithSSO({ usuario: result.usuario, token: result.token });
+        
+        // Redirecionar para o formulário de presença
+        return next();
+      } else {
+        // Token inválido ou expirado
+        alert('Link expirado ou inválido. Por favor, solicite um novo link ao administrador.')
+        return next({ name: 'login' })
+      }
+    } catch (error) {
+      console.error('Erro ao validar token SSO:', error)
+      alert('Erro ao validar o link. Por favor, tente novamente ou solicite um novo link.')
+      return next({ name: 'login' })
+    }
+  }
   
   // Verifica se a rota requer autenticação
   if (to.meta.requiresAuth && !userStore.isLoggedIn) {

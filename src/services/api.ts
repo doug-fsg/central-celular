@@ -178,6 +178,11 @@ const api = {
     return fetchApi(endpoint, 'DELETE');
   },
 
+  // Método para atualizar o token no módulo da API
+  setAuthToken(newToken: string | null) {
+    token.value = newToken;
+  },
+
   // Estado da autenticação
   getToken: () => token.value,
   getUsuario: () => usuarioLogado.value,
