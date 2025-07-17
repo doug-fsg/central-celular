@@ -19,9 +19,11 @@ RUN yarn prisma generate
 COPY index.html ./
 COPY public ./public
 COPY src ./src
-COPY vite.config.ts tsconfig.json tsconfig.app.json ./
+COPY server ./server
+COPY tsconfig.json tsconfig.app.json tsconfig.node.json ./
+COPY vite.config.ts ./
 
-# Construir a aplicação
+# Construir a aplicação frontend
 RUN yarn build
 
 # Segunda etapa - imagem de produção
@@ -38,7 +40,6 @@ COPY --from=builder /app/node_modules ./node_modules
 COPY --from=builder /app/package.json ./
 COPY --from=builder /app/server ./server
 COPY --from=builder /app/prisma ./prisma
-COPY --from=builder /app/index.html ./
 
 # Definir variáveis de ambiente
 ENV NODE_ENV=production

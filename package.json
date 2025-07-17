@@ -15,7 +15,7 @@
     "prisma:studio": "prisma studio",
     "seed": "tsx server/seed.js",
     "start:dev": "concurrently \"yarn dev:server\" \"yarn dev\"",
-    "start": "concurrently \"yarn dev:server\" \"yarn preview\""
+    "start": "tsx server/index.ts"
   },
   "dependencies": {
     "@headlessui/vue": "^1.7.19",
