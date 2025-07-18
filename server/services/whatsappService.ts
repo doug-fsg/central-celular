@@ -31,17 +31,29 @@ export const whatsappService = {
     // Remove qualquer caractere não numérico
     const cleanNumber = phoneNumber.replace(/\D/g, '');
     
-    // Verifica se o número tem pelo menos 10 dígitos (2 do DDD + 8 do número)
-    if (cleanNumber.length < 10) {
-      return cleanNumber; // Retorna sem modificar se for muito curto
+    let countryCode = '';
+    let numberWithoutCountryCode = cleanNumber;
+
+    // Verifica se o número começa com 55 e tem o tamanho de um número brasileiro completo
+    if (cleanNumber.startsWith('55') && (cleanNumber.length === 12 || cleanNumber.length === 13)) {
+      countryCode = '55';
+      numberWithoutCountryCode = cleanNumber.substring(2);
+    }
+    
+    // Após remover o código do país, o número deve ter 10 ou 11 dígitos
+    if (numberWithoutCountryCode.length < 10) {
+      return cleanNumber; // Retorna o número original limpo se não corresponder ao padrão
     }
 
     // Extrai DDD e número
-    const ddd = cleanNumber.substring(0, 2);
-    const number = cleanNumber.substring(2);
+    const ddd = numberWithoutCountryCode.substring(0, 2);
+    const number = numberWithoutCountryCode.substring(2);
 
-    // Aplica a formatação e retorna DDD + número formatado
-    return ddd + this.formatPhoneNumber(ddd, number);
+    // Aplica a formatação no número
+    const formattedNumber = this.formatPhoneNumber(ddd, number);
+    
+    // Monta o número final, incluindo o código do país se ele foi removido
+    return countryCode + ddd + formattedNumber;
   },
 
   // Criar nova conexão

@@ -1,11 +1,13 @@
 import { prisma } from '../lib/prisma';
 import crypto from 'crypto';
-import { addDays, startOfWeek, endOfWeek, format } from 'date-fns';
+import { addDays, startOfWeek, endOfWeek, format, subHours } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { authService } from './authService';
+import { whatsappService } from './whatsappService';
 
 // URL do frontend
 const FRONTEND_URL = process.env.FRONTEND_URL || 'https://central-celular.vercel.app';
+const TIMEZONE_OFFSET = 3; // UTC-3 (São Paulo)
 
 export const ssoLinkService = {
   // Gerar um token único
@@ -56,14 +58,21 @@ export const ssoLinkService = {
   // Criar um link SSO para um líder
   async createSsoLink(usuarioId: number) {
     // Calcular período da semana atual (segunda a domingo)
-    const hoje = new Date();
+    const hoje = subHours(new Date(), TIMEZONE_OFFSET); // Ajusta para horário de Brasília
     const dataInicio = startOfWeek(hoje, { weekStartsOn: 1 }); // Segunda-feira
     const dataFim = endOfWeek(hoje, { weekStartsOn: 1 }); // Domingo
     
-    // Data de expiração: quarta-feira às 23:59
-    const quartaFeira = new Date(dataFim);
-    quartaFeira.setDate(dataInicio.getDate() + 2); // +2 dias a partir de segunda = quarta
+    // Data de expiração: quarta-feira às 23:59 horário de Brasília
+    const quartaFeira = new Date(dataInicio);
+    quartaFeira.setDate(quartaFeira.getDate() + 2); // Adicionar 2 dias para chegar na quarta
     quartaFeira.setHours(23, 59, 59, 999);
+
+    console.log('[SsoLinkService] Criando novo link:', {
+      hoje: format(hoje, 'dd/MM/yyyy HH:mm:ss', { locale: ptBR }),
+      dataInicio: format(dataInicio, 'dd/MM/yyyy HH:mm:ss', { locale: ptBR }),
+      dataFim: format(dataFim, 'dd/MM/yyyy HH:mm:ss', { locale: ptBR }),
+      quartaFeira: format(quartaFeira, 'dd/MM/yyyy HH:mm:ss', { locale: ptBR })
+    });
 
     // Verificar se já existe um link para este usuário nesta semana
     const existingLink = await prisma.ssoLink.findFirst({
@@ -79,11 +88,22 @@ export const ssoLinkService = {
     });
 
     if (existingLink) {
-      // Se já existe um link, retornar o existente
-      return existingLink;
+      // Se já existe um link, atualiza com um novo token e data de expiração
+      console.log('[SsoLinkService] Link existente encontrado. Atualizando com novo token e data de expiração.');
+      const token = this.generateToken();
+      
+      return prisma.ssoLink.update({
+        where: { id: existingLink.id },
+        data: {
+          token,
+          expiresAt: quartaFeira,
+          usado: false
+        }
+      });
     }
 
     // Criar novo link
+    console.log('[SsoLinkService] Nenhum link existente para esta semana. Criando um novo.');
     const token = this.generateToken();
     
     return prisma.ssoLink.create({
@@ -100,6 +120,8 @@ export const ssoLinkService = {
 
   // Verificar se um link SSO é válido
   async validateSsoLink(token: string) {
+    console.log('[SsoLinkService] Iniciando validação do token:', token);
+    
     const link = await prisma.ssoLink.findUnique({
       where: { token },
       include: {
@@ -120,9 +142,37 @@ export const ssoLinkService = {
       }
     });
 
-    // Se o link não existe ou já expirou
-    if (!link || new Date() > new Date(link.expiresAt)) {
+    if (!link) {
+      console.log('[SsoLinkService] Link não encontrado no banco de dados');
       return { valid: false, message: 'Link expirado ou inválido', usuario: null, token: null };
+    }
+
+    console.log('[SsoLinkService] Link encontrado:', {
+      id: link.id,
+      usuarioId: link.usuarioId,
+      expiresAt: format(link.expiresAt, 'dd/MM/yyyy HH:mm:ss', { locale: ptBR }),
+      usado: link.usado,
+      dataInicio: format(link.dataInicio, 'dd/MM/yyyy HH:mm:ss', { locale: ptBR }),
+      dataFim: format(link.dataFim, 'dd/MM/yyyy HH:mm:ss', { locale: ptBR })
+    });
+
+    const agora = subHours(new Date(), TIMEZONE_OFFSET); // Ajusta para horário de Brasília
+    const dataExpiracao = new Date(link.expiresAt);
+    
+    console.log('[SsoLinkService] Verificando expiração:', {
+      agora: format(agora, 'dd/MM/yyyy HH:mm:ss', { locale: ptBR }),
+      dataExpiracao: format(dataExpiracao, 'dd/MM/yyyy HH:mm:ss', { locale: ptBR }),
+      expirado: agora > dataExpiracao
+    });
+
+    if (agora > dataExpiracao) {
+      console.log('[SsoLinkService] Link expirado');
+      return { valid: false, message: 'Link expirado ou inválido', usuario: null, token: null };
+    }
+
+    if (link.usado) {
+      console.log('[SsoLinkService] Link já foi utilizado anteriormente');
+      return { valid: false, message: 'Este link já foi utilizado', usuario: null, token: null };
     }
 
     // Marcar como usado
@@ -130,6 +180,8 @@ export const ssoLinkService = {
       where: { id: link.id },
       data: { usado: true }
     });
+
+    console.log('[SsoLinkService] Link validado com sucesso para usuário:', link.usuario.nome);
 
     // Gerar um token JWT para o usuário
     const authToken = authService.generateJwtToken({
@@ -220,8 +272,13 @@ export const ssoLinkService = {
         `_Este é um link de acesso único e seguro. Não compartilhe com outras pessoas._\n\n` +
         `------------`;
 
+      // Formatar o número antes de enviar
+      const whatsappFormatado = whatsappService.formatFullPhoneNumber(usuario.whatsapp);
+      console.log('[SsoLinkService] Número original:', usuario.whatsapp);
+      console.log('[SsoLinkService] Número formatado para API:', whatsappFormatado);
+
       // Enviar mensagem via WhatsApp
-      const response = await fetch(`http://173.249.22.227:31000/v3/bot/${whatsappConnection.token}/sendText/${usuario.whatsapp}`, {
+      const response = await fetch(`http://173.249.22.227:31000/v3/bot/${whatsappConnection.token}/sendText/${whatsappFormatado}`, {
         method: 'POST',
         headers: {
           'Accept': 'application/json',

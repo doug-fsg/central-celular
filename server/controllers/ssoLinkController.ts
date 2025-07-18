@@ -85,14 +85,28 @@ export const ssoLinkController = {
     try {
       const { token } = req.params;
       
+      console.log('[SsoLinkController] Recebida requisição para validar token:', {
+        token,
+        headers: req.headers,
+        ip: req.ip
+      });
+      
       if (!token) {
+        console.log('[SsoLinkController] Token não fornecido na requisição');
         return res.status(400).json({ message: 'Token não fornecido' });
       }
 
+      console.log('[SsoLinkController] Iniciando validação do token');
       const resultado = await ssoLinkService.validateSsoLink(token);
+      console.log('[SsoLinkController] Resultado da validação:', {
+        valid: resultado.valid,
+        message: resultado.message,
+        usuarioId: resultado.usuario?.id
+      });
+
       return res.json(resultado);
     } catch (error) {
-      console.error('Erro ao validar link SSO:', error);
+      console.error('[SsoLinkController] Erro ao validar link SSO:', error);
       return res.status(500).json({ message: 'Erro ao validar link SSO' });
     }
   },
