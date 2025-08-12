@@ -6,7 +6,6 @@ import { z } from 'zod';
 // Schema de validação para criar usuário
 const criarUsuarioSchema = z.object({
   nome: z.string().min(3, 'Nome deve ter pelo menos 3 caracteres'),
-  email: z.string().email('Email inválido').optional().or(z.literal('')),
   whatsapp: z.string()
     .min(10, 'WhatsApp deve ter pelo menos 10 dígitos')
     .max(13, 'WhatsApp deve ter no máximo 13 dígitos')
@@ -20,7 +19,6 @@ const criarUsuarioSchema = z.object({
 // Schema de validação para atualizar usuário
 const atualizarUsuarioSchema = z.object({
   nome: z.string().min(3, 'Nome deve ter pelo menos 3 caracteres'),
-  email: z.string().email('Email inválido').optional().or(z.literal('')),
   whatsapp: z.string()
     .min(10, 'WhatsApp deve ter pelo menos 10 dígitos')
     .max(13, 'WhatsApp deve ter no máximo 13 dígitos')
@@ -66,7 +64,6 @@ export const listarUsuarios = async (req: Request, res: Response) => {
       select: {
         id: true,
         nome: true,
-        email: true,
         whatsapp: true,
         cargo: true,
         ativo: true,
@@ -128,7 +125,6 @@ export const obterUsuario = async (req: Request, res: Response) => {
       select: {
         id: true,
         nome: true,
-        email: true,
         whatsapp: true,
         cargo: true,
         ativo: true,
@@ -161,18 +157,7 @@ export const criarUsuario = async (req: Request, res: Response) => {
       return res.status(401).json({ message: 'Conta não identificada' });
     }
 
-    if (dados.email) {
-      const usuarioExistente = await prisma.usuario.findFirst({
-        where: {
-          email: dados.email,
-          accountId: accountId
-        }
-      });
 
-      if (usuarioExistente) {
-        return res.status(400).json({ message: 'Já existe um usuário com este email' });
-      }
-    }
 
     if (dados.whatsapp) {
       const usuarioExistente = await prisma.usuario.findFirst({
@@ -191,7 +176,6 @@ export const criarUsuario = async (req: Request, res: Response) => {
     const novoUsuario = await prisma.usuario.create({
       data: {
         nome: dados.nome,
-        email: dados.email || null,
         whatsapp: dados.whatsapp,
         cargo: dados.cargo,
         senha: dados.senha ? await bcrypt.hash(dados.senha, 10) : null,
@@ -233,21 +217,9 @@ export const atualizarUsuario = async (req: Request, res: Response) => {
       return res.status(404).json({ message: 'Usuário não encontrado' });
     }
 
-    // Verificar se o email já está em uso por outro usuário
-    if (dados.email !== usuarioExistente.email) {
-      const emailExistente = await prisma.usuario.findUnique({ 
-        where: { email: dados.email } 
-      });
-      
-      if (emailExistente) {
-        return res.status(400).json({ message: 'Email já está em uso' });
-      }
-    }
-
     // Dados para atualização
     const dadosAtualizacao: any = {
       nome: dados.nome,
-      email: dados.email || null,
       whatsapp: dados.whatsapp,
       cargo: dados.cargo
     };

@@ -7,13 +7,9 @@ import { authService } from '../services/authService';
 
 // Schema de validação para login
 const loginSchema = z.object({
-  email: z.string().email().optional(),
-  whatsapp: z.string().optional(),
+  whatsapp: z.string().min(8, 'Número de WhatsApp inválido'),
   senha: z.string(),
   accountId: z.number().optional()
-}).refine(data => data.email || data.whatsapp, {
-  message: "Email ou WhatsApp deve ser fornecido",
-  path: ['email']
 });
 
 // Schema para solicitação de OTP
@@ -37,14 +33,10 @@ const createPasswordSchema = z.object({
 // Schema de validação para registro
 const registroSchema = z.object({
   nome: z.string().min(3, 'Nome deve ter pelo menos 3 caracteres'),
-  email: z.string().email('Email inválido').optional(),
-  whatsapp: z.string().optional(),
+  whatsapp: z.string().min(8, 'Número de WhatsApp inválido'),
   senha: z.string().min(6, 'Senha deve ter pelo menos 6 caracteres'),
   cargo: z.string().min(2, 'Cargo deve ter pelo menos 2 caracteres'),
   accountId: z.number().optional()
-}).refine(data => data.email || data.whatsapp, {
-  message: "Email ou WhatsApp deve ser fornecido",
-  path: ['email']
 });
 
 // Função auxiliar para gerar token JWT
@@ -66,12 +58,11 @@ export const authController = {
         return res.status(400).json({ errors: validatedData.error.errors });
       }
       
-      const { email, whatsapp, senha, accountId } = validatedData.data;
+      const { whatsapp, senha, accountId } = validatedData.data;
       
       try {
         // Tentar login
         const result = await authService.login({
-          email,
           whatsapp,
           senha,
           accountId

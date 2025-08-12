@@ -82,10 +82,9 @@ function toggleDropdown() {
           <div class="flex-shrink-0 flex items-center">
             <router-link 
               :to="userStore.isAdmin ? { name: 'admin-dashboard' } : { name: 'home' }" 
-              class="flex flex-col items-start"
+              class="flex items-center gap-2"
             >
-              <span class="text-primary-600 font-bold text-xl"></span>
-              <span v-if="userStore.isAdmin" class="text-xs text-gray-500">Painel Administrativo</span>
+              <img src="/src/assets/brand/logo-icon.png" alt="Aprisco" class="h-7 w-7" />
             </router-link>
           </div>
           <div v-if="!userStore.isAdmin" class="ml-6 flex space-x-8">

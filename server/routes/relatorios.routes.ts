@@ -6,15 +6,21 @@ import {
   atualizarRelatorio,
   registrarPresenca,
   obterEstatisticas,
-  enviarRelatorio
+  enviarRelatorio,
+  obterFrequenciaPorData
 } from '../controllers/relatorios.controller';
 import { Request, Response, NextFunction } from 'express';
+import { accountMiddleware } from '../middlewares/accountMiddleware';
 
 const router = Router();
+
+// Aplicar middleware de account em todas as rotas
+router.use(accountMiddleware);
 
 // Rotas para estatísticas
 router.get('/estatisticas/lideres/:mes/:ano', obterEstatisticas);
 router.get('/estatisticas/:celulaId', obterEstatisticas);
+router.get('/frequencia-por-data', obterFrequenciaPorData);
 
 // Rotas básicas para relatórios
 router.get('/', listarRelatorios);

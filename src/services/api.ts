@@ -3,12 +3,12 @@ import { ref } from 'vue';
 // Configurações da API
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3000/api';
 
-// Interface para erros da API
-interface ApiError {
-  message: string;
-  errors?: any[];
-  status?: number;
-}
+// Interface para erros da API (não removida para compatibilidade futura)
+// interface ApiError {
+//   message: string;
+//   errors?: any[];
+//   status?: number;
+// }
 
 // Estado global para token e usuário logado
 const token = ref<string | null>(localStorage.getItem('token'));
@@ -118,27 +118,55 @@ const fetchApi = async (
 // Métodos simplificados para diferentes tipos de requisições
 const api = {
   // Autenticação
-  async login(emailOrWhatsapp: string, senha: string) {
-    // Detectar se é email ou WhatsApp
-    const isEmail = emailOrWhatsapp.includes('@');
-    const data = isEmail
-      ? await fetchApi('/auth/login', 'POST', { email: emailOrWhatsapp, senha }, false)
-      : await fetchApi('/auth/login', 'POST', { whatsapp: emailOrWhatsapp, senha }, false);
+  async login(whatsapp: string, senha: string) {
+    console.log('[API] Iniciando login com WhatsApp:', { whatsapp });
     
+    const digits = whatsapp.replace(/\D/g, '')
+    
+    // Lógica para normalizar número brasileiro:
+    // - Se tem 13 dígitos e começa com 55: já está completo (55 + DDD + número)
+    // - Se tem 12 dígitos e começa com 55: já está completo (55 + DDD + número sem 9)
+    // - Se tem 11 dígitos: é DDD + número, adicionar 55
+    // - Se tem 10 dígitos: é DDD + número sem 9, adicionar 55
+    let normalized;
+    if ((digits.length === 13 || digits.length === 12) && digits.startsWith('55')) {
+      normalized = digits; // Já tem DDI 55
+    } else if (digits.length === 11 || digits.length === 10) {
+      normalized = `55${digits}`; // Adicionar DDI 55
+    } else {
+      normalized = digits; // Manter como está para outros casos
+    }
+    
+    console.log('[API] Normalizando WhatsApp:', { original: whatsapp, digits, normalized });
+    const data = await fetchApi('/auth/login', 'POST', { whatsapp: normalized, senha }, false);
+    
+    console.log('[API] Login bem-sucedido, salvando sessão');
     salvarSessao(data);
     return data;
   },
 
   async requestOtp(whatsapp: string) {
-    return fetchApi('/auth/request-otp', 'POST', { whatsapp }, false);
+    console.log('[API] Solicitando OTP para:', whatsapp);
+    const digits = whatsapp.replace(/\D/g, '');
+    const normalized = `+55${digits}`;
+    console.log('[API] Normalizando para OTP:', { original: whatsapp, digits, normalized });
+    return fetchApi('/auth/request-otp', 'POST', { whatsapp: normalized }, false);
   },
 
   async verifyOtp(whatsapp: string, code: string) {
-    return fetchApi('/auth/verify-otp', 'POST', { whatsapp, code }, false);
+    console.log('[API] Verificando OTP para:', whatsapp, 'código:', code);
+    const digits = whatsapp.replace(/\D/g, '');
+    const normalized = `+55${digits}`;
+    console.log('[API] Normalizando para verificação OTP:', { original: whatsapp, digits, normalized });
+    return fetchApi('/auth/verify-otp', 'POST', { whatsapp: normalized, code }, false);
   },
 
   async createPassword(whatsapp: string, nome: string, senha: string) {
-    const data = await fetchApi('/auth/create-password', 'POST', { whatsapp, nome, senha }, false);
+    console.log('[API] Criando senha para:', whatsapp, 'nome:', nome);
+    const digits = whatsapp.replace(/\D/g, '');
+    const normalized = `+55${digits}`;
+    console.log('[API] Normalizando para criação de senha:', { original: whatsapp, digits, normalized });
+    const data = await fetchApi('/auth/create-password', 'POST', { whatsapp: normalized, nome, senha }, false);
     salvarSessao(data);
     return data;
   },
@@ -155,6 +183,10 @@ const api = {
       limparSessao();
       return { valido: false };
     }
+  },
+
+  async alterarSenha(userId: number, senhaAtual: string, novaSenha: string) {
+    return fetchApi(`/usuarios/${userId}/senha`, 'POST', { senhaAtual, novaSenha });
   },
 
   // CRUD Genérico

@@ -198,7 +198,7 @@ const celulaService = {
   async atualizarMembro(celulaId: number, membroId: number, dadosMembro: NovoMembroInput) {
     try {
       const response = await api.patch(`/celulas/${celulaId}/membros/${membroId}`, dadosMembro);
-      return response.data;
+      return response;
     } catch(error) {
       console.error('Erro ao atualizar membro:', error);
       throw error;

@@ -12,7 +12,7 @@ const props = defineProps<{
 
 const emit = defineEmits<{
   (e: 'close'): void
-  (e: 'save', data: Partial<Usuario>): void
+  (e: 'save', data: Partial<Usuario> & { criarCelulaApos?: boolean }): void
 }>()
 
 // Lista de cargos permitidos
@@ -26,10 +26,12 @@ const cargosPermitidos = [
 const form = ref({
   id: props.user?.id,
   nome: props.user?.nome || '',
-  email: props.user?.email || '',
   whatsapp: props.user?.whatsapp || '',
   cargo: props.user?.cargo || 'LIDER'
 })
+
+// Opção para criar célula após criar líder
+const criarCelulaApos = ref(false)
 
 // Erro de validação do telefone
 const phoneError = ref<string | null>(null)
@@ -40,7 +42,6 @@ watch(() => props.user, (newUser) => {
     form.value = {
       id: newUser.id,
       nome: newUser.nome || '',
-      email: newUser.email || '',
       whatsapp: newUser.whatsapp || '',
       cargo: newUser.cargo || 'LIDER'
     }
@@ -48,7 +49,6 @@ watch(() => props.user, (newUser) => {
     form.value = {
       id: undefined,
       nome: '',
-      email: '',
       whatsapp: '',
       cargo: 'LIDER'
     }
@@ -58,7 +58,8 @@ watch(() => props.user, (newUser) => {
 // Salvar usuário
 const handleSubmit = () => {
   const dadosParaSalvar = {
-    ...form.value
+    ...form.value,
+    criarCelulaApos: criarCelulaApos.value
   }
 
   // Validar WhatsApp
@@ -135,33 +136,14 @@ const handleSubmit = () => {
               <PhoneInput
                 v-model="form.whatsapp"
                 @error="phoneError = $event"
+                mode="admin"
               />
               <p class="mt-1 text-sm text-gray-500">
                 O usuário receberá um código de acesso neste número para criar sua senha
               </p>
             </div>
 
-            <!-- Email (opcional) -->
-            <div>
-              <label for="email" class="block text-sm font-medium text-gray-700 mb-1">
-                Email <span class="text-gray-400">(opcional)</span>
-              </label>
-              <div class="relative rounded-md shadow-sm">
-                <div class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                  <svg class="h-5 w-5 text-gray-400" viewBox="0 0 20 20" fill="currentColor">
-                    <path d="M2.003 5.884L10 9.882l7.997-3.998A2 2 0 0016 4H4a2 2 0 00-1.997 1.884z" />
-                    <path d="M18 8.118l-8 4-8-4V14a2 2 0 002 2h12a2 2 0 002-2V8.118z" />
-                  </svg>
-                </div>
-                <input
-                  type="email"
-                  id="email"
-                  v-model="form.email"
-                  class="pl-10 focus:ring-primary-500 focus:border-primary-500 block w-full sm:text-sm border-gray-300 rounded-md"
-                  placeholder="Digite o email (opcional)"
-                />
-              </div>
-            </div>
+
 
             <!-- Cargo -->
             <div>
@@ -184,6 +166,17 @@ const handleSubmit = () => {
                     {{ cargo }}
                   </option>
                 </select>
+              </div>
+            </div>
+
+            <!-- Opção: criar célula após salvar (apenas para LIDER em criação) -->
+            <div v-if="mode === 'create' && form.cargo === 'LIDER'" class="flex items-start">
+              <div class="flex items-center h-5">
+                <input id="criar-celula" type="checkbox" v-model="criarCelulaApos" class="h-4 w-4 text-primary-600 border-gray-300 rounded" />
+              </div>
+              <div class="ml-3 text-sm">
+                <label for="criar-celula" class="font-medium text-gray-700">Criar célula para este líder após salvar</label>
+                <p class="text-gray-500">Abrirá o formulário de nova célula já com o líder selecionado.</p>
               </div>
             </div>
           </div>

@@ -41,7 +41,6 @@ export interface AdminStats {
 export interface Usuario {
   id: number;
   nome: string;
-  email?: string;
   whatsapp: string;
   cargo: string;
   ativo: boolean;
@@ -121,10 +120,9 @@ export const adminService = {
   async criarUsuario(dados: Omit<Usuario, 'id' | 'status'>): Promise<Usuario> {
     try {
       // Garantir que o whatsapp tenha apenas números
-      const { whatsapp, nome, email, cargo } = dados
+      const { whatsapp, nome, cargo } = dados
       const dadosFormatados = {
         nome,
-        email,
         cargo,
         whatsapp: whatsapp.replace(/\D/g, '')
       }
@@ -166,11 +164,13 @@ export const adminService = {
     }
   },
 
-  // Listar células com paginação
-  async listarCelulas(page: number = 1, limit: number = 10) {
+  // Listar células com paginação (opcionalmente filtrando por líder)
+  async listarCelulas(page: number = 1, limit: number = 10, liderId?: number) {
     console.log('[adminService] Iniciando busca de células:', { page, limit });
     try {
-      const response = await api.get(`/admin/celulas?page=${page}&limit=${limit}`);
+      const params = new URLSearchParams({ page: String(page), limit: String(limit) })
+      if (liderId) params.append('lider', String(liderId))
+      const response = await api.get(`/admin/celulas?${params.toString()}`);
       console.log('[adminService] Resposta da API:', response);
       
       // Verificar se a resposta é válida
@@ -278,5 +278,17 @@ export const adminService = {
   async excluirCelula(id: number) {
     const response = await api.patch(`/admin/celulas/${id}/desativar`, { ativo: false });
     return response.data;
+  }
+  ,
+  // Listar membros de uma célula
+  async listarMembrosCelula(celulaId: number) {
+    // Endpoint público autenticado para membros da célula
+    return api.get(`/celulas/${celulaId}/membros`)
+  }
+  ,
+  // Obter estatísticas de frequência de uma célula (últimos dias/relatórios)
+  async obterEstatisticasFrequencia(celulaId: number) {
+    // Reaproveita controller de relatorios: GET /api/relatorios/estatisticas/:celulaId
+    return api.get(`/relatorios/estatisticas/${celulaId}`)
   }
 }; 

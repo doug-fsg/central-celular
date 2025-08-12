@@ -32,10 +32,12 @@ adminRouter.patch('/usuarios/:id/status', ativarDesativarUsuario);
 adminRouter.delete('/usuarios/:id', async (req, res) => {
   try {
     const { id } = req.params;
+    const userId = Number(id)
 
     // Verificar se usuário existe
     const usuario = await prisma.usuario.findUnique({
-      where: { id: Number(id) }
+      where: { id: userId },
+      select: { id: true, nome: true, cargo: true }
     });
 
     if (!usuario) {
@@ -47,10 +49,47 @@ adminRouter.delete('/usuarios/:id', async (req, res) => {
       return res.status(400).json({ message: 'Não é possível excluir o próprio usuário' });
     }
 
-    // Excluir usuário
-    await prisma.usuario.delete({
-      where: { id: Number(id) }
-    });
+    await prisma.$transaction(async (tx) => {
+      // 1) Se for co-líder, remover referência de coLiderId
+      await tx.celula.updateMany({
+        where: { coLiderId: userId },
+        data: { coLiderId: null }
+      })
+
+      // 2) Se for supervisor de células, remover referência de supervisorId
+      await tx.celula.updateMany({
+        where: { supervisorId: userId },
+        data: { supervisorId: null }
+      })
+
+      // 3) Se for líder de célula, deletar celulas e dados relacionados
+      const celulasLideradas = await tx.celula.findMany({
+        where: { liderId: userId },
+        select: { id: true }
+      })
+
+      if (celulasLideradas.length > 0) {
+        const celulaIds = celulasLideradas.map(c => c.id)
+
+        // Deletar relatórios (presenças cairão por cascade via onDelete: Cascade em Presenca.relatorio)
+        await tx.relatorio.deleteMany({ where: { celulaId: { in: celulaIds } } })
+
+        // Deletar membros
+        await tx.membro.deleteMany({ where: { celulaId: { in: celulaIds } } })
+
+        // Deletar células
+        await tx.celula.deleteMany({ where: { id: { in: celulaIds } } })
+      }
+
+      // 4) Apagar relacionamentos diretos do usuário
+      await tx.notificacao.deleteMany({ where: { usuarioId: userId } })
+      await tx.conquista.deleteMany({ where: { usuarioId: userId } })
+      await tx.ssoLink.deleteMany({ where: { usuarioId: userId } })
+      await tx.usuarioConfig.deleteMany({ where: { usuarioId: userId } })
+
+      // 5) Excluir usuário
+      await tx.usuario.delete({ where: { id: userId } })
+    })
 
     res.json({ message: 'Usuário excluído com sucesso' });
   } catch (error) {

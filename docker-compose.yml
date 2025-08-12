@@ -1,4 +1,4 @@
-version: '3.8'
+version: '3.7'
 
 services:
   frontend:
@@ -17,7 +17,7 @@ services:
     ports:
       - "33000:3000"  # apenas porta do backend
     environment:
-      - DATABASE_URL=postgresql://postgres:84476291@db:5432/central_db
+      - DATABASE_URL=postgresql://postgres:84476291@db:5433/central_db
       - NODE_ENV=production
       - HOST=0.0.0.0
       - FRONTEND_URL=https://seu-dominio-de-producao

@@ -1,7 +1,6 @@
 <!-- PhoneInput.vue -->
 <script setup lang="ts">
 import { ref, watch } from 'vue'
-import { parsePhoneNumber, AsYouType } from 'libphonenumber-js'
 
 const props = defineProps<{
   modelValue: string
@@ -16,57 +15,50 @@ const emit = defineEmits<{
 const phoneInput = ref('')
 const error = ref<string | null>(null)
 
-// Atualizar número quando o usuário digita
+// Funções de formatação BR (sem DDI +55 na UI)
+function formatBR(value: string): string {
+  const digits = value.replace(/\D/g, '').slice(0, 11)
+  const ddd = digits.slice(0, 2)
+  const rest = digits.slice(2)
+  if (digits.length === 0) return ''
+  if (digits.length <= 2) return `(${ddd}`
+  if (digits.length <= 6) return `(${ddd}) ${rest}`
+  if (digits.length === 10) return `(${ddd}) ${rest.slice(0, 4)}-${rest.slice(4)}`
+  return `(${ddd}) ${rest.slice(0, 5)}-${rest.slice(5)}`
+}
+
+function validateBR(value: string): string | null {
+  const digits = value.replace(/\D/g, '')
+  // Aceita 10 (fixo) ou 11 (celular com nono dígito)
+  if (digits.length === 10 || digits.length === 11) return null
+  if (digits.length === 0) return null
+  return 'Número de WhatsApp inválido'
+}
+
+// Atualizar número quando o usuário digita (somente BR nacional)
 const updatePhoneNumber = (e: Event) => {
   const input = e.target as HTMLInputElement
-  let value = input.value
-  
-  // Garantir que o número comece com +
-  if (!value.startsWith('+')) {
-    value = '+' + value
-  }
-  
-  // Formatar número enquanto digita
-  const formatter = new AsYouType()
-  phoneInput.value = formatter.input(value)
-  
-  try {
-    // Tentar criar um número de telefone completo
-    const phoneNumber = parsePhoneNumber(phoneInput.value)
-    
-    if (phoneNumber?.isValid()) {
-      error.value = null
-      // Emitir o número no formato apropriado dependendo do modo
-      if (props.mode === 'admin') {
-        // Para o admin, enviar apenas os dígitos nacionais
-        emit('update:modelValue', phoneNumber.nationalNumber)
-      } else {
-        // Para login e outros casos, enviar no formato internacional
-        emit('update:modelValue', phoneNumber.format('E.164'))
-      }
-    } else {
-      error.value = 'Número de WhatsApp inválido'
-    }
-  } catch (err) {
-    error.value = 'Formato inválido'
-  }
-  
+  const raw = input.value
+  phoneInput.value = formatBR(raw)
+
+  const digits = raw.replace(/\D/g, '').slice(0, 11)
+  error.value = validateBR(raw)
+
+  // Emitir somente dígitos nacionais (sem +55)
+  emit('update:modelValue', digits)
   emit('error', error.value)
 }
 
 // Inicializar o componente com um valor existente
 watch(() => props.modelValue, (newValue) => {
-  if (newValue) {
-    try {
-      // Se o valor não começar com +, assumimos que é um número nacional do Brasil
-      const phoneNumber = parsePhoneNumber(newValue.startsWith('+') ? newValue : `+55${newValue}`)
-      if (phoneNumber) {
-        phoneInput.value = phoneNumber.formatInternational()
-      }
-    } catch (err) {
-      // Ignorar erro se o número não puder ser parseado
-    }
+  if (newValue == null) {
+    phoneInput.value = ''
+    error.value = null
+    return
   }
+  const digits = String(newValue).replace(/\D/g, '').slice(0, 11)
+  phoneInput.value = formatBR(digits)
+  error.value = validateBR(digits)
 }, { immediate: true })
 </script>
 
@@ -79,7 +71,7 @@ watch(() => props.modelValue, (newValue) => {
         :value="phoneInput"
         @input="updatePhoneNumber"
         class="pl-3 pr-10 py-2 w-full border border-gray-300 rounded-md focus:ring-primary-500 focus:border-primary-500"
-        placeholder="+55 11 99999-9999"
+        placeholder="(11) 99999-9999"
       />
     </div>
 

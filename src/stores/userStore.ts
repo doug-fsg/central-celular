@@ -51,6 +51,17 @@ export const useUserStore = defineStore('user', () => {
     }
   }
 
+  function updateProfile(updates: Partial<UserProfile>) {
+    if (!user.value) return;
+
+    const updated: UserProfile = {
+      ...user.value,
+      ...updates,
+    } as UserProfile;
+
+    setUser(updated);
+  }
+
   function setToken(newToken: string | null) {
     token.value = newToken;
     api.setAuthToken(newToken); // Atualiza o token no módulo da API
@@ -63,18 +74,22 @@ export const useUserStore = defineStore('user', () => {
 
   async function login(loginData: any) {
     try {
+      console.log('[UserStore] Iniciando processo de login:', { whatsapp: loginData.whatsapp });
       loading.value = true;
-      const response = await api.login(loginData.emailOrWhatsapp, loginData.senha);
+      const response = await api.login(loginData.whatsapp, loginData.senha);
+      console.log('[UserStore] Resposta da API recebida, configurando usuário e token');
       setUser(response.usuario);
       setToken(response.token);
       
       // Inicializar stores após login
+      console.log('[UserStore] Inicializando stores dependentes...');
       const memberStore = useMemberStore();
       await memberStore.carregarMembros();
       
+      console.log('[UserStore] Login concluído com sucesso');
       return true;
     } catch (error) {
-      console.error('Erro no login:', error);
+      console.error('[UserStore] Erro no login:', error);
       return false;
     } finally {
       loading.value = false;
@@ -134,6 +149,7 @@ export const useUserStore = defineStore('user', () => {
     login,
     loginWithSSO,
     logout,
-    loadUserFromStorage
+    loadUserFromStorage,
+    updateProfile
   };
 }); 

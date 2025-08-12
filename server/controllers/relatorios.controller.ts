@@ -46,17 +46,30 @@ export const listarRelatorios = async (req: Request, res: Response) => {
 
         const relatoriosComContagem = await Promise.all(
             relatorios.map(async (rel) => {
-                const presentes = await prisma.presenca.count({
-                    where: { 
-                        relatorioId: rel.id,
-                        status: 1,
-                    },
-                });
+                // Contagens por tipo (0 = célula, 1 = culto)
+                const [
+                  presentesCelula,
+                  totalCelula,
+                  presentesCulto,
+                  totalCulto,
+                ] = await Promise.all([
+                  prisma.presenca.count({ where: { relatorioId: rel.id, status: 1, tipo: 0 } }),
+                  prisma.presenca.count({ where: { relatorioId: rel.id,             tipo: 0 } }),
+                  prisma.presenca.count({ where: { relatorioId: rel.id, status: 1, tipo: 1 } }),
+                  prisma.presenca.count({ where: { relatorioId: rel.id,             tipo: 1 } }),
+                ]);
+
                 const { _count, ...resto } = rel;
                 return {
                     ...resto,
-                    presentes,
+                    // Mantém campos antigos para compatibilidade
+                    presentes: presentesCelula + presentesCulto,
                     total: _count.presencas,
+                    // Novos campos específicos por tipo
+                    presentesCelula,
+                    totalCelula,
+                    presentesCulto,
+                    totalCulto,
                 };
             })
         );
@@ -227,9 +240,10 @@ export const marcarTodosMembros = async (req: Request, res: Response) => {
     const operacoes = membros.map(membro => 
         prisma.presenca.upsert({
             where: {
-                relatorioId_membroId: {
+                relatorioId_membroId_tipo: {
                     relatorioId: Number(id),
                     membroId: membro.id,
+                    tipo: 0, // Célula por padrão
                 },
             },
             update: { status: Number(status) },
@@ -237,6 +251,7 @@ export const marcarTodosMembros = async (req: Request, res: Response) => {
                 relatorioId: Number(id),
                 membroId: membro.id,
                 status: Number(status),
+                tipo: 0, // Célula por padrão
             },
         })
     );
@@ -301,6 +316,110 @@ export const enviarRelatorio = async (req: Request, res: Response) => {
   } catch (error) {
     console.error('Erro ao enviar relatório:', error);
     res.status(500).json({ message: 'Erro ao enviar relatório' });
+  }
+};
+
+// Obter relatório de frequência por data (Célula x Culto)
+export const obterFrequenciaPorData = async (req: Request, res: Response) => {
+  try {
+    const { dataInicio, dataFim, celulaId } = req.query;
+
+    console.log('[DEBUG] obterFrequenciaPorData - Parâmetros:', { dataInicio, dataFim, celulaId });
+
+    if (!dataInicio || !dataFim) {
+      return res.status(400).json({ message: 'Parâmetros dataInicio e dataFim são obrigatórios' });
+    }
+
+    const inicio = new Date(dataInicio as string);
+    const fim = new Date(dataFim as string);
+
+    console.log('[DEBUG] obterFrequenciaPorData - Datas convertidas:', { inicio, fim });
+
+    // Primeiro vamos verificar se há relatórios de qualquer status
+    const todosRelatorios = await prisma.relatorio.findMany({
+      where: {
+        dataInicio: { gte: inicio },
+        dataFim: { lte: fim }
+      },
+      select: { id: true, status: true, evento: true, dataInicio: true, celulaId: true }
+    });
+
+    console.log('[DEBUG] obterFrequenciaPorData - Todos os relatórios:', todosRelatorios);
+
+    const whereClause: any = {
+      // Temporariamente incluir rascunhos para debug
+      status: { in: [0, 1] }, // 0 = rascunho, 1 = enviado
+      dataInicio: { gte: inicio },
+      dataFim: { lte: fim }
+    };
+
+    // Filtrar por célula específica se fornecido
+    if (celulaId) {
+      whereClause.celulaId = Number(celulaId);
+    }
+
+    console.log('[DEBUG] obterFrequenciaPorData - Where clause:', whereClause);
+
+    const relatorios = await prisma.relatorio.findMany({
+      where: whereClause,
+      include: {
+        celula: { select: { nome: true } },
+        presencas: true
+      },
+      orderBy: { dataInicio: 'asc' }
+    });
+
+    console.log('[DEBUG] obterFrequenciaPorData - Relatórios encontrados:', relatorios.length);
+
+    // Agrupar dados por data
+    const dadosPorData = new Map();
+
+    for (const relatorio of relatorios) {
+      const dataKey = relatorio.dataInicio.toISOString().split('T')[0];
+      
+      if (!dadosPorData.has(dataKey)) {
+        dadosPorData.set(dataKey, {
+          data: dataKey,
+          celula: { presentes: 0, total: 0 },
+          culto: { presentes: 0, total: 0 }
+        });
+      }
+
+      const dadosData = dadosPorData.get(dataKey);
+      
+      // Contar presenças por tipo
+      const presencasCelula = relatorio.presencas.filter(p => p.tipo === 0);
+      const presencasCulto = relatorio.presencas.filter(p => p.tipo === 1);
+
+      if (relatorio.evento === 0) { // Célula
+        dadosData.celula.presentes += presencasCelula.filter(p => p.status === 1).length;
+        dadosData.celula.total += presencasCelula.length;
+      } else if (relatorio.evento === 1) { // Culto
+        dadosData.culto.presentes += presencasCulto.filter(p => p.status === 1).length;
+        dadosData.culto.total += presencasCulto.length;
+      }
+    }
+
+    // Converter para array e ordenar por data
+    const resultado = Array.from(dadosPorData.values()).map(dados => ({
+      data: dados.data,
+      formatDate: new Date(dados.data).toLocaleDateString('pt-BR', { 
+        day: '2-digit', 
+        month: '2-digit' 
+      }),
+      celula: dados.celula.presentes,
+      culto: dados.culto.presentes,
+      totalCelula: dados.celula.total,
+      totalCulto: dados.culto.total
+    })).sort((a, b) => a.data.localeCompare(b.data));
+
+    console.log('[DEBUG] obterFrequenciaPorData - Resultado final:', resultado);
+    console.log('[DEBUG] obterFrequenciaPorData - Enviando resposta...');
+
+    res.json(resultado);
+  } catch (error) {
+    console.error('Erro ao obter frequência por data:', error);
+    res.status(500).json({ message: 'Erro ao obter frequência por data' });
   }
 };
 

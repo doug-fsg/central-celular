@@ -42,12 +42,7 @@ const validateField = (field: string, value: any) => {
         return false
       }
       break
-    case 'supervisor_id':
-      if (!value) {
-        errors.value[field] = 'Selecione um supervisor'
-        return false
-      }
-      break
+    // supervisor_id agora é opcional
     case 'endereco':
       if (!value || value.trim().length < 5) {
         errors.value[field] = 'Endereço deve ter pelo menos 5 caracteres'
@@ -73,7 +68,7 @@ const validateField = (field: string, value: any) => {
 }
 
 const validateForm = () => {
-  const fields = ['nome', 'lider_id', 'supervisor_id', 'endereco', 'diaSemana', 'horario']
+  const fields = ['nome', 'lider_id', 'endereco', 'diaSemana', 'horario']
   let isValid = true
   
   fields.forEach(field => {
@@ -116,26 +111,28 @@ const handleSubmit = () => {
   }
 
   const liderId = parseInt(formData.value.lider_id)
-  const supervisorId = parseInt(formData.value.supervisor_id)
+  const supervisorId = formData.value.supervisor_id ? parseInt(formData.value.supervisor_id) : undefined
   
   if (isNaN(liderId)) {
     errors.value.lider_id = 'ID do líder inválido'
     return
   }
 
-  if (isNaN(supervisorId)) {
+  if (formData.value.supervisor_id && isNaN(supervisorId as number)) {
     errors.value.supervisor_id = 'ID do supervisor inválido'
     return
   }
 
-  const data = {
+  const data: any = {
     nome: formData.value.nome.trim(),
     endereco: formData.value.endereco.trim(),
     diaSemana: formData.value.diaSemana,
     horario: formData.value.horario,
     liderId: liderId,
-    supervisorId: supervisorId,
-    supervisor_id: supervisorId
+  }
+  if (typeof supervisorId === 'number') {
+    data.supervisorId = supervisorId
+    data.supervisor_id = supervisorId
   }
 
   console.log('Dados do formulário para salvar:', data)
@@ -242,15 +239,13 @@ const availableOnlyLeaders = computed(() => {
 
             <!-- Supervisor -->
             <div>
-              <label for="supervisor" class="block text-sm font-medium text-gray-700">
-                Supervisor <span class="text-red-500">*</span>
-              </label>
+            <label for="supervisor" class="block text-sm font-medium text-gray-700">
+              Supervisor (opcional)
+            </label>
               <div class="relative mt-1">
                 <select
                   id="supervisor"
                   v-model="formData.supervisor_id"
-                  @blur="validateField('supervisor_id', formData.supervisor_id)"
-                  required
                   :class="getFieldClass('supervisor_id')"
                 >
                   <option value="" disabled>Selecione um supervisor</option>

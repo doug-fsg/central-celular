@@ -5,8 +5,7 @@ import { otpService } from './otpService';
 import { whatsappService } from './whatsappService';
 
 interface LoginData {
-  email?: string;
-  whatsapp?: string;
+  whatsapp: string;
   senha: string;
   accountId?: number;
 }
@@ -52,20 +51,14 @@ export const authService = {
     );
   },
 
-  async login({ email, whatsapp, senha, accountId }: LoginData): Promise<LoginResult> {
-    console.log(`[AuthService] Iniciando login - ${email ? 'Email: ' + email : 'WhatsApp: ' + whatsapp}, AccountId: ${accountId || 'não fornecido'}`);
+  async login({ whatsapp, senha, accountId }: LoginData): Promise<LoginResult> {
+    console.log(`[AuthService] Iniciando login - WhatsApp: ${whatsapp}, AccountId: ${accountId || 'não fornecido'}`);
     
     // Se não for fornecido accountId, busca o usuário em qualquer account
     const whereClause: any = accountId ? { accountId } : {};
     
-    // Adicionar critério de busca por email ou whatsapp
-    if (email) {
-      whereClause.email = email;
-    } else if (whatsapp) {
-      whereClause.whatsapp = this.formatWhatsApp(whatsapp);
-    } else {
-      throw new Error('Email ou WhatsApp deve ser fornecido');
-    }
+    // Adicionar critério de busca por whatsapp
+    whereClause.whatsapp = this.formatWhatsApp(whatsapp);
     
     console.log('[AuthService] Buscando usuário com:', whereClause);
     

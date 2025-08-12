@@ -2,23 +2,27 @@
 import { ref, onMounted, watch, computed } from 'vue'
 import UserModal from '../components/UserModal.vue'
 import CellModal from '../components/CellModal.vue'
-import { useUserStore } from '../stores/userStore'
 import { adminService } from '../services/adminService'
-import type { AdminStats, Usuario } from '../services/adminService'
+import type { AdminStats, Usuario, Celula } from '../services/adminService'
+import relatorioService from '../services/relatorioService'
+// Removido gráfico de barras (vue-chartjs / chart.js)
 import WhatsAppConnections from '../components/WhatsAppConnections.vue'
+import CellMembersModal from '../components/CellMembersModal.vue'
 import { ssoLinkService } from '../services/ssoLinkService'
+import FrequencyChart from '../components/FrequencyChart.vue'
 
-const userStore = useUserStore()
 const activeTab = ref('dashboard') // 'dashboard', 'users', 'cells' ou 'whatsapp'
-const whatsappRef = ref(null)
+const whatsappRef = ref<any>(null)
 
 // Estado para os dados
 const loading = ref(true)
-const tipoRelatorio = ref('geral') // 'geral', 'celulas', 'supervisores'
+// const tipoRelatorio = ref('geral') // 'geral', 'celulas', 'supervisores'
 const periodoSelecionado = ref('mes') // 'mes', 'trimestre', 'ano'
 
 // Lista de usuários
 const users = ref<Usuario[]>([])
+const usersAll = ref<Usuario[]>([])
+const loadingAllUsers = ref(false)
 const pagination = ref({
   total: 0,
   pages: 0,
@@ -26,8 +30,52 @@ const pagination = ref({
   perPage: 10
 })
 
+  // Filtros da lista de usuários
+  const userSearchTerm = ref('')
+  const userRoleFilter = ref('')
+  const isFilteringUsers = computed(() => userSearchTerm.value.trim() !== '' || userRoleFilter.value.trim() !== '')
+  const filteredUsers = computed(() => {
+    const term = userSearchTerm.value.toLowerCase().trim()
+    const source = isFilteringUsers.value ? usersAll.value : users.value
+    return source.filter(u => {
+      const matchesTerm = !term ||
+        u.nome.toLowerCase().includes(term) ||
+        (u.whatsapp || '').toLowerCase().includes(term) ||
+        (u.cargo || '').toLowerCase().includes(term)
+      const matchesRole = !userRoleFilter.value || (u.cargo || '').toUpperCase() === userRoleFilter.value
+      return matchesTerm && matchesRole
+    })
+  })
+
+  // Carregar todas as páginas de usuários quando filtrar
+  const loadAllUsers = async () => {
+    try {
+      loadingAllUsers.value = true
+      const first = await adminService.listarUsuarios(1, 100)
+      let all: Usuario[] = first.usuarios
+      const totalPages = first.pagination.pages
+      for (let p = 2; p <= totalPages; p++) {
+        const resp = await adminService.listarUsuarios(p, 100)
+        all = all.concat(resp.usuarios)
+      }
+      usersAll.value = all
+    } catch (error) {
+      console.error('Erro ao carregar todas as páginas de usuários:', error)
+    } finally {
+      loadingAllUsers.value = false
+    }
+  }
+
+  watch([userSearchTerm, userRoleFilter], async ([term, role]) => {
+    if ((term && term.trim() !== '') || (role && role.trim() !== '')) {
+      if (usersAll.value.length === 0 && !loadingAllUsers.value) {
+        await loadAllUsers()
+      }
+    }
+  })
+
 // Lista de células
-const cells = ref([])
+const cells = ref<Celula[]>([])
 const cellPagination = ref({
   total: 0,
   pages: 0,
@@ -84,9 +132,53 @@ const feedbackType = ref<'success' | 'error'>('success')
 const showCellModal = ref(false)
 const selectedCell = ref<Partial<Celula> | undefined>(undefined)
 const isLoadingCell = ref(false)
+const showCellMembersModal = ref(false)
+const selectedCellForMembers = ref<{ id: number, nome: string } | null>(null)
 
 // Lista de líderes disponíveis
 const availableLeaders = ref<Usuario[]>([])
+const leaderFilterId = ref<string>('')
+
+// Série consolidada por data para cálculo de médias do período
+const chartLabels = ref<string[]>([])
+const chartSeriesCelula = ref<number[]>([])
+const chartSeriesCulto = ref<number[]>([])
+
+// Médias do período - só considerar na média os dias que tiveram eventos/relatórios
+const mediaCelulaPeriodo = computed(() => {
+  if (!chartSeriesCelula.value.length) return 0
+  
+  // Para calcular a média real, precisamos considerar apenas os dias que tiveram dados
+  // Se não há contagem de presentes, significa que não houve evento naquele dia
+  let sum = 0
+  let diasComEventos = 0
+  
+  chartSeriesCelula.value.forEach(percentual => {
+    // Só incluir na média se houve um evento (mesmo que 0% de presença)
+    sum += percentual
+    diasComEventos++
+  })
+  
+  return diasComEventos > 0 ? Math.round(sum / diasComEventos) : 0
+})
+
+const mediaCultoPeriodo = computed(() => {
+  if (!chartSeriesCulto.value.length) return 0
+  
+  // Para calcular a média real, precisamos considerar apenas os dias que tiveram dados
+  let sum = 0
+  let diasComEventos = 0
+  
+  chartSeriesCulto.value.forEach(percentual => {
+    // Só incluir na média se houve um evento (mesmo que 0% de presença)
+    sum += percentual
+    diasComEventos++
+  })
+  
+  return diasComEventos > 0 ? Math.round(sum / diasComEventos) : 0
+})
+
+// Removidos: chartOptions e barData (gráfico não é mais exibido)
 
 // Estado para filtros de células
 const cellFilters = ref({
@@ -103,16 +195,15 @@ const filteredCells = computed(() => {
     const searchTerm = cellFilters.value.searchTerm.toLowerCase()
     filtered = filtered.filter(cell => 
       cell.nome.toLowerCase().includes(searchTerm) ||
-      cell.endereco.toLowerCase().includes(searchTerm) ||
-      cell.lider?.nome.toLowerCase().includes(searchTerm) ||
-      cell.supervisor?.nome.toLowerCase().includes(searchTerm)
+      (cell.endereco || '').toLowerCase().includes(searchTerm) ||
+      (cell.lider?.nome || '').toLowerCase().includes(searchTerm) ||
+      (cell.supervisor?.nome || '').toLowerCase().includes(searchTerm)
     )
   }
   
   // Filtrar por supervisor
   if (cellFilters.value.supervisorId) {
     filtered = filtered.filter(cell => 
-      cell.supervisorId === parseInt(cellFilters.value.supervisorId) ||
       cell.supervisor_id === parseInt(cellFilters.value.supervisorId)
     )
   }
@@ -148,6 +239,8 @@ onMounted(async () => {
     const response = await adminService.listarUsuarios(1)
     users.value = response.usuarios
     pagination.value = response.pagination
+    await loadAvailableLeaders()
+    await loadCharts()
   } catch (error) {
     console.error('Erro ao carregar dados:', error)
   } finally {
@@ -166,6 +259,11 @@ async function atualizarDados() {
     loading.value = false
   }
 }
+// Abrir modal de membros da célula
+const handleVerCelula = (cell: Celula) => {
+  selectedCellForMembers.value = { id: cell.id, nome: cell.nome }
+  showCellMembersModal.value = true
+}
 
 // Abrir modal para criar usuário
 const handleNovoUsuario = () => {
@@ -182,9 +280,18 @@ const handleEditarUsuario = (user: Usuario) => {
 }
 
 // Confirmar exclusão de usuário
+const showTextConfirm = ref(false)
+const confirmText = ref('')
+const entityPendingDelete = ref<'user' | 'cell' | null>(null)
+const entityInfo = ref<{ id: number, name: string } | null>(null)
+
 const handleConfirmDelete = (user: Usuario) => {
   userToDelete.value = user
+  entityPendingDelete.value = 'user'
+  entityInfo.value = { id: user.id, name: user.nome }
+  confirmText.value = ''
   showDeleteConfirm.value = true
+  showTextConfirm.value = true
 }
 
 // Excluir usuário
@@ -196,6 +303,7 @@ const handleDeleteUser = async () => {
     showFeedback('Usuário excluído com sucesso')
     // Recarregar lista de usuários
     await handlePageChange(pagination.value.currentPage)
+    entityPendingDelete.value = null
   } catch (error) {
     console.error('Erro ao excluir usuário:', error)
     showFeedback('Erro ao excluir usuário', 'error')
@@ -206,11 +314,23 @@ const handleDeleteUser = async () => {
 }
 
 // Salvar usuário (criar/editar)
-const handleSaveUser = async (userData: Partial<Usuario>) => {
+const handleSaveUser = async (userData: Partial<Usuario> & { criarCelulaApos?: boolean }) => {
   try {
     if (modalMode.value === 'create') {
-      await adminService.criarUsuario(userData as any)
+      const novoUsuario = await adminService.criarUsuario(userData as any)
       showFeedback('Usuário criado com sucesso. Um código de acesso será enviado para o WhatsApp informado.')
+      // Se for líder e a opção estiver marcada, abrir modal de nova célula pré-selecionando o líder
+      if (userData.cargo === 'LIDER' && userData.criarCelulaApos) {
+        await loadAvailableLeaders()
+        // Sugestão de nome para a célula com o nome do líder
+        const leaderName = (novoUsuario as any)?.nome || 'Líder'
+        selectedCell.value = { 
+          liderId: (novoUsuario as any).id,
+          nome: `Célula - ${leaderName.split(' ')[0]}`
+        } as any
+        showUserModal.value = false
+        showCellModal.value = true
+      }
     } else {
       await adminService.atualizarUsuario(userData.id!, userData)
       showFeedback('Usuário atualizado com sucesso')
@@ -218,7 +338,9 @@ const handleSaveUser = async (userData: Partial<Usuario>) => {
     
     // Recarregar lista de usuários
     await handlePageChange(pagination.value.currentPage)
-    showUserModal.value = false
+    if (!(userData.cargo === 'LIDER' && userData.criarCelulaApos)) {
+      showUserModal.value = false
+    }
   } catch (error) {
     console.error('Erro ao salvar usuário:', error)
     showFeedback('Erro ao salvar usuário', 'error')
@@ -274,6 +396,88 @@ const loadAvailableLeaders = async () => {
     showFeedback('Erro ao carregar líderes disponíveis', 'error')
   }
 }
+// Utilitários de período
+function getPeriodRange(periodo: string) {
+  const now = new Date()
+  let start: Date
+  if (periodo === 'trimestre') {
+    start = new Date(now.getFullYear(), now.getMonth() - 2, 1)
+  } else if (periodo === 'ano') {
+    start = new Date(now.getFullYear(), 0, 1)
+  } else {
+    start = new Date(now.getFullYear(), now.getMonth(), 1)
+  }
+  const end = new Date(now.getFullYear(), now.getMonth() + 1, 0)
+  return { start, end }
+}
+
+async function fetchAllCells(): Promise<Celula[]> {
+  const first = await adminService.listarCelulas(1, 100)
+  let all = first.celulas || []
+  const totalPages = first.pagination?.pages || 1
+  for (let p = 2; p <= totalPages; p++) {
+    const resp = await adminService.listarCelulas(p, 100)
+    all = all.concat(resp.celulas || [])
+  }
+  return all
+}
+
+// Consolida dados apenas para médias dos cards
+async function loadCharts() {
+  try {
+    chartLabels.value = []
+    chartSeriesCelula.value = []
+    chartSeriesCulto.value = []
+
+    const { start, end } = getPeriodRange(periodoSelecionado.value)
+    const startStr = start.toISOString().slice(0, 10)
+    const endStr = end.toISOString().slice(0, 10)
+
+    const allCells = await fetchAllCells()
+    const filteredCells = leaderFilterId.value
+      ? allCells.filter(c => String(c.liderId || c.lider_id) === leaderFilterId.value)
+      : allCells
+
+    // Map por dataInicio => { celula: {pres,tot}, culto: {pres,tot} }
+    const agg = new Map<string, { cel: { pres: number; tot: number }; cul: { pres: number; tot: number } }>()
+
+    // Para cada célula, buscar relatórios de célula e culto e agregar
+    for (const cell of filteredCells) {
+      // Buscar relatórios sem filtrar por evento e usar contagens por tipo
+      const rels = await relatorioService.listarRelatorios({ celulaId: cell.id, dataInicio: startStr, dataFim: endStr })
+      for (const r of rels) {
+        const key = String(r.dataInicio).slice(0, 10)
+        if (!agg.has(key)) agg.set(key, { cel: { pres: 0, tot: 0 }, cul: { pres: 0, tot: 0 } })
+        const entry = agg.get(key)!
+
+        const presentesCel = (r as any).presentesCelula ?? 0
+        const totalCel = (r as any).totalCelula ?? 0
+        const presentesCul = (r as any).presentesCulto ?? 0
+        const totalCul = (r as any).totalCulto ?? 0
+
+        entry.cel.pres += presentesCel
+        entry.cel.tot += totalCel
+        entry.cul.pres += presentesCul
+        entry.cul.tot += totalCul
+      }
+    }
+
+    // Ordenar por data e montar séries percentuais
+    const sortedKeys = Array.from(agg.keys()).sort()
+    chartLabels.value = sortedKeys.map(k => k.slice(8, 10) + '/' + k.slice(5, 7))
+    chartSeriesCelula.value = sortedKeys.map(k => {
+      const e = agg.get(k)!
+      return e.cel.tot > 0 ? Math.round((e.cel.pres / e.cel.tot) * 100) : 0
+    })
+    chartSeriesCulto.value = sortedKeys.map(k => {
+      const e = agg.get(k)!
+      return e.cul.tot > 0 ? Math.round((e.cul.pres / e.cul.tot) * 100) : 0
+    })
+
+  } catch (err) {
+    console.error('[Dashboard] Erro ao carregar gráficos:', err)
+  }
+}
 
 // Abrir modal para criar célula
 const handleNovaCelula = async () => {
@@ -318,7 +522,7 @@ const loadCells = async (page: number = 1) => {
     cells.value = response.celulas.map((celula: any) => {
       // Se não tiver o objeto supervisor mas tiver o ID, vamos buscar o supervisor nos líderes disponíveis
       if (!celula.supervisor && (celula.supervisorId || celula.supervisor_id) && availableLeaders.value.length > 0) {
-        const supervisorId = celula.supervisorId || celula.supervisor_id
+        const supervisorId = celula.supervisor_id || celula.supervisorId
         const supervisor = availableLeaders.value.find(l => l.id === supervisorId)
         if (supervisor) {
           celula.supervisor = supervisor
@@ -337,7 +541,7 @@ const loadCells = async (page: number = 1) => {
 }
 
 // Editar célula
-const handleEditarCelula = async (cell: Celula) => {
+  const handleEditarCelula = async (cell: Celula) => {
   try {
     isLoadingCell.value = true
     
@@ -378,7 +582,7 @@ const handleEditarCelula = async (cell: Celula) => {
 }
 
 // Salvar célula
-const handleSaveCell = async (cellData: Partial<Celula>) => {
+  const handleSaveCell = async (cellData: Partial<Celula>) => {
   try {
     isLoadingCell.value = true
     
@@ -388,19 +592,18 @@ const handleSaveCell = async (cellData: Partial<Celula>) => {
       return
     }
 
-    if (!cellData.supervisorId) {
-      showFeedback('Supervisor é obrigatório', 'error')
-      return
-    }
+  // Supervisor agora é opcional
 
-    const dadosParaSalvar = {
-      nome: cellData.nome,
-      endereco: cellData.endereco,
-      diaSemana: cellData.diaSemana,
-      horario: cellData.horario,
-      liderId: cellData.liderId,
-      supervisor_id: cellData.supervisorId
-    }
+  const dadosParaSalvar: any = {
+    nome: cellData.nome,
+    endereco: cellData.endereco,
+    diaSemana: cellData.diaSemana,
+    horario: cellData.horario,
+    liderId: cellData.liderId,
+  }
+    if (cellData.supervisor_id) {
+      dadosParaSalvar.supervisor_id = cellData.supervisor_id
+  }
 
     console.log('Dados para salvar:', dadosParaSalvar)
 
@@ -422,15 +625,21 @@ const handleSaveCell = async (cellData: Partial<Celula>) => {
   }
 }
 
-// Confirmar exclusão de célula
-const handleConfirmDeleteCell = async (cell: Celula) => {
+// Confirmar exclusão de célula (abre modal com confirmação por texto)
+const handleConfirmDeleteCell = (cell: Celula) => {
+  entityPendingDelete.value = 'cell'
+  entityInfo.value = { id: cell.id, name: cell.nome }
+  confirmText.value = ''
+  showDeleteConfirm.value = true
+  showTextConfirm.value = true
+}
+
+// Executar exclusão de célula após confirmação
+const handleDeleteCell = async () => {
+  if (!entityInfo.value) return
   try {
-    if (!confirm(`Tem certeza que deseja excluir a célula "${cell.nome}"?`)) {
-      return
-    }
-    
     isLoadingCell.value = true
-    await adminService.excluirCelula(cell.id)
+    await adminService.excluirCelula(entityInfo.value.id)
     showFeedback('Célula excluída com sucesso')
     await loadCells(cellPagination.value.currentPage)
   } catch (error) {
@@ -438,6 +647,8 @@ const handleConfirmDeleteCell = async (cell: Celula) => {
     showFeedback('Erro ao excluir célula', 'error')
   } finally {
     isLoadingCell.value = false
+    showDeleteConfirm.value = false
+    entityPendingDelete.value = null
   }
 }
 
@@ -463,14 +674,21 @@ watch(activeTab, (newTab) => {
 // Estado para envio de link SSO
 const sendingLink = ref(false)
 const userSendingLink = ref<number | null>(null)
+const showConfirmSendLink = ref(false)
+const userIdToSendLink = ref<number | null>(null)
+
+const confirmSendSsoLink = (userId: number) => {
+  userIdToSendLink.value = userId
+  showConfirmSendLink.value = true
+}
 
 // Enviar link SSO para um líder
-const handleSendSsoLink = async (userId: number) => {
+const handleSendSsoLink = async () => {
   try {
     sendingLink.value = true
-    userSendingLink.value = userId
+    userSendingLink.value = userIdToSendLink.value
     
-    const result = await ssoLinkService.gerarEnviarLink(userId)
+    const result = await ssoLinkService.gerarEnviarLink(userIdToSendLink.value as number)
     
     if (result.success) {
       showFeedback('Link enviado com sucesso para o líder')
@@ -482,6 +700,7 @@ const handleSendSsoLink = async (userId: number) => {
     showFeedback('Erro ao enviar link SSO', 'error')
   } finally {
     sendingLink.value = false
+    showConfirmSendLink.value = false
     userSendingLink.value = null
   }
 }
@@ -571,6 +790,13 @@ const handleSendSsoLink = async (userId: number) => {
                 <option value="ano">Este ano</option>
               </select>
             </div>
+            <div class="flex items-center gap-2">
+              <label for="leaderFilter" class="text-sm text-gray-600">Filtrar por líder:</label>
+              <select id="leaderFilter" v-model="leaderFilterId" class="mt-1 block pl-3 pr-10 py-2 text-base border-gray-300 focus:outline-none focus:ring-primary-500 focus:border-primary-500 sm:text-sm rounded-md">
+                <option value="">Todos os líderes</option>
+                <option v-for="l in availableLeaders.filter((u: Usuario) => u.cargo === 'LIDER')" :key="l.id" :value="String(l.id)">{{ l.nome }}</option>
+              </select>
+            </div>
           </div>
           
           <!-- Cards de resumo -->
@@ -636,59 +862,48 @@ const handleSendSsoLink = async (userId: number) => {
               </div>
             </div>
             
-            <!-- Média de frequência -->
+            <!-- Média Célula -->
             <div class="bg-white overflow-hidden shadow rounded-lg">
               <div class="p-5">
                 <div class="flex items-center">
                   <div class="flex-shrink-0">
                     <svg class="h-6 w-6 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"/>
+                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 3v18h18"/>
                     </svg>
                   </div>
                   <div class="ml-5 w-0 flex-1">
                     <dl>
                       <dt class="text-sm font-medium text-gray-500 truncate">
-                        Média de Frequência
+                        Média Célula (período)
                       </dt>
                       <dd class="flex items-baseline">
                         <div class="text-2xl font-semibold text-gray-900">
-                          {{ stats.resumo.mediaFrequencia }}%
-                    </div>
-                        <div 
-                          :class="[
-                            stats.resumo.variacaoFrequencia > 0 ? 'text-green-600' : 'text-red-600',
-                            'ml-2 flex items-baseline text-sm font-semibold'
-                          ]"
-                        >
-                          <span class="ml-1">
-                            {{ stats.resumo.variacaoFrequencia > 0 ? '▲' : '▼' }}
-                            {{ Math.abs(stats.resumo.variacaoFrequencia) }}%
-                          </span>
-                    </div>
+                          {{ mediaCelulaPeriodo }}%
+                        </div>
                       </dd>
                     </dl>
                   </div>
                 </div>
               </div>
             </div>
-            
-            <!-- Novos membros -->
+
+            <!-- Média Culto -->
             <div class="bg-white overflow-hidden shadow rounded-lg">
               <div class="p-5">
                 <div class="flex items-center">
                   <div class="flex-shrink-0">
                     <svg class="h-6 w-6 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M18 9v3m0 0v3m0-3h3m-3 0h-3m-2-5a4 4 0 11-8 0 4 4 0 018 0zM3 20a6 6 0 0112 0v1H3v-1z"/>
+                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 3v18h18"/>
                     </svg>
                   </div>
                   <div class="ml-5 w-0 flex-1">
                     <dl>
                       <dt class="text-sm font-medium text-gray-500 truncate">
-                        Novos Membros
+                        Média Culto (período)
                       </dt>
                       <dd class="flex items-baseline">
                         <div class="text-2xl font-semibold text-gray-900">
-                          {{ stats.indicadores.novosMembros }}
+                          {{ mediaCultoPeriodo }}%
                         </div>
                       </dd>
                     </dl>
@@ -718,68 +933,17 @@ const handleSendSsoLink = async (userId: number) => {
               </div>
             </div>
 
-            <div class="bg-white overflow-hidden shadow rounded-lg">
-              <div class="p-5">
-                <h3 class="text-lg leading-6 font-medium text-gray-900">Média de Membros/Célula</h3>
-                <div class="mt-2 text-3xl font-semibold text-gray-900">
-                  {{ stats.indicadores.mediaMembrosPorCelula }}
-                </div>
-              </div>
-            </div>
+
           </div>
 
-          <!-- Dados por região -->
-          <div class="bg-white shadow rounded-lg">
-            <div class="px-4 py-5 sm:p-6">
-              <h3 class="text-lg leading-6 font-medium text-gray-900">
-                Distribuição por Região
-              </h3>
-              <div class="mt-4">
-                <div class="flex flex-col">
-                  <div class="-my-2 overflow-x-auto sm:-mx-6 lg:-mx-8">
-                    <div class="py-2 align-middle inline-block min-w-full sm:px-6 lg:px-8">
-                      <div class="shadow overflow-hidden border-b border-gray-200 sm:rounded-lg">
-                        <table class="min-w-full divide-y divide-gray-200">
-                          <thead class="bg-gray-50">
-                            <tr>
-                              <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                                Região
-                              </th>
-                              <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                                Total de Células
-                              </th>
-                              <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                                Total de Membros
-                              </th>
-                              <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                                Média de Membros
-                              </th>
-                            </tr>
-                          </thead>
-                          <tbody class="bg-white divide-y divide-gray-200">
-                            <tr v-for="regiao in stats.regioes" :key="regiao.id">
-                              <td class="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
-                                {{ regiao.nome }}
-                              </td>
-                              <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                                {{ regiao.totalCelulas }}
-                              </td>
-                              <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                                {{ regiao.totalMembros }}
-                              </td>
-                              <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                                {{ regiao.mediaMembros }}
-                              </td>
-                            </tr>
-                          </tbody>
-                        </table>
-                    </div>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            </div>
-        </div>
+          <!-- Relatório de Frequência por Data -->
+          <div class="mt-8">
+            <FrequencyChart 
+              :periodo="periodoSelecionado" 
+              :celula-id="leaderFilterId && leaderFilterId !== '' ? Number(leaderFilterId) : undefined"
+            />
+          </div>
+
       </div>
       
         <!-- Lista de usuários -->
@@ -795,6 +959,28 @@ const handleSendSsoLink = async (userId: number) => {
             </div>
             
           <div class="bg-white shadow overflow-hidden sm:rounded-lg">
+            <!-- Filtros da lista de usuários -->
+            <div class="p-4 border-b border-gray-200 flex flex-col sm:flex-row gap-3 sm:items-center sm:justify-between">
+              <div class="flex-1">
+                <input
+                  v-model="userSearchTerm"
+                  type="text"
+                  class="block w-full rounded-md border-gray-300 shadow-sm focus:border-primary-500 focus:ring-primary-500 sm:text-sm"
+                  placeholder="Pesquisar por nome, WhatsApp ou cargo"
+                />
+              </div>
+              <div>
+                <select
+                  v-model="userRoleFilter"
+                  class="block w-full rounded-md border-gray-300 shadow-sm focus:border-primary-500 focus:ring-primary-500 sm:text-sm"
+                >
+                  <option value="">Todos</option>
+                  <option value="LIDER">Líder</option>
+                  <option value="SUPERVISOR">Supervisor</option>
+                  <option value="ADMINISTRADOR">Administrador</option>
+                </select>
+              </div>
+            </div>
             <table class="min-w-full divide-y divide-gray-200">
               <thead class="bg-gray-50">
                 <tr>
@@ -805,7 +991,7 @@ const handleSendSsoLink = async (userId: number) => {
                     Whatsapp
                   </th>
                   <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Cargo
+                    Função
                   </th>
                   <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                     Status
@@ -816,7 +1002,7 @@ const handleSendSsoLink = async (userId: number) => {
                 </tr>
               </thead>
               <tbody class="bg-white divide-y divide-gray-200">
-                <tr v-for="user in users" :key="user.id">
+                <tr v-for="user in filteredUsers" :key="user.id">
                   <td class="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
                     {{ user.nome }}
                   </td>
@@ -861,7 +1047,7 @@ const handleSendSsoLink = async (userId: number) => {
                     <!-- Botão para enviar link SSO (apenas para líderes ativos) -->
                     <button 
                       v-if="user.cargo.toUpperCase() === 'LIDER' && user.status === 'ativo'"
-                      @click="handleSendSsoLink(user.id)"
+                      @click="confirmSendSsoLink(user.id)"
                       class="text-blue-600 hover:text-blue-900"
                       :disabled="sendingLink && userSendingLink === user.id"
                     >
@@ -1056,6 +1242,12 @@ const handleSendSsoLink = async (userId: number) => {
                   </td>
                   <td class="px-6 py-4 whitespace-nowrap text-sm font-medium">
                     <button 
+                      @click="handleVerCelula(cell)"
+                      class="text-blue-600 hover:text-blue-900 mr-3"
+                    >
+                      Ver
+                    </button>
+                    <button 
                       @click="handleEditarCelula(cell)"
                       class="text-primary-600 hover:text-primary-900 mr-3"
                     >
@@ -1100,6 +1292,18 @@ const handleSendSsoLink = async (userId: number) => {
       </div>
     </main>
 
+    <!-- Confirmar envio de link SSO -->
+    <div v-if="showConfirmSendLink" class="fixed inset-0 bg-gray-500 bg-opacity-75 flex items-center justify-center z-50">
+      <div class="bg-white rounded-lg px-4 pt-5 pb-4 overflow-hidden shadow-xl transform transition-all sm:max-w-md sm:w-full sm:p-6">
+        <h3 class="text-lg leading-6 font-medium text-gray-900 mb-2">Confirmar envio</h3>
+        <p class="text-sm text-gray-700 mb-4">Deseja enviar o link do relatório semanal para este líder agora?</p>
+        <div class="sm:flex sm:flex-row-reverse gap-3">
+          <button @click="handleSendSsoLink" class="inline-flex justify-center px-4 py-2 rounded-md text-white bg-primary-600 hover:bg-primary-700">Enviar</button>
+          <button @click="showConfirmSendLink = false" class="inline-flex justify-center px-4 py-2 rounded-md border border-gray-300 bg-white text-gray-700 hover:bg-gray-50">Cancelar</button>
+        </div>
+      </div>
+    </div>
+
     <!-- Mensagem de feedback -->
     <div
       v-if="feedbackMessage"
@@ -1121,26 +1325,50 @@ const handleSendSsoLink = async (userId: number) => {
       @save="handleSaveUser"
     />
 
+    <!-- Modal de membros da célula -->
+    <CellMembersModal
+      :is-open="showCellMembersModal"
+      :cell-id="selectedCellForMembers?.id || null"
+      :cell-name="selectedCellForMembers?.nome"
+      @close="showCellMembersModal = false"
+    />
+
     <!-- Modal de confirmação de exclusão -->
     <div v-if="showDeleteConfirm" class="fixed inset-0 bg-gray-500 bg-opacity-75 flex items-center justify-center z-50">
       <div class="bg-white rounded-lg px-4 pt-5 pb-4 overflow-hidden shadow-xl transform transition-all sm:max-w-lg sm:w-full sm:p-6">
         <div class="sm:flex sm:items-start">
-          <div class="mt-3 text-center sm:mt-0 sm:text-left">
+          <div class="mt-3 text-center sm:mt-0 sm:text-left w-full">
             <h3 class="text-lg leading-6 font-medium text-gray-900">
               Confirmar Exclusão
             </h3>
-            <div class="mt-2">
-              <p class="text-sm text-gray-500">
-                Tem certeza que deseja excluir o usuário "{{ userToDelete?.nome }}"? Esta ação não pode ser desfeita.
+            <div class="mt-2 space-y-3">
+              <p class="text-sm text-gray-700" v-if="entityPendingDelete === 'user'">
+                Você está prestes a excluir o usuário <span class="font-semibold">"{{ entityInfo?.name }}"</span>.
+                Se este usuário for líder de uma célula, a célula e todos os membros associados serão apagados.
               </p>
+              <p class="text-sm text-gray-700" v-else>
+                Você está prestes a excluir a célula <span class="font-semibold">"{{ entityInfo?.name }}"</span>.
+                Isso irá apagar todos os membros associados.
+              </p>
+              <p class="text-sm text-red-600">
+                Para continuar, digite <span class="font-mono bg-red-50 px-1 rounded">delete</span> no campo abaixo.
+              </p>
+              <input
+                v-model="confirmText"
+                type="text"
+                placeholder="Digite delete para confirmar"
+                class="block w-full rounded-md border-gray-300 shadow-sm focus:border-red-500 focus:ring-red-500 sm:text-sm"
+              />
             </div>
           </div>
         </div>
         <div class="mt-5 sm:mt-4 sm:flex sm:flex-row-reverse">
           <button
             type="button"
-            @click="handleDeleteUser"
-            class="w-full inline-flex justify-center rounded-md border border-transparent shadow-sm px-4 py-2 bg-red-600 text-base font-medium text-white hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-500 sm:ml-3 sm:w-auto sm:text-sm"
+            :disabled="confirmText.trim().toLowerCase() !== 'delete'"
+            @click="entityPendingDelete === 'user' ? handleDeleteUser() : handleDeleteCell()"
+            class="w-full inline-flex justify-center rounded-md border border-transparent shadow-sm px-4 py-2 text-base font-medium text-white sm:ml-3 sm:w-auto sm:text-sm"
+            :class="confirmText.trim().toLowerCase() === 'delete' ? 'bg-red-600 hover:bg-red-700 focus:ring-red-500' : 'bg-red-400 cursor-not-allowed'"
           >
             Excluir
           </button>

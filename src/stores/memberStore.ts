@@ -12,6 +12,7 @@ export interface Member {
   isCoLeader: boolean
   isHost: boolean
   isActive: boolean
+  observacoes?: string
 }
 
 export const useMemberStore = defineStore('members', () => {
@@ -135,7 +136,8 @@ export const useMemberStore = defineStore('members', () => {
             isConsolidator: membro.ehConsolidador,
             isCoLeader: membro.ehCoLider,
             isHost: membro.ehAnfitriao,
-            isActive: membro.ativo
+            isActive: membro.ativo,
+            observacoes: membro.observacoes || ''
           };
         });
 
@@ -196,7 +198,8 @@ export const useMemberStore = defineStore('members', () => {
         isConsolidator: novoMembro.ehConsolidador,
         isCoLeader: novoMembro.ehCoLider,
         isHost: novoMembro.ehAnfitriao,
-        isActive: novoMembro.ativo
+        isActive: novoMembro.ativo,
+        observacoes: novoMembro.observacoes || ''
       })
       
       return novoMembro.id.toString()
@@ -239,10 +242,7 @@ export const useMemberStore = defineStore('members', () => {
       return
     }
 
-    if (!updates.name) {
-      error.value = 'Nome é obrigatório'
-      return
-    }
+    // Manter compatibilidade: se for salvar via modal, nome virá; para notas rápidas, manter dados atuais
 
     loading.value = true
     error.value = null
@@ -250,13 +250,13 @@ export const useMemberStore = defineStore('members', () => {
     try {
       // Converter do formato da interface Member para NovoMembroInput
       const dadosMembro: NovoMembroInput = {
-        nome: updates.name,
+        nome: updates.name || members.value.find(m => m.id === id)?.name || '',
         telefone: updates.telefone,
         dataNascimento: updates.dataNascimento,
         ehConsolidador: updates.isConsolidator,
         ehCoLider: updates.isCoLeader,
         ehAnfitriao: updates.isHost,
-        observacoes: ''
+        observacoes: updates.observacoes
       }
 
       console.log('[memberStore] Atualizando membro:', id);
@@ -282,7 +282,8 @@ export const useMemberStore = defineStore('members', () => {
               isConsolidator: membroAtualizado.ehConsolidador,
               isCoLeader: membroAtualizado.ehCoLider,
               isHost: membroAtualizado.ehAnfitriao,
-              isActive: membroAtualizado.ativo
+              isActive: membroAtualizado.ativo,
+              observacoes: (membroAtualizado as any).observacoes || ''
             }
           }
         } else {
@@ -296,7 +297,8 @@ export const useMemberStore = defineStore('members', () => {
               dataNascimento: updates.dataNascimento,
               isConsolidator: updates.isConsolidator || false,
               isCoLeader: updates.isCoLeader || false,
-              isHost: updates.isHost || false
+              isHost: updates.isHost || false,
+              observacoes: updates.observacoes
             }
           }
         }
@@ -313,7 +315,8 @@ export const useMemberStore = defineStore('members', () => {
             dataNascimento: updates.dataNascimento,
             isConsolidator: updates.isConsolidator || false,
             isCoLeader: updates.isCoLeader || false,
-            isHost: updates.isHost || false
+            isHost: updates.isHost || false,
+            observacoes: updates.observacoes
           }
         }
       }

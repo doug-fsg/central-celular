@@ -3,22 +3,15 @@ import { ref, onMounted, computed } from 'vue'
 import { useMemberStore, type Member } from '../stores/memberStore'
 import { useUserStore } from '../stores/userStore'
 import AppIcon from '../components/AppIcon.vue'
-import { Menu, MenuButton, MenuItems, MenuItem, Dialog, DialogPanel, DialogTitle, TransitionRoot, TransitionChild } from '@headlessui/vue'
+import MemberNotesModal from '../components/MemberNotesModal.vue'
+import { Dialog, DialogPanel, DialogTitle, TransitionRoot, TransitionChild } from '@headlessui/vue'
 
 const memberStore = useMemberStore()
 const userStore = useUserStore()
 const showAddForm = ref(false)
 const activeTab = ref('all')
 
-// Formulário para novo membro
-const newMember = ref({
-  name: '',
-  telefone: '',
-  dataNascimento: '',
-  isConsolidator: false,
-  isCoLeader: false,
-  isHost: false
-})
+// (removido estado legado de novo membro)
 
 // Verifica se tem uma célula selecionada
 const hasCelula = computed(() => !!memberStore.celulaId)
@@ -92,41 +85,7 @@ const displayedMembers = computed(() => {
   }
 })
 
-function addMember() {
-  if (!hasCelula.value) {
-    alert('Erro: Nenhuma célula selecionada. Você precisa ser líder de uma célula ativa para cadastrar membros.');
-    return;
-  }
-  
-  if (newMember.value.name.trim()) {
-    console.log('[MemberList] Adicionando membro com dados:', newMember.value);
-    console.log('[MemberList] Data de nascimento:', {
-      valor: newMember.value.dataNascimento,
-      tipo: typeof newMember.value.dataNascimento
-    });
-    
-    memberStore.addMember({
-      name: newMember.value.name,
-      telefone: newMember.value.telefone,
-      dataNascimento: newMember.value.dataNascimento,
-      isConsolidator: newMember.value.isConsolidator,
-      isCoLeader: newMember.value.isCoLeader,
-      isHost: newMember.value.isHost
-    })
-    
-    // Reset form
-    newMember.value = {
-      name: '',
-      telefone: '',
-      dataNascimento: '',
-      isConsolidator: false,
-      isCoLeader: false,
-      isHost: false
-    }
-    
-    showAddForm.value = false
-  }
-}
+// removido addMember antigo (não utilizado)
 
 function toggleAddForm() {
   if (!hasCelula.value) {
@@ -144,7 +103,8 @@ const editForm = ref({
   dataNascimento: '',
   isConsolidator: false,
   isCoLeader: false,
-  isHost: false
+  isHost: false,
+  observacoes: ''
 })
 
 // Funções de formatação de data
@@ -169,7 +129,7 @@ function formatDate(dateStr: string | undefined): string {
     // Pegar apenas a parte da data (YYYY-MM-DD)
     const datePart = dateStr.split('T')[0];
     // Extrair ano, mês e dia
-    const [year, month, day] = datePart.split('-');
+    const [, month, day] = datePart.split('-');
     // Retornar no formato DD/MM
     return `${day}/${month}`;
   } catch (error) {
@@ -205,7 +165,8 @@ function startEditing(member: Member) {
     dataNascimento: dataFormatada,
     isConsolidator: member.isConsolidator,
     isCoLeader: member.isCoLeader,
-    isHost: member.isHost
+    isHost: member.isHost,
+    observacoes: member.observacoes || ''
   }
   
   console.log('[MemberList] Formulário de edição:', editForm.value);
@@ -219,7 +180,8 @@ function saveEdit() {
       dataNascimento: editForm.value.dataNascimento,
       isConsolidator: editForm.value.isConsolidator,
       isCoLeader: editForm.value.isCoLeader,
-      isHost: editForm.value.isHost
+      isHost: editForm.value.isHost,
+      observacoes: editForm.value.observacoes
     })
     
     cancelEdit()
@@ -278,11 +240,29 @@ const form = ref({
   isActive: true
 })
 
+// Notes modal state
+const showNotesModal = ref(false)
+const selectedForNotes = ref<Member | null>(null)
+
+function openNotes(member: Member) {
+  selectedForNotes.value = member
+  showNotesModal.value = true
+}
+
+function closeNotes() {
+  showNotesModal.value = false
+  selectedForNotes.value = null
+}
+
+function saveNotes(payload: { memberId: string; observacoes: string }) {
+  memberStore.updateMember(payload.memberId, { observacoes: payload.observacoes })
+}
+
 async function handleSubmit() {
   try {
     await memberStore.addMember({
       ...form.value,
-      id: Date.now().toString() // temporary ID
+      isActive: true
     })
     toggleAddForm()
   } catch (error) {
@@ -507,7 +487,16 @@ async function handleSubmit() {
                   <span class="block text-xs uppercase">{{ new Date(member.dataNascimento as string).toLocaleString('default', { month: 'short' }) }}</span>
                 </div>
                 <div class="flex-1">
-                  <h3 class="font-medium text-neutral-800">{{ member.name }}</h3>
+                  <div class="flex items-center gap-1">
+                    <h3 class="font-medium text-neutral-800">{{ member.name }}</h3>
+                    <button
+                      @click="openNotes(member)"
+                      class="ml-1 p-0.5 rounded text-neutral-400 hover:text-amber-600 hover:bg-neutral-100"
+                      title="Observações"
+                    >
+                      <AppIcon name="external" size="xs" />
+                    </button>
+                  </div>
                   <div class="text-xs text-neutral-500">
                     <span class="inline-flex items-center">
                       <AppIcon name="calendar" class="mr-1" size="xs"/>
@@ -543,7 +532,16 @@ async function handleSubmit() {
               <!-- Card de Membro Padrão -->
               <div v-else class="flex items-center justify-between" :class="{'opacity-60': !member.isActive}">
                 <div class="flex-1">
-                  <p class="text-sm font-medium text-neutral-800">{{ member.name }}</p>
+                  <div class="flex items-center gap-1">
+                    <p class="text-sm font-medium text-neutral-800">{{ member.name }}</p>
+                    <button
+                      @click="openNotes(member)"
+                      class="ml-1 p-0.5 rounded text-neutral-400 hover:text-amber-600 hover:bg-neutral-100"
+                      title="Observações"
+                    >
+                      <AppIcon name="external" size="xs" />
+                    </button>
+                  </div>
                   <div class="flex flex-wrap items-center text-xs text-neutral-500 mt-0.5">
                     <span v-if="member.telefone" class="inline-flex items-center mr-3">
                       <AppIcon name="phone" class="mr-1" size="xs"/>{{ member.telefone }}
@@ -637,6 +635,16 @@ async function handleSubmit() {
                     <label :for="'edit-host-' + editingMember" class="ml-2 block text-xs text-neutral-700">Anfitrião</label>
                   </div>
                 </div>
+                <div class="md:col-span-2">
+                  <label :for="'edit-notes-' + editingMember" class="form-label text-sm">Notas / Observações</label>
+                  <textarea
+                    v-model="editForm.observacoes"
+                    :id="'edit-notes-' + editingMember"
+                    rows="3"
+                    placeholder="Adicione observações sobre o membro (histórico, acompanhamento, etc.)"
+                    class="form-textarea w-full text-sm"
+                  />
+                </div>
               </div>
             </div>
             <div class="bg-neutral-50 px-4 py-2 sm:px-5 sm:flex sm:flex-row-reverse">
@@ -691,4 +699,12 @@ async function handleSubmit() {
       </div>
     </main>
   </div>
+
+  <!-- Modal de Observações do Membro -->
+  <MemberNotesModal
+    :is-open="showNotesModal"
+    :member="selectedForNotes ? { id: selectedForNotes.id, name: selectedForNotes.name, observacoes: selectedForNotes.observacoes } : null"
+    @close="closeNotes"
+    @save="saveNotes"
+  />
 </template>
