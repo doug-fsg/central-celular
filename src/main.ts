@@ -8,7 +8,7 @@ import AppIcon from './components/AppIcon.vue'
 import vFadeIn from './directives/fadeInDirective'
 import VueApexCharts from 'vue3-apexcharts'
 
-// Verificar se o servidor backend está respondendo
+// Verificar se o servidor backend está respondendo (rota correta no backend: /api/health)
 api.get('/health')
   .then(() => console.log('✅ API conectada com sucesso'))
   .catch(err => console.warn('⚠️ API offline ou inacessível', err))

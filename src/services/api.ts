@@ -1,7 +1,11 @@
 import { ref } from 'vue';
 
 // Configurações da API
-const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3000/api';
+// Garante que a URL base termine com "/api" para compatibilidade com o backend
+const RAW_API_URL = (import.meta.env.VITE_API_URL as string) || 'http://localhost:3000/api';
+const API_URL = RAW_API_URL.endsWith('/api')
+  ? RAW_API_URL
+  : `${RAW_API_URL.replace(/\/$/, '')}/api`;
 
 // Interface para erros da API (não removida para compatibilidade futura)
 // interface ApiError {
