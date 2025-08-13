@@ -6,6 +6,12 @@ WORKDIR /app
 COPY package.json yarn.lock ./
 RUN yarn install
 
+# Variáveis de ambiente para o build do Vite
+ARG VITE_API_URL
+ARG VITE_QUEPASA_USER_EMAIL
+ENV VITE_API_URL=$VITE_API_URL
+ENV VITE_QUEPASA_USER_EMAIL=$VITE_QUEPASA_USER_EMAIL
+
 # Copiar arquivos necessários para o build do frontend
 COPY index.html ./
 COPY public ./public
