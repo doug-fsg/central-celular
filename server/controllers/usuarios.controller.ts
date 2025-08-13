@@ -3,6 +3,20 @@ import { prisma } from '../lib/prisma';
 import bcrypt from 'bcryptjs';
 import { z } from 'zod';
 
+// Normalização conservadora para números BR: garante prefixo 55
+function normalizeBrazilPhone(raw: string): string {
+  const digits = (raw || '').replace(/\D/g, '');
+  // Se já estiver no formato com DDI (55 + DDD + número), geralmente 12 ou 13 dígitos, mantém
+  if (digits.startsWith('55') && (digits.length === 12 || digits.length === 13)) {
+    return digits;
+  }
+  // Para entradas de 10 ou 11 dígitos (DDD + número) ou outros casos sem DDI, prefixa 55
+  if (digits.length <= 11) {
+    return `55${digits}`;
+  }
+  return digits;
+}
+
 // Schema de validação para criar usuário
 const criarUsuarioSchema = z.object({
   nome: z.string().min(3, 'Nome deve ter pelo menos 3 caracteres'),
@@ -149,6 +163,7 @@ export const criarUsuario = async (req: Request, res: Response) => {
   try {
     // Validar dados de entrada
     const dados = criarUsuarioSchema.parse(req.body);
+    const whatsappNormalizado = normalizeBrazilPhone(dados.whatsapp);
 
     // Verificar se já existe usuário com mesmo email ou whatsapp na account
     const accountId = (req as any).user?.accountId || (req as any).usuario?.accountId;
@@ -162,7 +177,7 @@ export const criarUsuario = async (req: Request, res: Response) => {
     if (dados.whatsapp) {
       const usuarioExistente = await prisma.usuario.findFirst({
         where: {
-          whatsapp: dados.whatsapp,
+          whatsapp: whatsappNormalizado,
           accountId: accountId
         }
       });
@@ -176,7 +191,7 @@ export const criarUsuario = async (req: Request, res: Response) => {
     const novoUsuario = await prisma.usuario.create({
       data: {
         nome: dados.nome,
-        whatsapp: dados.whatsapp,
+        whatsapp: whatsappNormalizado,
         cargo: dados.cargo,
         senha: dados.senha ? await bcrypt.hash(dados.senha, 10) : null,
         accountId: accountId,
@@ -207,6 +222,7 @@ export const atualizarUsuario = async (req: Request, res: Response) => {
     
     // Validar dados de entrada
     const dados = atualizarUsuarioSchema.parse(req.body);
+    const whatsappNormalizado = normalizeBrazilPhone(dados.whatsapp);
 
     // Verificar se usuário existe
     const usuarioExistente = await prisma.usuario.findUnique({ 
@@ -220,7 +236,7 @@ export const atualizarUsuario = async (req: Request, res: Response) => {
     // Dados para atualização
     const dadosAtualizacao: any = {
       nome: dados.nome,
-      whatsapp: dados.whatsapp,
+      whatsapp: whatsappNormalizado,
       cargo: dados.cargo
     };
 

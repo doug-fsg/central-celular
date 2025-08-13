@@ -56,7 +56,12 @@ watch(() => props.modelValue, (newValue) => {
     error.value = null
     return
   }
-  const digits = String(newValue).replace(/\D/g, '').slice(0, 11)
+  // Remover DDI 55 se vier do backend (12 ou 13 dígitos iniciando com 55)
+  const raw = String(newValue).replace(/\D/g, '')
+  const normalized = raw.startsWith('55') && (raw.length === 12 || raw.length === 13)
+    ? raw.slice(2)
+    : raw
+  const digits = normalized.slice(0, 11)
   phoneInput.value = formatBR(digits)
   error.value = validateBR(digits)
 }, { immediate: true })

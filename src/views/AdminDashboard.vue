@@ -332,12 +332,25 @@ const handleSaveUser = async (userData: Partial<Usuario> & { criarCelulaApos?: b
         showCellModal.value = true
       }
     } else {
-      await adminService.atualizarUsuario(userData.id!, userData)
+      const atualizado = await adminService.atualizarUsuario(userData.id!, userData)
+      // Atualizar listas locais imediatamente para evitar necessidade de F5
+      const idx = users.value.findIndex(u => u.id === atualizado.id)
+      if (idx !== -1) {
+        users.value[idx] = atualizado
+      }
+      const idxAll = usersAll.value.findIndex(u => u.id === atualizado.id)
+      if (idxAll !== -1) {
+        usersAll.value[idxAll] = atualizado
+      }
       showFeedback('Usuário atualizado com sucesso')
     }
     
     // Recarregar lista de usuários
     await handlePageChange(pagination.value.currentPage)
+    // Se estiver filtrando, garantir que a lista completa também esteja sincronizada
+    if (isFilteringUsers.value) {
+      await loadAllUsers()
+    }
     if (!(userData.cargo === 'LIDER' && userData.criarCelulaApos)) {
       showUserModal.value = false
     }
