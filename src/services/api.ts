@@ -1,8 +1,16 @@
 import { ref } from 'vue';
 
 // Configurações da API
+// Preferir mesma origem no browser para evitar Mixed Content e CORS
+const inferSameOriginApi = () => {
+  if (typeof window !== 'undefined' && window.location && window.location.origin) {
+    return `${window.location.origin}/api`;
+  }
+  return 'http://localhost:3000/api';
+};
+
 // Garante que a URL base termine com "/api" para compatibilidade com o backend
-const RAW_API_URL = (import.meta.env.VITE_API_URL as string) || 'http://localhost:3000/api';
+const RAW_API_URL = (import.meta.env.VITE_API_URL as string) || inferSameOriginApi();
 const API_URL = RAW_API_URL.endsWith('/api')
   ? RAW_API_URL
   : `${RAW_API_URL.replace(/\/$/, '')}/api`;
