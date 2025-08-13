@@ -24,6 +24,7 @@ services:
       - NODE_ENV=production
       - HOST=0.0.0.0
       - JWT_SECRET=central-celular-secret-key-do-not-share
+      - FRONTEND_URL=https://central.manytalks.com.br
       - VITE_QUEPASA_USER_EMAIL=doug.fsg@gmail.com
     depends_on:
       - db
