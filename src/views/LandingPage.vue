@@ -25,7 +25,7 @@ function scrollToId(id: string) {
 </script>
 
 <template>
-      <div class="min-h-screen bg-gradient-to-br from-vibrant-50 via-fun-50 to-accent-50">
+	  <div class="min-h-[100svh] sm:min-h-screen flex flex-col bg-gradient-to-br from-vibrant-50 via-fun-50 to-accent-50">
     <!-- Header -->
     <header class="bg-white/90 backdrop-blur-sm fixed w-full z-50 border-b border-vibrant-100 shadow-sm">
       <nav class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
@@ -77,7 +77,7 @@ function scrollToId(id: string) {
             </h2>
             <p v-fade-in="{ delay: 140 }" class="mt-6 max-w-3xl mx-auto text-neutral-700 text-lg sm:text-xl leading-relaxed">
               Aprisco é a plataforma que <span class="font-semibold text-vibrant-600">líderes de célula</span> usam para organizar encontros, 
-              acompanhar discípulos e fortalecer a comunhão. Simples, alegre e feito com carinho para você! 💜
+              acompanhar discípulos e fortalecer a comunhão.
             </p>
             <div v-fade-in="{ delay: 220 }" class="mt-10 flex flex-col sm:flex-row items-center justify-center gap-4">
               <button @click="goToApp" class="w-full sm:w-auto px-8 py-4 bg-gradient-to-r from-vibrant-500 to-vibrant-600 text-white text-lg font-semibold rounded-xl hover:from-vibrant-600 hover:to-vibrant-900 transform hover:scale-105 transition-all shadow-lg hover:shadow-xl">
@@ -112,7 +112,7 @@ function scrollToId(id: string) {
             <div class="text-center">
               <p v-fade-in="{ delay: 80 }" class="text-neutral-700 leading-relaxed italic">
                 Com o Aprisco, cada encontro de célula e cada pessoa são lembrados 
-                com carinho: listas de presença, aniversários, um espaço para celebrar o que Deus está fazendo 💜
+                com carinho: listas de presença, aniversários, diário do discípulo, um espaço para celebrar o que Deus está fazendo 💜
               </p>
             </div>
           </div>
@@ -217,7 +217,7 @@ function scrollToId(id: string) {
     </section>
 
     <!-- Footer -->
-    <footer class="bg-gradient-to-r from-vibrant-900 to-vibrant-500 text-white">
+    <footer class="mt-auto bg-gradient-to-r from-vibrant-900 to-vibrant-500 text-white">
       <div class="max-w-7xl mx-auto py-12 px-4 sm:px-6 lg:px-8">
         <div class="text-center">
           <div class="flex items-center justify-center gap-2 mb-4">
