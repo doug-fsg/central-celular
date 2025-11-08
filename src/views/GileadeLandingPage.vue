@@ -159,26 +159,6 @@ const onWhatsAppInput = (e: Event) => {
 
 <template>
   <div class="fixed inset-0 bg-black overflow-y-auto">
-    <!-- Header estilo Spotify -->
-    <header class="bg-black border-b border-neutral-800">
-      <div class="max-w-7xl mx-auto px-8 py-4">
-        <div class="flex items-center justify-between">
-          <div class="flex items-center">
-            <div class="w-10 h-10 bg-gradient-to-r from-vibrant-500 to-fun-500 rounded-full flex items-center justify-center mr-3">
-              <span class="text-white font-bold text-xl">A</span>
-            </div>
-            <span class="text-white text-2xl font-bold">Aprisco</span>
-          </div>
-          <router-link 
-            to="/login" 
-            class="text-white hover:text-neutral-300 text-sm font-medium transition-colors"
-          >
-            Entrar
-          </router-link>
-        </div>
-      </div>
-    </header>
-
     <!-- Conteúdo Principal - Estilo Spotify -->
     <div class="min-h-screen flex items-center justify-center px-6 py-16 bg-black">
       <div class="w-full max-w-[450px]">
@@ -192,7 +172,7 @@ const onWhatsAppInput = (e: Event) => {
               <span v-else>Quase lá</span>
             </h1>
             <p class="text-neutral-400 text-sm" v-if="currentStep === 1">
-              GILEADE - 2025
+              Gileade - 2025
             </p>
             <p class="text-neutral-400 text-sm" v-else-if="currentStep === 2">
               Digite o código enviado para seu WhatsApp
@@ -308,7 +288,7 @@ const onWhatsAppInput = (e: Event) => {
             <div class="pt-6">
               <button
                 type="submit"
-                class="w-full px-4 py-4 bg-gradient-to-r from-vibrant-500 to-fun-500 hover:from-vibrant-600 hover:to-fun-600 text-white font-bold rounded-full transition-all transform hover:scale-105 disabled:opacity-50 disabled:cursor-not-allowed disabled:transform-none text-base"
+                class="w-full px-4 py-4 bg-green-500 hover:bg-green-600 text-white font-bold rounded-full transition-all transform hover:scale-105 disabled:opacity-50 disabled:cursor-not-allowed disabled:transform-none text-base"
                 :disabled="loading"
               >
                 <span v-if="loading && currentStep === 1">Enviando...</span>

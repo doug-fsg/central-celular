@@ -3,6 +3,7 @@ import { createRouter, createWebHistory } from 'vue-router'
 import { useUserStore } from '../stores/userStore'
 import { ssoLinkService } from '../services/ssoLinkService'
 import LandingPage from '../views/LandingPage.vue'
+import GileadeLandingPage from '../views/GileadeLandingPage.vue'
 import LoginPage from '../views/LoginPage.vue'
 import Dashboard from '../views/Dashboard.vue'
 import MemberList from '../views/MemberList.vue'
@@ -21,6 +22,12 @@ const router = createRouter({
       path: '/',
       name: 'home',
       component: LandingPage
+    },
+    {
+      path: '/gileade',
+      name: 'gileade',
+      component: GileadeLandingPage,
+      meta: { requiresGuest: true }
     },
     {
       path: '/login',
