@@ -151,18 +151,18 @@ const handleRequestCode = async () => {
 </script>
 
 <template>
-  <div class="min-h-screen bg-gray-50 flex flex-col justify-center py-12 sm:px-6 lg:px-8">
+  <div class="min-h-screen bg-gray-50 flex flex-col justify-center py-12 px-6 sm:px-10 lg:px-16">
     <div class="sm:mx-auto sm:w-full sm:max-w-md">
       <!-- Logo -->
       <div class="flex justify-center mb-6">
-        <img src="../assets/brand/logo-full.png" alt="Aprisco" class="h-16 w-auto" />
+        <img src="../assets/brand/logo-full.png" alt="Aprisco" class="h-12 w-auto sm:h-14" />
       </div>
       <h2 class="mt-6 text-center text-3xl font-extrabold text-gray-900">
         Bem-vindo(a)
       </h2>
     </div>
     <div class="mt-8 sm:mx-auto sm:w-full sm:max-w-md">
-      <div class="bg-white py-8 px-4 shadow sm:rounded-lg sm:px-10">
+      <div class="bg-white py-8 px-6 shadow sm:rounded-lg sm:px-12">
         <form @submit.prevent="handleLogin" class="space-y-6">
           <!-- WhatsApp/Email -->
           <div>

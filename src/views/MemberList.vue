@@ -93,13 +93,16 @@ function toggleAddForm() {
     return;
   }
   
+  if (!showAddForm.value) {
+    form.value = createEmptyForm()
+  }
+  
   showAddForm.value = !showAddForm.value
 }
 
 const editingMember = ref<string | null>(null)
 const editForm = ref({
   name: '',
-  telefone: '',
   dataNascimento: '',
   isConsolidator: false,
   isCoLeader: false,
@@ -161,7 +164,6 @@ function startEditing(member: Member) {
   editingMember.value = member.id
   editForm.value = {
     name: member.name,
-    telefone: member.telefone || '',
     dataNascimento: dataFormatada,
     isConsolidator: member.isConsolidator,
     isCoLeader: member.isCoLeader,
@@ -172,18 +174,18 @@ function startEditing(member: Member) {
   console.log('[MemberList] Formulário de edição:', editForm.value);
 }
 
-function saveEdit() {
+async function saveEdit() {
   if (editingMember.value && editForm.value.name.trim()) {
-    memberStore.updateMember(editingMember.value, {
+    await memberStore.updateMember(editingMember.value, {
       name: editForm.value.name,
-      telefone: editForm.value.telefone,
-      dataNascimento: editForm.value.dataNascimento,
+      dataNascimento: editForm.value.dataNascimento || undefined,
       isConsolidator: editForm.value.isConsolidator,
       isCoLeader: editForm.value.isCoLeader,
       isHost: editForm.value.isHost,
       observacoes: editForm.value.observacoes
     })
     
+    await memberStore.carregarMembros()
     cancelEdit()
   }
 }
@@ -230,15 +232,16 @@ function getAge(birthDate: string): number {
   return age;
 }
 
-const form = ref({
+const createEmptyForm = () => ({
   name: '',
-  telefone: '',
   dataNascimento: '',
   isConsolidator: false,
   isCoLeader: false,
   isHost: false,
   isActive: true
 })
+
+const form = ref(createEmptyForm())
 
 // Notes modal state
 const showNotesModal = ref(false)
@@ -262,8 +265,10 @@ async function handleSubmit() {
   try {
     await memberStore.addMember({
       ...form.value,
+      dataNascimento: form.value.dataNascimento || undefined,
       isActive: true
     })
+    await memberStore.carregarMembros()
     toggleAddForm()
   } catch (error) {
     console.error('Erro ao adicionar membro:', error)
@@ -303,10 +308,6 @@ async function handleSubmit() {
       
       <!-- Resumo Estatístico -->
       <div class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-3 mb-6">
-        <div class="card p-3 flex flex-col items-center justify-center">
-          <span class="text-xl font-bold text-neutral-800">{{ stats.total }}</span>
-          <span class="text-xs text-neutral-500 mt-1">Total de Membros</span>
-        </div>
         <div class="card p-3 flex flex-col items-center justify-center">
           <span class="text-xl font-bold text-neutral-800">{{ stats.active }}</span>
           <span class="text-xs text-neutral-500 mt-1">Membros Ativos</span>
@@ -351,74 +352,80 @@ async function handleSubmit() {
                 leave-from="opacity-100 scale-100"
                 leave-to="opacity-0 scale-95"
               >
-                <DialogPanel class="w-full max-w-md transform overflow-hidden rounded-2xl bg-white p-6 text-left align-middle shadow-xl transition-all">
-                  <DialogTitle as="h3" class="text-lg font-medium leading-6 text-gray-900 mb-4">
-                    Adicionar Novo Membro
+                <DialogPanel class="w-full max-w-sm transform overflow-hidden rounded-2xl bg-white p-6 text-left align-middle shadow-xl transition-all">
+                  <DialogTitle as="h3" class="text-xl font-semibold text-neutral-900 text-center">
+                    Adicionar membro
                   </DialogTitle>
+                  <p class="text-sm text-neutral-500 text-center mt-1 mb-6">
+                    Complete os dados abaixo para cadastrar rapidamente.
+                  </p>
 
-                  <form @submit.prevent="handleSubmit" class="space-y-4">
+                  <form @submit.prevent="handleSubmit" class="space-y-5">
                     <div>
-                      <label for="name" class="block text-sm font-medium text-gray-700">Nome</label>
+                      <label for="name" class="block text-xs font-medium text-neutral-500 uppercase tracking-wide mb-1">Nome *</label>
                       <input
                         type="text"
                         id="name"
                         v-model="form.name"
                         required
-                        class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-primary-500 focus:ring-primary-500 sm:text-sm"
+                        placeholder="Nome completo"
+                        class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-primary-500 transition-all"
                       />
                     </div>
 
                     <div>
-                      <label for="telefone" class="block text-sm font-medium text-gray-700">Telefone</label>
-                      <input
-                        type="tel"
-                        id="telefone"
-                        v-model="form.telefone"
-                        class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-primary-500 focus:ring-primary-500 sm:text-sm"
-                      />
-                    </div>
-
-                    <div>
-                      <label for="dataNascimento" class="block text-sm font-medium text-gray-700">Data de Nascimento</label>
+                      <label for="dataNascimento" class="block text-xs font-medium text-neutral-500 uppercase tracking-wide mb-1">
+                        Data de nascimento <span class="text-neutral-400 lowercase">(opcional)</span>
+                      </label>
                       <input
                         type="date"
                         id="dataNascimento"
                         v-model="form.dataNascimento"
-                        class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-primary-500 focus:ring-primary-500 sm:text-sm"
+                        class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-primary-500 transition-all"
+                        :max="new Date().toISOString().split('T')[0]"
                       />
                     </div>
 
-                    <div class="flex flex-col gap-2">
-                      <label class="text-sm font-medium text-gray-700">Funções</label>
                       <div class="space-y-2">
-                        <label class="inline-flex items-center">
-                          <input type="checkbox" v-model="form.isConsolidator" class="rounded border-gray-300 text-primary-600 shadow-sm focus:border-primary-500 focus:ring-primary-500" />
-                          <span class="ml-2 text-sm text-gray-700">Consolidador</span>
+                      <span class="block text-xs font-medium text-neutral-500 uppercase tracking-wide">Funções</span>
+                      <div class="grid grid-cols-3 gap-2 pt-1">
+                        <label
+                          class="flex flex-col items-center justify-center gap-1 px-3 py-2 border border-gray-300 rounded-lg text-xs font-medium cursor-pointer transition-all hover:bg-gray-50"
+                          :class="form.isConsolidator ? 'bg-primary-50 border-primary-500 text-primary-700' : 'text-neutral-600'"
+                        >
+                          <input type="checkbox" v-model="form.isConsolidator" class="sr-only" />
+                          <span>Consol.</span>
                         </label>
-                        <label class="inline-flex items-center">
-                          <input type="checkbox" v-model="form.isCoLeader" class="rounded border-gray-300 text-primary-600 shadow-sm focus:border-primary-500 focus:ring-primary-500" />
-                          <span class="ml-2 text-sm text-gray-700">Co-líder</span>
+                        <label
+                          class="flex flex-col items-center justify-center gap-1 px-3 py-2 border border-gray-300 rounded-lg text-xs font-medium cursor-pointer transition-all hover:bg-gray-50"
+                          :class="form.isCoLeader ? 'bg-vibrant-50 border-vibrant-500 text-vibrant-700' : 'text-neutral-600'"
+                        >
+                          <input type="checkbox" v-model="form.isCoLeader" class="sr-only" />
+                          <span>Co-líder</span>
                         </label>
-                        <label class="inline-flex items-center">
-                          <input type="checkbox" v-model="form.isHost" class="rounded border-gray-300 text-primary-600 shadow-sm focus:border-primary-500 focus:ring-primary-500" />
-                          <span class="ml-2 text-sm text-gray-700">Anfitrião</span>
+                        <label
+                          class="flex flex-col items-center justify-center gap-1 px-3 py-2 border border-gray-300 rounded-lg text-xs font-medium cursor-pointer transition-all hover:bg-gray-50"
+                          :class="form.isHost ? 'bg-fun-50 border-fun-500 text-fun-700' : 'text-neutral-600'"
+                        >
+                          <input type="checkbox" v-model="form.isHost" class="sr-only" />
+                          <span>Anfitrião</span>
                         </label>
                       </div>
                     </div>
 
-                    <div class="mt-6 flex justify-end gap-3">
+                    <div class="flex items-center justify-end gap-3 pt-4">
                       <button
                         type="button"
                         @click="toggleAddForm"
-                        class="inline-flex justify-center rounded-md border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 shadow-sm hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2"
+                        class="px-4 py-2 text-sm font-medium text-neutral-500 hover:text-neutral-700 transition-colors"
                       >
                         Cancelar
                       </button>
                       <button
                         type="submit"
-                        class="inline-flex justify-center rounded-md border border-transparent bg-primary-600 px-4 py-2 text-sm font-medium text-white shadow-sm hover:bg-primary-700 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2"
+                        class="px-4 py-2 bg-primary-600 text-white text-sm font-semibold rounded-lg hover:bg-primary-700 transition-colors shadow-sm"
                       >
-                        Adicionar
+                        Adicionar membro
                       </button>
                     </div>
                   </form>
@@ -487,25 +494,23 @@ async function handleSubmit() {
                   <span class="block text-xs uppercase">{{ new Date(member.dataNascimento as string).toLocaleString('default', { month: 'short' }) }}</span>
                 </div>
                 <div class="flex-1">
-                  <div class="flex items-center gap-1">
-                    <h3 class="font-medium text-neutral-800">{{ member.name }}</h3>
                     <button
                       @click="openNotes(member)"
-                      class="ml-1 p-0.5 rounded text-neutral-400 hover:text-amber-600 hover:bg-neutral-100"
-                      title="Observações"
+                    class="text-left w-full"
                     >
-                      <AppIcon name="external" size="xs" />
-                    </button>
+                    <div class="flex items-center gap-1">
+                      <h3 class="font-medium text-neutral-800">{{ member.name }}</h3>
                   </div>
-                  <div class="text-xs text-neutral-500">
+                    <div class="text-xs text-neutral-500 mt-0.5 flex items-center gap-3">
                     <span class="inline-flex items-center">
                       <AppIcon name="calendar" class="mr-1" size="xs"/>
                       {{ getAge(member.dataNascimento) }} anos
                     </span>
-                    <span v-if="member.telefone" class="inline-flex items-center ml-3">
+                      <span v-if="member.telefone" class="inline-flex items-center">
                       <AppIcon name="phone" class="mr-1" size="xs"/>{{ member.telefone }}
                     </span>
                   </div>
+                  </button>
                   <div class="flex flex-wrap gap-1 mt-1">
                     <span v-if="!member.isActive" class="inline-flex items-center px-1.5 py-0.5 rounded-full text-xs font-medium bg-neutral-100 text-neutral-700">Inativo</span>
                     <span v-if="member.isConsolidator" class="inline-flex items-center px-1.5 py-0.5 rounded-full text-xs font-medium bg-primary-100 text-primary-700">Consolidador</span>
@@ -532,15 +537,12 @@ async function handleSubmit() {
               <!-- Card de Membro Padrão -->
               <div v-else class="flex items-center justify-between" :class="{'opacity-60': !member.isActive}">
                 <div class="flex-1">
-                  <div class="flex items-center gap-1">
-                    <p class="text-sm font-medium text-neutral-800">{{ member.name }}</p>
                     <button
                       @click="openNotes(member)"
-                      class="ml-1 p-0.5 rounded text-neutral-400 hover:text-amber-600 hover:bg-neutral-100"
-                      title="Observações"
+                    class="text-left w-full"
                     >
-                      <AppIcon name="external" size="xs" />
-                    </button>
+                    <div class="flex items-center gap-1">
+                      <p class="text-sm font-medium text-neutral-800">{{ member.name }}</p>
                   </div>
                   <div class="flex flex-wrap items-center text-xs text-neutral-500 mt-0.5">
                     <span v-if="member.telefone" class="inline-flex items-center mr-3">
@@ -550,6 +552,7 @@ async function handleSubmit() {
                       <AppIcon name="calendar" class="mr-1" size="xs"/>{{ formatDate(member.dataNascimento) }}
                         </span>
                   </div>
+                  </button>
                   <div class="flex flex-wrap gap-1 mt-1">
                     <span v-if="!member.isActive" class="inline-flex items-center px-1.5 py-0.5 rounded-full text-xs font-medium bg-neutral-100 text-neutral-700">Inativo</span>
                     <span v-if="member.isConsolidator" class="inline-flex items-center px-1.5 py-0.5 rounded-full text-xs font-medium bg-primary-100 text-primary-700">Consolidador</span>
@@ -578,88 +581,130 @@ async function handleSubmit() {
               </div>
             </div>
             
-      <!-- Modo de Edição (Modal) -->
-      <div v-if="editingMember !== null" class="fixed inset-0 overflow-y-auto z-50">
-        <div class="flex items-center justify-center min-h-screen px-4 pt-4 pb-20 text-center sm:block sm:p-0">
-          <div class="fixed inset-0 transition-opacity" aria-hidden="true">
-            <div class="absolute inset-0 bg-neutral-900 opacity-75"></div>
-          </div>
-          <span class="hidden sm:inline-block sm:align-middle sm:h-screen" aria-hidden="true">&#8203;</span>
-          <div class="inline-block align-bottom bg-white rounded-lg text-left overflow-hidden shadow-xl transform transition-all sm:my-8 sm:align-middle sm:max-w-lg sm:w-full">
-            <div class="bg-white px-4 pt-4 pb-3 sm:p-5">
-              <div class="flex items-center justify-between mb-4">
-                <h3 class="text-base font-medium text-neutral-800">Editar Membro</h3>
-                <button @click="cancelEdit" class="btn btn-icon btn-xs">
-                  <AppIcon name="close" size="xs" />
-                </button>
-              </div>
-              <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+      <!-- Modal de Editar Membro -->
+      <TransitionRoot appear :show="editingMember !== null" as="template">
+        <Dialog as="div" @close="cancelEdit" class="relative z-10">
+          <TransitionChild
+            as="template"
+            enter="duration-300 ease-out"
+            enter-from="opacity-0"
+            enter-to="opacity-100"
+            leave="duration-200 ease-in"
+            leave-from="opacity-100"
+            leave-to="opacity-0"
+          >
+            <div class="fixed inset-0 bg-black bg-opacity-25" />
+          </TransitionChild>
+
+          <div class="fixed inset-0 overflow-y-auto">
+            <div class="flex min-h-full items-center justify-center p-4 text-center">
+              <TransitionChild
+                as="template"
+                enter="duration-300 ease-out"
+                enter-from="opacity-0 scale-95"
+                enter-to="opacity-100 scale-100"
+                leave="duration-200 ease-in"
+                leave-from="opacity-100 scale-100"
+                leave-to="opacity-0 scale-95"
+              >
+                <DialogPanel class="w-full max-w-sm transform overflow-hidden rounded-2xl bg-white p-6 text-left align-middle shadow-xl transition-all">
+                  <DialogTitle as="h3" class="text-xl font-semibold text-neutral-900 text-center">
+                    Editar membro
+                  </DialogTitle>
+                  <p class="text-sm text-neutral-500 text-center mt-1 mb-6">
+                    Atualize as informações e mantenha os dados organizados.
+                  </p>
+
+                  <form @submit.prevent="saveEdit" class="space-y-5">
                 <div>
-                  <label :for="'edit-name-' + editingMember" class="form-label text-sm">Nome</label>
-                  <div class="relative">
-                    <div class="absolute inset-y-0 left-0 pl-2 flex items-center pointer-events-none">
-                      <AppIcon name="user" size="xs" class="text-neutral-400" />
+                      <label :for="'edit-name-' + editingMember" class="block text-xs font-medium text-neutral-500 uppercase tracking-wide mb-1">
+                        Nome *
+                      </label>
+                      <input
+                        v-model="editForm.name"
+                        :id="'edit-name-' + editingMember"
+                        type="text"
+                        required
+                        placeholder="Nome completo"
+                        class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-primary-500 transition-all"
+                      />
                     </div>
-                    <input v-model="editForm.name" :id="'edit-name-' + editingMember" type="text" class="form-input pl-7 py-1 text-sm" />
-                  </div>
-                </div>
+
                 <div>
-                  <label :for="'edit-telefone-' + editingMember" class="form-label text-sm">Telefone</label>
-                  <div class="relative">
-                    <div class="absolute inset-y-0 left-0 pl-2 flex items-center pointer-events-none">
-                      <AppIcon name="phone" size="xs" class="text-neutral-400" />
+                      <label :for="'edit-dataNascimento-' + editingMember" class="block text-xs font-medium text-neutral-500 uppercase tracking-wide mb-1">
+                        Data de nascimento <span class="text-neutral-400 lowercase">(opcional)</span>
+                      </label>
+                      <input
+                        v-model="editForm.dataNascimento"
+                        :id="'edit-dataNascimento-' + editingMember"
+                        type="date"
+                        class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-primary-500 transition-all"
+                        :max="new Date().toISOString().split('T')[0]"
+                      />
                     </div>
-                    <input v-model="editForm.telefone" :id="'edit-telefone-' + editingMember" type="text" class="form-input pl-7 py-1 text-sm" />
-                  </div>
+
+                    <div class="space-y-2">
+                      <span class="block text-xs font-medium text-neutral-500 uppercase tracking-wide">Funções</span>
+                      <div class="grid grid-cols-3 gap-2 pt-1">
+                        <label
+                          class="flex flex-col items-center justify-center gap-1 px-3 py-2 border border-gray-300 rounded-lg text-xs font-medium cursor-pointer transition-all hover:bg-gray-50"
+                          :class="editForm.isConsolidator ? 'bg-primary-50 border-primary-500 text-primary-700' : 'text-neutral-600'"
+                        >
+                          <input type="checkbox" v-model="editForm.isConsolidator" class="sr-only" />
+                          <span>Consol.</span>
+                        </label>
+                        <label
+                          class="flex flex-col items-center justify-center gap-1 px-3 py-2 border border-gray-300 rounded-lg text-xs font-medium cursor-pointer transition-all hover:bg-gray-50"
+                          :class="editForm.isCoLeader ? 'bg-vibrant-50 border-vibrant-500 text-vibrant-700' : 'text-neutral-600'"
+                        >
+                          <input type="checkbox" v-model="editForm.isCoLeader" class="sr-only" />
+                          <span>Co-líder</span>
+                        </label>
+                        <label
+                          class="flex flex-col items-center justify-center gap-1 px-3 py-2 border border-gray-300 rounded-lg text-xs font-medium cursor-pointer transition-all hover:bg-gray-50"
+                          :class="editForm.isHost ? 'bg-fun-50 border-fun-500 text-fun-700' : 'text-neutral-600'"
+                        >
+                          <input type="checkbox" v-model="editForm.isHost" class="sr-only" />
+                          <span>Anfitrião</span>
+                        </label>
                 </div>
-                <div>
-                  <label :for="'edit-dataNascimento-' + editingMember" class="form-label text-sm">Data de Nascimento</label>
-                  <div class="relative">
-                    <div class="absolute inset-y-0 left-0 pl-2 flex items-center pointer-events-none">
-                      <AppIcon name="calendar" size="xs" class="text-neutral-400" />
                     </div>
-                    <input v-model="editForm.dataNascimento" :id="'edit-dataNascimento-' + editingMember" type="date" class="form-input pl-7 py-1 text-sm" />
-                  </div>
-                </div>
-                <div class="flex flex-col justify-center gap-2">
-                  <div class="flex items-center">
-                    <input v-model="editForm.isConsolidator" :id="'edit-consolidator-' + editingMember" type="checkbox" class="h-4 w-4 text-primary-500 focus:ring-primary-400 border-neutral-300 rounded" />
-                    <label :for="'edit-consolidator-' + editingMember" class="ml-2 block text-xs text-neutral-700">Consolidador</label>
-                  </div>
-                  <div class="flex items-center">
-                    <input v-model="editForm.isCoLeader" :id="'edit-coleader-' + editingMember" type="checkbox" class="h-4 w-4 text-vibrant-500 focus:ring-vibrant-400 border-neutral-300 rounded" />
-                    <label :for="'edit-coleader-' + editingMember" class="ml-2 block text-xs text-neutral-700">Co-líder</label>
-                  </div>
-                  <div class="flex items-center">
-                    <input v-model="editForm.isHost" :id="'edit-host-' + editingMember" type="checkbox" class="h-4 w-4 text-fun-500 focus:ring-fun-400 border-neutral-300 rounded" />
-                    <label :for="'edit-host-' + editingMember" class="ml-2 block text-xs text-neutral-700">Anfitrião</label>
-                  </div>
-                </div>
-                <div class="md:col-span-2">
-                  <label :for="'edit-notes-' + editingMember" class="form-label text-sm">Notas / Observações</label>
+
+                    <div>
+                      <label :for="'edit-notes-' + editingMember" class="block text-xs font-medium text-neutral-500 uppercase tracking-wide mb-1">
+                        Observações
+                      </label>
                   <textarea
                     v-model="editForm.observacoes"
                     :id="'edit-notes-' + editingMember"
                     rows="3"
-                    placeholder="Adicione observações sobre o membro (histórico, acompanhamento, etc.)"
-                    class="form-textarea w-full text-sm"
+                        placeholder="Adicione observações relevantes sobre o membro"
+                        class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-primary-500 transition-all"
                   />
                 </div>
-              </div>
-            </div>
-            <div class="bg-neutral-50 px-4 py-2 sm:px-5 sm:flex sm:flex-row-reverse">
-              <button @click="saveEdit" class="btn btn-primary btn-xs" :disabled="!editForm.name.trim()">
-                <AppIcon name="save" class="mr-1" size="xs" />
-                Salvar
-              </button>
-              <button @click="cancelEdit" class="btn btn-outline btn-xs mr-2">
-                <AppIcon name="x" class="mr-1" size="xs" />
+
+                    <div class="flex items-center justify-end gap-3 pt-4">
+                      <button
+                        type="button"
+                        @click="cancelEdit"
+                        class="px-4 py-2 text-sm font-medium text-neutral-500 hover:text-neutral-700 transition-colors"
+                      >
                   Cancelar
                 </button>
+                      <button
+                        type="submit"
+                        class="px-4 py-2 bg-primary-600 text-white text-sm font-semibold rounded-lg hover:bg-primary-700 transition-colors shadow-sm"
+                      >
+                        Salvar alterações
+                      </button>
+                    </div>
+                  </form>
+                </DialogPanel>
+              </TransitionChild>
             </div>
           </div>
-        </div>
-      </div>
+        </Dialog>
+      </TransitionRoot>
 
       <!-- Delete Confirmation Modal -->
       <div v-if="showDeleteModal" class="fixed inset-0 overflow-y-auto z-50">

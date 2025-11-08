@@ -31,6 +31,7 @@ interface CreatePasswordData {
   whatsapp: string;
   senha: string;
   nome: string;
+  dataNascimento?: string;
   accountId: number;
 }
 
@@ -279,7 +280,7 @@ export const authService = {
   },
   
   // Criar senha após verificação de OTP
-  async createPassword({ whatsapp, senha, nome, accountId }: CreatePasswordData): Promise<LoginResult> {
+  async createPassword({ whatsapp, senha, nome, dataNascimento, accountId }: CreatePasswordData): Promise<LoginResult> {
     try {
       console.log(`[AuthService] Definindo senha para usuário com WhatsApp: ${whatsapp}`);
       
@@ -306,13 +307,25 @@ export const authService = {
       // Hash da senha
       const hashedPassword = await bcrypt.hash(senha, 10);
       
+      // Preparar dados para atualização
+      const updateData: {
+        senha: string;
+        nome: string;
+        dataNascimento?: Date;
+      } = {
+        senha: hashedPassword,
+        nome: nome // Atualizar também o nome do usuário
+      };
+      
+      // Adicionar data de nascimento se fornecida
+      if (dataNascimento) {
+        updateData.dataNascimento = new Date(dataNascimento);
+      }
+      
       // Atualizar o usuário com a nova senha
       const updatedUser = await prisma.usuario.update({
         where: { id: existingUser.id },
-        data: {
-          senha: hashedPassword,
-          nome: nome // Atualizar também o nome do usuário
-        },
+        data: updateData,
         include: {
           account: {
             select: {

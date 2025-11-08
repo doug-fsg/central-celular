@@ -33,6 +33,7 @@ const otpInput = reactive({
 // Step 3: Criar senha
 const passwordInput = reactive({
   nome: '',
+  dataNascimento: '' as string,
   senha: '',
   confirmSenha: ''
 })
@@ -70,6 +71,15 @@ const validatePassword = () => {
   if (!passwordInput.nome.trim()) {
     error.value = 'Por favor, informe seu nome'
     return false
+  }
+  
+  if (passwordInput.dataNascimento && passwordInput.dataNascimento.trim()) {
+    const dataNasc = new Date(passwordInput.dataNascimento)
+    const hoje = new Date()
+    if (dataNasc > hoje) {
+      error.value = 'A data de nascimento não pode ser no futuro'
+      return false
+    }
   }
   
   if (passwordInput.senha.length < 6) {
@@ -147,7 +157,12 @@ const createPassword = async () => {
   try {
     loading.value = true
     
-    await api.createPassword(whatsappInput.whatsapp, passwordInput.nome, passwordInput.senha)
+    await api.createPassword(
+      whatsappInput.whatsapp, 
+      passwordInput.nome, 
+      passwordInput.senha,
+      passwordInput.dataNascimento || undefined
+    )
     
     // Emitir evento de sucesso
     emit('success')
@@ -316,6 +331,20 @@ const goBack = () => {
             placeholder="Digite seu nome completo"
             class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-primary-500 focus:border-primary-500"
             :disabled="loading"
+          />
+        </div>
+        
+        <div>
+          <label for="dataNascimento" class="block text-sm font-medium text-gray-700 mb-1">
+            Data de Nascimento <span class="text-gray-500 text-xs">(opcional)</span>
+          </label>
+          <input
+            id="dataNascimento"
+            v-model="passwordInput.dataNascimento"
+            type="date"
+            class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-primary-500 focus:border-primary-500"
+            :disabled="loading"
+            :max="new Date().toISOString().split('T')[0]"
           />
         </div>
         

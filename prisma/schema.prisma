@@ -32,6 +32,7 @@ model Usuario {
   email              String?   // Agora é opcional
   whatsapp           String    // Não é mais opcional
   senha              String?   // Agora é opcional inicialmente
+  dataNascimento     DateTime? @map("data_nascimento") @db.Date
   cargo              String    // "admin", "pastor", "supervisor", "lider", "colider"
   ativo              Boolean   @default(true)
   isSuperAdmin       Boolean   @default(false) @map("is_super_admin")

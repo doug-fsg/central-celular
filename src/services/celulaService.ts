@@ -60,6 +60,17 @@ export interface NovoMembroInput {
   observacoes?: string;
 }
 
+export interface NovaCelulaInput {
+  nome: string;
+  endereco?: string;
+  diaSemana: string;
+  horario: string;
+  liderId: number;
+  coLiderId?: number;
+  supervisorId?: number;
+  regiaoId?: number;
+}
+
 export interface PaginatedResponse<T> {
   celulas: T[];
   pagination: {
@@ -89,6 +100,11 @@ const celulaService = {
   // Obter detalhes de uma célula específica
   async obterCelula(id: number) {
     return await api.get(`/celulas/${id}`) as Celula & { membros: Membro[] };
+  },
+  
+  // Criar nova célula
+  async criarCelula(dados: NovaCelulaInput) {
+    return await api.post('/celulas', dados);
   },
   
   // Adicionar um novo membro à célula

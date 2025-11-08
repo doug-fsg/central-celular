@@ -137,22 +137,11 @@ function goToattendance() {
       <p class="text-xs font-medium">{{ deadlineText }}</p>
     </div>
     
-    <div class="flex items-center">
-      <button 
-        v-if="!loading && !relatorioEnviado"
-        @click="goToattendance"
-        class="text-xs mr-2 py-1 px-2 rounded"
-        :class="reminderType === 'urgent' ? 'bg-red-500 text-white' : 'bg-transparent border border-current text-gray-500'"
-      >
-        Enviar
-      </button>
-      
-      <button 
-        @click="dismissReminder"
-        class="p-1 hover:opacity-75 transition-opacity"
-      >
-        <AppIcon name="close" size="xs" :class="reminderType === 'urgent' ? 'text-red-500' : reminderType === 'warning' ? 'text-yellow-500' : 'text-blue-500'" />
-      </button>
-    </div>
+    <button 
+      @click="dismissReminder"
+      class="p-1 hover:opacity-75 transition-opacity"
+    >
+      <AppIcon name="close" size="xs" :class="reminderType === 'urgent' ? 'text-red-500' : reminderType === 'warning' ? 'text-yellow-500' : 'text-blue-500'" />
+    </button>
   </div>
 </template>

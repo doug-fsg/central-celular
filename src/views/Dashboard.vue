@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, ref } from 'vue'
+import { computed, ref, onMounted } from 'vue'
 import StatsOverview from '../components/StatsOverview.vue'
 import ReportReminder from '../components/ReportReminder.vue'
 import LeadershipBadge from '../components/LeadershipBadge.vue'
@@ -8,12 +8,14 @@ import { useAttendanceStore } from '../stores/attendanceStore'
 import { useLeaderStore } from '../stores/leaderStore'
 import { useReportStore } from '../stores/reportStore'
 import { useRouter } from 'vue-router'
+import { useUserStore } from '../stores/userStore'
 import AppIcon from '../components/AppIcon.vue'
 
 const memberStore = useMemberStore()
 const attendanceStore = useAttendanceStore()
 const leaderStore = useLeaderStore()
 const reportStore = useReportStore()
+const userStore = useUserStore()
 const router = useRouter()
 
 const consolidators = computed(() => memberStore.getConsolidators)
@@ -55,6 +57,40 @@ function goToAttendance() {
 function setActiveTab(tab) {
   activeTab.value = tab
 }
+
+// Carregar dados quando o componente for montado
+onMounted(async () => {
+  console.log('[Dashboard] Iniciando carregamento de dados')
+  console.log('[Dashboard] Usuário:', userStore.user)
+  console.log('[Dashboard] Cargo do usuário:', userStore.user?.cargo)
+  
+  await memberStore.carregarMembros()
+  
+  console.log('[Dashboard] Membros carregados:', memberStore.getAllMembers.length)
+  console.log('[Dashboard] Error do memberStore:', memberStore.error)
+  
+  // Verificar se o líder tem célula e membros cadastrados
+  const isLider = userStore.user?.cargo?.toUpperCase() === 'LIDER'
+  const temMembros = memberStore.getAllMembers.length > 0
+  const temCelula = memberStore.celulaId !== null
+  
+  console.log('[Dashboard] Verificações:', { isLider, temMembros, temCelula })
+  
+  if (isLider) {
+    // Primeiro verificar se tem célula
+    if (!temCelula) {
+      console.log('[Dashboard] Redirecionando para onboarding de célula - sem célula')
+      router.push({ name: 'cell-onboarding' })
+      return
+    }
+    
+    // Depois verificar se tem membros
+    if (!temMembros) {
+      console.log('[Dashboard] Redirecionando para onboarding de membros - sem membros')
+      router.push({ name: 'member-onboarding' })
+    }
+  }
+})
 </script>
 
 <template>
@@ -62,14 +98,14 @@ function setActiveTab(tab) {
     <main class="container-layout">
       <!-- Cabeçalho mais discreto -->
       <div class="flex items-center justify-end mb-4">
-        <LeadershipBadge />
+        <!-- <LeadershipBadge /> -->
       </div>
 
       <!-- Lembretes e alertas consolidados -->
       <ReportReminder />
       
-      <!-- Visão geral do mês com botão de ação -->
-      <div class="flex flex-col md:flex-row md:items-center justify-between mb-6">
+      <!-- Visão geral do mês com botão -->
+      <div class="flex items-start justify-between mb-6">
         <div>
           <h2 class="text-lg font-semibold text-neutral-800">Visão geral</h2>
           <p class="mt-1 text-sm text-neutral-500">
@@ -77,12 +113,13 @@ function setActiveTab(tab) {
           </p>
         </div>
         
+        <!-- Botão verde com texto -->
         <button 
           @click="goToAttendance"
-          class="mt-3 md:mt-0 btn btn-primary btn-sm flex items-center"
+          class="px-4 py-2 bg-green-500 hover:bg-green-600 text-white rounded-lg shadow-md hover:shadow-lg flex items-center gap-2 transform hover:scale-105 active:scale-95 transition-all duration-200 flex-shrink-0"
         >
-          <AppIcon name="calendar" class="mr-1.5" size="sm" />
-          Registrar Frequência
+          <AppIcon name="calendar" size="sm" />
+          <span class="text-sm font-medium">Enviar Relatório</span>
         </button>
       </div>
       

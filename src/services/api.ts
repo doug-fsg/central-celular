@@ -173,12 +173,20 @@ const api = {
     return fetchApi('/auth/verify-otp', 'POST', { whatsapp: normalized, code }, false);
   },
 
-  async createPassword(whatsapp: string, nome: string, senha: string) {
+  async createPassword(whatsapp: string, nome: string, senha: string, dataNascimento?: string) {
     console.log('[API] Criando senha para:', whatsapp, 'nome:', nome);
     const digits = whatsapp.replace(/\D/g, '');
     const normalized = `+55${digits}`;
     console.log('[API] Normalizando para criação de senha:', { original: whatsapp, digits, normalized });
-    const data = await fetchApi('/auth/create-password', 'POST', { whatsapp: normalized, nome, senha }, false);
+    const payload: { whatsapp: string; nome: string; senha: string; dataNascimento?: string } = { 
+      whatsapp: normalized, 
+      nome, 
+      senha 
+    };
+    if (dataNascimento) {
+      payload.dataNascimento = dataNascimento;
+    }
+    const data = await fetchApi('/auth/create-password', 'POST', payload, false);
     salvarSessao(data);
     return data;
   },

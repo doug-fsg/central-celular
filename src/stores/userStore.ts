@@ -77,7 +77,8 @@ export const useUserStore = defineStore('user', () => {
       console.log('[UserStore] Iniciando processo de login:', { whatsapp: loginData.whatsapp });
       loading.value = true;
       const response = await api.login(loginData.whatsapp, loginData.senha);
-      console.log('[UserStore] Resposta da API recebida, configurando usuário e token');
+      console.log('[UserStore] Resposta da API recebida:', response);
+      console.log('[UserStore] Usuário logado:', response.usuario);
       setUser(response.usuario);
       setToken(response.token);
       
@@ -87,6 +88,8 @@ export const useUserStore = defineStore('user', () => {
       await memberStore.carregarMembros();
       
       console.log('[UserStore] Login concluído com sucesso');
+      console.log('[UserStore] Cargo do usuário:', response.usuario.cargo);
+      console.log('[UserStore] É líder?:', response.usuario.cargo?.toUpperCase() === 'LIDER');
       return true;
     } catch (error) {
       console.error('[UserStore] Erro no login:', error);

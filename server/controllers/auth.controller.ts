@@ -28,6 +28,12 @@ const createPasswordSchema = z.object({
   whatsapp: z.string().min(8, 'Número de WhatsApp inválido'),
   nome: z.string().min(3, 'Nome deve ter pelo menos 3 caracteres'),
   senha: z.string().min(6, 'Senha deve ter pelo menos 6 caracteres'),
+  dataNascimento: z.string().optional().refine((val) => {
+    if (!val) return true;
+    const date = new Date(val);
+    const hoje = new Date();
+    return date <= hoje;
+  }, { message: 'A data de nascimento não pode ser no futuro' }),
 });
 
 // Schema de validação para registro
@@ -161,7 +167,7 @@ export const authController = {
         return res.status(400).json({ errors: validatedData.error.errors });
       }
       
-      const { whatsapp, nome, senha } = validatedData.data;
+      const { whatsapp, nome, senha, dataNascimento } = validatedData.data;
       
       // Buscar account padrão
       const defaultAccount = await prisma.account.findFirst({
@@ -179,6 +185,7 @@ export const authController = {
           whatsapp,
           nome,
           senha,
+          dataNascimento: dataNascimento || undefined,
           accountId: defaultAccount.id
         });
         

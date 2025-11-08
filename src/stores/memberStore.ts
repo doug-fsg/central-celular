@@ -93,14 +93,28 @@ export const useMemberStore = defineStore('members', () => {
       console.log('Buscando células do líder:', userStore.user.id);
       
       // Buscar células do líder atual
-      const response = await celulaService.listarCelulas({ 
+      let response = await celulaService.listarCelulas({ 
         lider: userStore.user.id,
         ativo: true 
       });
 
+      console.log('[memberStore] Células retornadas (ativas):', response?.celulas?.length, response?.celulas);
+
+      // Se não houver células ativas, tentar buscar sem filtro de ativo
+      if (!response?.celulas || response.celulas.length === 0) {
+        console.log('[memberStore] Nenhuma célula ativa encontrada, buscando todas as células...');
+        response = await celulaService.listarCelulas({ 
+          lider: userStore.user.id
+        });
+        console.log('[memberStore] Células retornadas (todas):', response?.celulas?.length, response?.celulas);
+      }
+
+      console.log('[memberStore] Célula selecionada:', response?.celulas?.[0]?.id);
+
       if (!response || !response.celulas || response.celulas.length === 0) {
-        error.value = 'Líder não possui células ativas';
+        error.value = 'Líder não possui células';
         members.value = [];
+        celulaId.value = null; // Garantir que celulaId é null se não houver células
         return;
       }
 
@@ -114,6 +128,7 @@ export const useMemberStore = defineStore('members', () => {
       if (!celulaDetalhes || !celulaDetalhes.membros) {
         error.value = 'Erro ao carregar detalhes da célula';
         members.value = [];
+        // Manter celulaId mesmo se não conseguir carregar detalhes, pois a célula existe
         return;
       }
 
@@ -146,6 +161,7 @@ export const useMemberStore = defineStore('members', () => {
       console.error('Erro ao carregar membros:', err);
       error.value = 'Falha ao carregar membros da célula';
       members.value = [];
+      celulaId.value = null; // Garantir que celulaId é null em caso de erro
     } finally {
       loading.value = false;
     }

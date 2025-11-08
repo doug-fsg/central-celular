@@ -58,7 +58,7 @@ function toggleDetails() {
 </script>
 
 <template>
-  <div v-if="showBadge" class="relative">
+  <div v-if="false" class="relative">
     <canvas id="leader-badge-confetti" class="absolute top-0 left-0 w-full h-full pointer-events-none"></canvas>
     
     <!-- Versão compacta -->

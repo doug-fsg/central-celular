@@ -117,7 +117,7 @@ function toggleDropdown() {
               </button>
             </div>
             <div v-if="showDropdown" class="origin-top-right absolute right-0 mt-2 w-48 rounded-md shadow-lg py-1 bg-white ring-1 ring-black ring-opacity-5 focus:outline-none z-50" role="menu" aria-orientation="vertical" aria-labelledby="user-menu-button" tabindex="-1">
-              <div v-if="leaderStore.leaderBadge !== 'none' && !userStore.isAdmin" class="px-3 py-1.5 text-xs text-gray-500 border-b border-gray-100">
+              <div v-if="false" class="px-3 py-1.5 text-xs text-gray-500 border-b border-gray-100">
                 <div class="flex items-center">
                   <span class="mr-1">
                     {{ leaderStore.leaderBadge === 'bronze' ? '🥉' : leaderStore.leaderBadge === 'silver' ? '🥈' : '🥇' }}
