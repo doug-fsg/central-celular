@@ -14,7 +14,8 @@ import {
   obterCelula,
   criarCelula,
   atualizarCelula,
-  desativarCelula
+  desativarCelula,
+  deletarCelula
 } from '../controllers/celulas.controller';
 
 const adminRouter = Router();
@@ -390,5 +391,6 @@ adminRouter.get('/celulas/:id', obterCelula);
 adminRouter.post('/celulas', criarCelula);
 adminRouter.put('/celulas/:id', atualizarCelula);
 adminRouter.patch('/celulas/:id/desativar', desativarCelula);
+adminRouter.delete('/celulas/:id', deletarCelula);
 
 export { adminRouter }; 

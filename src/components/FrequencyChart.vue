@@ -52,16 +52,20 @@ const isInitialized = ref(false)
 const getPeriodRange = (periodo: string) => {
   const now = new Date()
   let start: Date
+  let end = new Date()
   
-  if (periodo === 'trimestre') {
+  if (periodo === 'trimestre' || periodo === '3meses') {
     start = new Date(now.getFullYear(), now.getMonth() - 2, 1)
+  } else if (periodo === '6meses') {
+    start = new Date(now.getFullYear(), now.getMonth() - 5, 1)
   } else if (periodo === 'ano') {
     start = new Date(now.getFullYear(), 0, 1)
   } else {
+    // mes
     start = new Date(now.getFullYear(), now.getMonth(), 1)
+    end = new Date(now.getFullYear(), now.getMonth() + 1, 0)
   }
   
-  const end = new Date(now.getFullYear(), now.getMonth() + 1, 0)
   return { start, end }
 }
 

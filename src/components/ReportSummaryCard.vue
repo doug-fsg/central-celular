@@ -92,29 +92,6 @@ const porcentagemCulto = computed(() => {
         </div>
       </div>
     </div>
-
-    <!-- Status dos Eventos -->
-    <div class="flex space-x-4 mb-4">
-      <div class="flex items-center">
-        <div :class="[
-          'w-2 h-2 rounded-full mr-2',
-          props.relatorio.teveCelula ? 'bg-blue-500' : 'bg-gray-300'
-        ]"></div>
-        <span class="text-xs" :class="props.relatorio.teveCelula ? 'text-blue-600' : 'text-gray-500'">
-          Célula Realizada
-        </span>
-      </div>
-      <div class="flex items-center">
-        <div :class="[
-          'w-2 h-2 rounded-full mr-2',
-          props.relatorio.teveCulto ? 'bg-purple-500' : 'bg-gray-300'
-        ]"></div>
-        <span class="text-xs" :class="props.relatorio.teveCulto ? 'text-purple-600' : 'text-gray-500'">
-          Culto Realizado
-        </span>
-      </div>
-    </div>
-
     <!-- Observações (se houver) -->
     <div v-if="props.relatorio.observacoes" class="mb-3">
       <p class="text-xs text-gray-500 italic">

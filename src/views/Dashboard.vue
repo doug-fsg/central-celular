@@ -61,35 +61,7 @@ function setActiveTab(tab) {
 // Carregar dados quando o componente for montado
 onMounted(async () => {
   console.log('[Dashboard] Iniciando carregamento de dados')
-  console.log('[Dashboard] Usuário:', userStore.user)
-  console.log('[Dashboard] Cargo do usuário:', userStore.user?.cargo)
-  
   await memberStore.carregarMembros()
-  
-  console.log('[Dashboard] Membros carregados:', memberStore.getAllMembers.length)
-  console.log('[Dashboard] Error do memberStore:', memberStore.error)
-  
-  // Verificar se o líder tem célula e membros cadastrados
-  const isLider = userStore.user?.cargo?.toUpperCase() === 'LIDER'
-  const temMembros = memberStore.getAllMembers.length > 0
-  const temCelula = memberStore.celulaId !== null
-  
-  console.log('[Dashboard] Verificações:', { isLider, temMembros, temCelula })
-  
-  if (isLider) {
-    // Primeiro verificar se tem célula
-    if (!temCelula) {
-      console.log('[Dashboard] Redirecionando para onboarding de célula - sem célula')
-      router.push({ name: 'cell-onboarding' })
-      return
-    }
-    
-    // Depois verificar se tem membros
-    if (!temMembros) {
-      console.log('[Dashboard] Redirecionando para onboarding de membros - sem membros')
-      router.push({ name: 'member-onboarding' })
-    }
-  }
 })
 </script>
 

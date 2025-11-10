@@ -276,7 +276,7 @@ export const adminService = {
 
   // Excluir célula
   async excluirCelula(id: number) {
-    const response = await api.patch(`/admin/celulas/${id}/desativar`, { ativo: false });
+    const response = await api.delete(`/admin/celulas/${id}`);
     return response.data;
   }
   ,

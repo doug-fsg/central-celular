@@ -298,10 +298,10 @@ async function handleSubmit() {
           </button>
           <button 
             @click="toggleAddForm"
-            class="inline-flex items-center px-3 py-1.5 text-sm font-medium rounded-md text-white bg-primary-600 hover:bg-primary-700 transition-colors"
+            class="px-4 py-2 bg-green-500 hover:bg-green-600 text-white rounded-lg shadow-md hover:shadow-lg flex items-center gap-2 transform hover:scale-105 active:scale-95 transition-all duration-200 flex-shrink-0"
           >
-            <AppIcon name="add" size="sm" class="mr-1.5" />
-            Adicionar
+            <AppIcon name="add" size="sm" />
+            <span class="text-sm font-medium">Adicionar Membro</span>
           </button>
         </div>
       </div>

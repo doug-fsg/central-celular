@@ -1,14 +1,14 @@
 <script setup lang="ts">
-import { ref, computed, onMounted } from 'vue'
-import { useLeaderStore } from '../stores/leaderStore'
+import { ref, computed, onMounted, watch } from 'vue'
+import { useMemberStore } from '../stores/memberStore'
 import { useReportStore } from '../stores/reportStore'
-import { format, parseISO, differenceInDays } from 'date-fns'
+import { format, differenceInDays } from 'date-fns'
 import { ptBR } from 'date-fns/locale'
 import AppIcon from '../components/AppIcon.vue'
 import { useRouter } from 'vue-router'
 import relatorioService, { STATUS_RELATORIO } from '../services/relatorioService'
 
-const leaderStore = useLeaderStore()
+const memberStore = useMemberStore()
 const reportStore = useReportStore()
 const router = useRouter()
 
@@ -16,22 +16,26 @@ const showReminder = ref(true)
 const loading = ref(true)
 const relatorios = ref<any[]>([])
 
-// Carregar os relatórios da semana atual
-onMounted(async () => {
-  try {
-    await carregarRelatorios()
-  } finally {
-    loading.value = false
-  }
-})
-
 const today = new Date()
 
 // Carregar relatórios da semana atual
 async function carregarRelatorios() {
+  // Aguardar celulaId estar disponível
+  if (!memberStore.celulaId) {
+    // Tentar carregar membros se ainda não foram carregados
+    if (!memberStore.loading) {
+      await memberStore.carregarMembros()
+    }
+    
+    // Se ainda não tiver celulaId, não fazer a chamada
+    if (!memberStore.celulaId) {
+      return
+    }
+  }
+
   try {
     const result = await relatorioService.listarRelatorios({
-      celula: leaderStore.celulaId,
+      celulaId: memberStore.celulaId,
       dataInicio: reportStore.currentWeek.dataInicio,
       dataFim: reportStore.currentWeek.dataFim
     })
@@ -41,6 +45,22 @@ async function carregarRelatorios() {
     console.error('Erro ao carregar relatórios:', error)
   }
 }
+
+// Carregar os relatórios quando o componente for montado
+onMounted(async () => {
+  try {
+    await carregarRelatorios()
+  } finally {
+    loading.value = false
+  }
+})
+
+// Observar mudanças no celulaId para recarregar relatórios
+watch(() => memberStore.celulaId, async (newCelulaId) => {
+  if (newCelulaId && !loading.value) {
+    await carregarRelatorios()
+  }
+})
 
 // Calcular dias até o final da semana
 const diasAteFimPeriodo = computed(() => {
@@ -58,10 +78,10 @@ const reminderType = computed(() => {
   if (loading.value) return 'info'
   
   if (relatorioEnviado.value) {
-    return 'info'
+    return 'success'
   }
   
-  if (!reportStore.isDentroDoPeriodoEnvio) {
+  if (!reportStore.isDentroPeriodoEnvio) {
     return 'info'
   }
   
@@ -80,10 +100,10 @@ const deadlineText = computed(() => {
   if (loading.value) return 'Carregando informações...'
   
   if (relatorioEnviado.value) {
-    return `Relatório enviado para a semana anterior`
+    return `Tudo certo com o seu relatório!`
   }
   
-  if (!reportStore.isDentroDoPeriodoEnvio) {
+  if (!reportStore.isDentroPeriodoEnvio) {
     return `O período para envio de relatórios está fechado. Aguarde o próximo período que inicia na quinta-feira.`
   }
   

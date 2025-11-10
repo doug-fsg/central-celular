@@ -1,275 +1,464 @@
 <script setup lang="ts">
-import WeekSelector from '../components/WeekSelector.vue'
-import StatsOverview from '../components/StatsOverview.vue'
+import { ref, computed, onMounted, watch } from 'vue'
 import { useMemberStore } from '../stores/memberStore'
-import { useReportStore } from '../stores/reportStore'
-import { computed, ref, watch, onMounted } from 'vue'
-import { format, parseISO } from 'date-fns'
+import { format, startOfMonth, endOfMonth, subMonths, startOfYear } from 'date-fns'
 import { ptBR } from 'date-fns/locale'
-import relatorioService, { TIPO_EVENTO, STATUS_RELATORIO } from '../services/relatorioService'
+import relatorioService from '../services/relatorioService'
+import FrequencyChart from '../components/FrequencyChart.vue'
+import AppIcon from '../components/AppIcon.vue'
 
 const memberStore = useMemberStore()
-const reportStore = useReportStore()
 
-// Estados do componente
+// Estados
 const loading = ref(false)
 const error = ref<string | null>(null)
-const relatorios = ref<any[]>([])
-const tipoEvento = ref(TIPO_EVENTO.CELULA) // Por padrão, mostrar relatório de célula
+const periodoSelecionado = ref<'mes' | '3meses' | '6meses' | 'ano'>('mes')
 
-// Computed properties
-const totalMembers = computed(() => {
-  // Filtrar apenas membros ativos
-  return memberStore.getAllMembers.filter(m => m.isActive).length
+// Estatísticas por período
+const estatisticas = ref({
+  mes: { culto: { presentes: 0, total: 0, percentual: 0, eventos: 0 }, celula: { presentes: 0, total: 0, percentual: 0, eventos: 0 } },
+  '3meses': { culto: { presentes: 0, total: 0, percentual: 0, eventos: 0 }, celula: { presentes: 0, total: 0, percentual: 0, eventos: 0 } },
+  '6meses': { culto: { presentes: 0, total: 0, percentual: 0, eventos: 0 }, celula: { presentes: 0, total: 0, percentual: 0, eventos: 0 } },
+  ano: { culto: { presentes: 0, total: 0, percentual: 0, eventos: 0 }, celula: { presentes: 0, total: 0, percentual: 0, eventos: 0 } }
 })
 
-// Estatísticas para o relatório selecionado
-const estatisticas = computed(() => {
-  const relatorio = relatorios.value.find(r => r.evento === tipoEvento.value)
-  
-  if (!relatorio || !relatorio.presencas || relatorio.presencas.length === 0) {
-    return {
-      totalPresentes: 0,
-      percentualPresenca: 0
-    }
-  }
-  
-  const totalPresentes = relatorio.presencas.filter(p => p.status === 1).length
-  const percentualPresenca = totalMembers.value > 0 ? Math.round((totalPresentes / totalMembers.value) * 100) : 0
-  
-  return {
-    totalPresentes,
-    percentualPresenca
-  }
-})
-
-// Método para verificar se um membro está presente em um relatório específico
-function getMembroPresenca(membroId: number, tipoEvento: number) {
-  const relatorio = relatorios.value.find(r => r.evento === tipoEvento)
-  if (!relatorio || !relatorio.presencas) return false
-  
-  const presenca = relatorio.presencas.find(p => p.membroId === membroId)
-  return presenca && presenca.status === 1
+// Estatísticas por membro para o período selecionado
+interface EstatisticaMembro {
+  id: string
+  nome: string
+  culto: { presentes: number; total: number; percentual: number }
+  celula: { presentes: number; total: number; percentual: number }
 }
 
-// Métodos
-async function loadData() {
+const estatisticasMembros = ref<EstatisticaMembro[]>([])
+
+// Calcular range de datas baseado no período
+const getPeriodRange = (periodo: string) => {
+  const hoje = new Date()
+  let inicio: Date
+  let fim = endOfMonth(hoje)
+
+  switch (periodo) {
+    case '3meses':
+      inicio = startOfMonth(subMonths(hoje, 2))
+      break
+    case '6meses':
+      inicio = startOfMonth(subMonths(hoje, 5))
+      break
+    case 'ano':
+      inicio = startOfYear(hoje)
+      break
+    default: // mes
+      inicio = startOfMonth(hoje)
+  }
+
+  return { inicio, fim }
+}
+
+// Carregar estatísticas
+async function carregarEstatisticas() {
+  if (!memberStore.celulaId) {
+    await memberStore.carregarMembros()
+    if (!memberStore.celulaId) return
+  }
+
   loading.value = true
   error.value = null
   
   try {
-    await memberStore.carregarMembros()
-    await loadReports()
+    const periodos: Array<'mes' | '3meses' | '6meses' | 'ano'> = ['mes', '3meses', '6meses', 'ano']
+    
+    for (const periodo of periodos) {
+      const { inicio, fim } = getPeriodRange(periodo)
+      
+      const relatorios = await relatorioService.listarRelatorios({
+        celulaId: memberStore.celulaId!,
+        dataInicio: inicio,
+        dataFim: fim
+      })
+
+      // Filtrar apenas relatórios enviados
+      const relatoriosEnviados = relatorios.filter(r => r.status === 1)
+
+      const totalMembros = memberStore.getActiveMembers.length
+
+      // Calcular estatísticas de culto usando dados já retornados
+      const relatoriosCulto = relatoriosEnviados.filter(r => r.evento === 1)
+      let presentesCulto = 0
+      let eventosCulto = relatoriosCulto.length
+
+      for (const rel of relatoriosCulto) {
+        // Usar dados já disponíveis no relatório ou buscar detalhes se necessário
+        const presentes = (rel as any).presentesCulto
+        
+        if (presentes === undefined) {
+          // Se não tiver dados agregados, buscar detalhes
+          const detalhes = await relatorioService.obterRelatorio(rel.id)
+          const presentesDetalhes = detalhes.presencas?.filter(p => p.status === 1).length || 0
+          presentesCulto += presentesDetalhes
+        } else {
+          presentesCulto += presentes
+        }
+      }
+
+      // Calcular estatísticas de célula usando dados já retornados
+      const relatoriosCelula = relatoriosEnviados.filter(r => r.evento === 0)
+      let presentesCelula = 0
+      let eventosCelula = relatoriosCelula.length
+
+      for (const rel of relatoriosCelula) {
+        // Usar dados já disponíveis no relatório ou buscar detalhes se necessário
+        const presentes = (rel as any).presentesCelula
+        
+        if (presentes === undefined) {
+          // Se não tiver dados agregados, buscar detalhes
+          const detalhes = await relatorioService.obterRelatorio(rel.id)
+          const presentesDetalhes = detalhes.presencas?.filter(p => p.status === 1).length || 0
+          presentesCelula += presentesDetalhes
+        } else {
+          presentesCelula += presentes
+        }
+      }
+
+      // Total = número de eventos × número de membros
+      const totalCulto = eventosCulto * totalMembros
+      const totalCelula = eventosCelula * totalMembros
+
+      estatisticas.value[periodo] = {
+        culto: {
+          presentes: presentesCulto,
+          total: totalCulto,
+          percentual: totalCulto > 0 ? Math.round((presentesCulto / totalCulto) * 100) : 0,
+          eventos: eventosCulto
+        },
+        celula: {
+          presentes: presentesCelula,
+          total: totalCelula,
+          percentual: totalCelula > 0 ? Math.round((presentesCelula / totalCelula) * 100) : 0,
+          eventos: eventosCelula
+        }
+      }
+    }
+
+    // Carregar estatísticas por membro para o período selecionado
+    await carregarEstatisticasMembros()
   } catch (e: any) {
+    console.error('Erro ao carregar estatísticas:', e)
     error.value = e.message || 'Erro ao carregar dados'
   } finally {
     loading.value = false
   }
 }
 
-async function loadReports() {
+// Carregar estatísticas por membro
+async function carregarEstatisticasMembros() {
+  if (!memberStore.celulaId) return
+
   try {
-    // Buscar relatórios para a semana atual
-    const result = await relatorioService.listarRelatorios({
-      celula: memberStore.celulaId,
-      dataInicio: reportStore.currentWeek.dataInicio,
-      dataFim: reportStore.currentWeek.dataFim
+    const { inicio, fim } = getPeriodRange(periodoSelecionado.value)
+    
+    const relatorios = await relatorioService.listarRelatorios({
+      celulaId: memberStore.celulaId!,
+      dataInicio: inicio,
+      dataFim: fim
     })
+
+    // Filtrar apenas relatórios enviados
+    const relatoriosEnviados = relatorios.filter(r => r.status === 1)
     
-    // Carregar detalhes de cada relatório (incluindo presenças)
-    const relatorioDaSemanaCelula = result.find(r => r.evento === TIPO_EVENTO.CELULA)
-    const relatorioDaSemanaCulto = result.find(r => r.evento === TIPO_EVENTO.CULTO)
+    // Inicializar estatísticas para cada membro ativo
+    const membrosStats = new Map<string, EstatisticaMembro>()
     
-    const relatorioCelula = relatorioDaSemanaCelula ? await relatorioService.obterRelatorio(relatorioDaSemanaCelula.id) : null
-    const relatorioCulto = relatorioDaSemanaCulto ? await relatorioService.obterRelatorio(relatorioDaSemanaCulto.id) : null
-    
-    relatorios.value = [
-      relatorioCelula,
-      relatorioCulto
-    ].filter(Boolean)
+    memberStore.getActiveMembers.forEach(membro => {
+      membrosStats.set(membro.id, {
+        id: membro.id,
+        nome: membro.name,
+        culto: { presentes: 0, total: 0, percentual: 0 },
+        celula: { presentes: 0, total: 0, percentual: 0 }
+      })
+    })
+
+    // Processar cada relatório
+    for (const relatorio of relatoriosEnviados) {
+      const detalhes = await relatorioService.obterRelatorio(relatorio.id)
+      
+      const presencas = detalhes.presencas || []
+      const tipoEvento = relatorio.evento === 1 ? 'culto' : 'celula'
+
+      // Preparar mapa de presença por membro
+      const presencaPorMembro = new Map<string, boolean>()
+      presencas.forEach((presenca: any) => {
+        const membroId = presenca.membroId?.toString() || String(presenca.membroId)
+        presencaPorMembro.set(membroId, presenca.status === 1)
+      })
+
+      // Usar membros retornados pelo relatório ou fallback para membros ativos
+      const membrosDoRelatorio = (detalhes.membros || memberStore.getActiveMembers).map((m: any) =>
+        m.id?.toString() || String(m.id)
+      )
+
+      membrosDoRelatorio.forEach((membroId: string) => {
+        const stats = membrosStats.get(membroId)
+        if (!stats) return
+
+        // Incrementa total de eventos para este membro
+        stats[tipoEvento].total += 1
+
+        // Incrementa presença se estiver marcado como presente
+        if (presencaPorMembro.get(membroId)) {
+          stats[tipoEvento].presentes += 1
+        }
+      })
+    }
+
+    // Calcular percentuais e converter para array
+    estatisticasMembros.value = Array.from(membrosStats.values()).map(stats => ({
+      ...stats,
+      culto: {
+        ...stats.culto,
+        percentual: stats.culto.total > 0 ? Math.round((stats.culto.presentes / stats.culto.total) * 100) : 0
+      },
+      celula: {
+        ...stats.celula,
+        percentual: stats.celula.total > 0 ? Math.round((stats.celula.presentes / stats.celula.total) * 100) : 0
+      }
+    })).sort((a, b) => {
+      // Ordenar por nome
+      return a.nome.localeCompare(b.nome)
+    })
   } catch (e: any) {
-    console.error('Erro ao carregar relatórios:', e)
-    error.value = e.message || 'Erro ao carregar relatórios'
+    console.error('Erro ao carregar estatísticas por membro:', e)
+    estatisticasMembros.value = []
   }
 }
 
-function handleWeekChange(week) {
-  // A semana foi alterada no WeekSelector, vamos recarregar os relatórios
-  loadReports()
-}
-
-function handleEventChange(evento) {
-  tipoEvento.value = evento
-}
-
-function formatarData(data: string | Date) {
-  if (!data) return ''
-  const date = typeof data === 'string' ? new Date(data) : data
-  return format(date, 'dd/MM/yyyy', { locale: ptBR })
-}
-
-function formatarStatus(status: number) {
-  return status === STATUS_RELATORIO.ENVIADO ? 'Enviado' : 'Rascunho'
-}
-
-// Lifecycle hooks
-onMounted(async () => {
-  await loadData()
+// Estatísticas do período selecionado
+const statsAtuais = computed(() => {
+  const stats = estatisticas.value[periodoSelecionado.value]
+  return stats || {
+    culto: { presentes: 0, total: 0, percentual: 0, eventos: 0 },
+    celula: { presentes: 0, total: 0, percentual: 0, eventos: 0 }
+  }
 })
 
-// Watchers
-watch(() => reportStore.currentWeek, () => {
-  loadReports()
-}, { deep: true })
+// Formatar período para exibição
+const periodoFormatado = computed(() => {
+  const { inicio, fim } = getPeriodRange(periodoSelecionado.value)
+  const capitalize = (str: string) => str.replace(/^\w/, c => c.toUpperCase())
+  const formatMesAno = (date: Date, pattern = 'MMM yyyy') =>
+    capitalize(format(date, pattern, { locale: ptBR }))
+
+  if (periodoSelecionado.value === 'mes') {
+    return formatMesAno(fim, 'MMMM yyyy')
+  }
+
+  return `${formatMesAno(inicio)} - ${formatMesAno(fim)}`
+})
+
+onMounted(async () => {
+  await carregarEstatisticas()
+})
+
+watch(() => memberStore.celulaId, () => {
+  if (memberStore.celulaId) {
+    carregarEstatisticas()
+  }
+})
+
+watch(() => periodoSelecionado.value, () => {
+  carregarEstatisticasMembros()
+})
 </script>
 
 <template>
-  <div class="min-h-screen bg-gray-50">
-    <main class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-      <div class="mb-6 flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
-        <div>
-          <h1 class="text-2xl font-bold text-gray-900">Relatórios</h1>
-          <p class="mt-1 text-gray-500">Visualize e gerencie os relatórios da sua célula</p>
-        </div>
-      </div>
-      
-      <!-- Seletor de semana -->
+  <div class="min-h-screen bg-neutral-50">
+    <main class="container-layout">
+      <!-- Cabeçalho -->
       <div class="mb-6">
-        <WeekSelector 
-          @weekChange="handleWeekChange"
-          @eventChange="handleEventChange"
-        />
+        <h1 class="text-2xl font-bold text-neutral-800">Relatórios de Presença</h1>
+        <p class="mt-1 text-sm text-neutral-500">Acompanhe a frequência no culto e na célula</p>
       </div>
       
-      <!-- Loading state -->
-      <div v-if="loading" class="flex justify-center my-8">
-        <div class="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-blue-500"></div>
-      </div>
-      
-      <!-- Error state -->
-      <div v-else-if="error" class="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded mb-4">
-        <p>{{ error }}</p>
-        <button @click="loadData" class="text-sm underline mt-2">Tentar novamente</button>
-      </div>
-      
-      <!-- No reports state -->
-      <div v-else-if="relatorios.length === 0" class="text-center py-8 bg-white rounded-lg shadow">
-        <svg class="mx-auto h-12 w-12 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-        </svg>
-        <h3 class="mt-2 text-sm font-medium text-gray-900">Nenhum relatório encontrado</h3>
-        <p class="mt-1 text-sm text-gray-500">Não há relatórios para a semana selecionada.</p>
-        <div class="mt-6">
-          <router-link to="/attendance" class="btn btn-primary">
-            Ir para Frequência
-          </router-link>
+      <!-- Seletor de Período -->
+      <div class="card p-4 mb-6">
+        <div class="flex flex-wrap gap-2">
+          <button
+            v-for="periodo in [
+              { key: 'mes', label: 'Este Mês' },
+              { key: '3meses', label: '3 Meses' },
+              { key: '6meses', label: '6 Meses' },
+              { key: 'ano', label: 'Este Ano' }
+            ]"
+            :key="periodo.key"
+            @click="periodoSelecionado = periodo.key as any"
+            class="px-4 py-2 rounded-lg text-sm font-medium transition-all duration-200"
+            :class="periodoSelecionado === periodo.key
+              ? 'bg-primary-500 text-white shadow-md'
+              : 'bg-neutral-100 text-neutral-700 hover:bg-neutral-200'"
+          >
+            {{ periodo.label }}
+          </button>
         </div>
       </div>
       
-      <!-- Report content -->
+      <!-- Loading -->
+      <div v-if="loading" class="flex justify-center items-center py-12">
+        <div class="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-primary-500"></div>
+      </div>
+      
+      <!-- Error -->
+      <div v-else-if="error" class="card p-6 bg-red-50 border-red-200">
+        <div class="flex items-center">
+          <AppIcon name="warning" class="text-red-500 mr-3" size="md" />
+          <div>
+            <p class="text-red-800 font-medium">{{ error }}</p>
+            <button @click="carregarEstatisticas" class="text-sm text-red-600 underline mt-1">
+              Tentar novamente
+            </button>
+          </div>
+        </div>
+      </div>
+      
+      <!-- Conteúdo -->
       <div v-else>
-        <!-- Stats overview -->
+        <!-- Cards de Estatísticas -->
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
+          <!-- Card Culto -->
+          <div class="card p-6 bg-gradient-to-br from-primary-50 to-primary-100 border-primary-200">
+            <div class="mb-4">
+              <h3 class="text-sm font-medium text-primary-700 mb-1">Culto</h3>
+              <p class="text-xs text-primary-600">{{ periodoFormatado }}</p>
+            </div>
+            <div class="space-y-2">
+              <div class="flex items-baseline">
+                <span class="text-3xl font-bold text-primary-900">{{ statsAtuais.culto.presentes }}</span>
+                <span class="text-sm text-primary-600 ml-2">presentes</span>
+              </div>
+              <div class="flex items-center">
+                <div class="flex-1 bg-primary-200 rounded-full h-2 mr-2">
+                  <div
+                    class="bg-primary-500 h-2 rounded-full transition-all duration-500"
+                    :style="{ width: `${statsAtuais.culto.percentual}%` }"
+                  ></div>
+                </div>
+                <span class="text-sm font-semibold text-primary-700">{{ statsAtuais.culto.percentual }}%</span>
+              </div>
+              <p class="text-xs text-primary-600 mt-2">
+                {{ statsAtuais.culto.eventos }} cultos nesse período
+              </p>
+        </div>
+          </div>
+          
+          <!-- Card Célula -->
+          <div class="card p-6 bg-gradient-to-br from-secondary-50 to-secondary-100 border-secondary-200">
+            <div class="mb-4">
+              <h3 class="text-sm font-medium text-secondary-700 mb-1">Célula</h3>
+              <p class="text-xs text-secondary-600">{{ periodoFormatado }}</p>
+            </div>
+            <div class="space-y-2">
+              <div class="flex items-baseline">
+                <span class="text-3xl font-bold text-secondary-900">{{ statsAtuais.celula.presentes }}</span>
+                <span class="text-sm text-secondary-600 ml-2">presentes</span>
+              </div>
+              <div class="flex items-center">
+                <div class="flex-1 bg-secondary-200 rounded-full h-2 mr-2">
+                  <div
+                    class="bg-secondary-500 h-2 rounded-full transition-all duration-500"
+                    :style="{ width: `${statsAtuais.celula.percentual}%` }"
+                  ></div>
+                </div>
+                <span class="text-sm font-semibold text-secondary-700">{{ statsAtuais.celula.percentual }}%</span>
+                    </div>
+              <p class="text-xs text-secondary-600 mt-2">
+                {{ statsAtuais.celula.eventos }} células nesse período
+              </p>
+                    </div>
+          </div>
+        </div>
+        
+        <!-- Comparativo -->
+        <div class="card p-6 mb-6">
+          <h3 class="text-lg font-semibold text-neutral-800 mb-4">Comparativo Culto vs Célula</h3>
+          <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+            <div>
+              <div class="flex items-center justify-between mb-2">
+                <span class="text-sm font-medium text-neutral-700">Culto</span>
+                <span class="text-sm font-bold text-primary-600">{{ statsAtuais.culto.percentual }}%</span>
+              </div>
+              <div class="w-full bg-neutral-200 rounded-full h-3">
+                <div
+                  class="bg-primary-500 h-3 rounded-full transition-all duration-500"
+                  :style="{ width: `${statsAtuais.culto.percentual}%` }"
+                ></div>
+              </div>
+            </div>
+            <div>
+              <div class="flex items-center justify-between mb-2">
+                <span class="text-sm font-medium text-neutral-700">Célula</span>
+                <span class="text-sm font-bold text-secondary-600">{{ statsAtuais.celula.percentual }}%</span>
+              </div>
+              <div class="w-full bg-neutral-200 rounded-full h-3">
+                <div
+                  class="bg-secondary-500 h-3 rounded-full transition-all duration-500"
+                  :style="{ width: `${statsAtuais.celula.percentual}%` }"
+                ></div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Gráfico de Frequência -->
         <div class="mb-6">
-          <StatsOverview 
-            :totalMembers="totalMembers"
-            :presentMembers="estatisticas.totalPresentes"
-            :percentagePresent="estatisticas.percentualPresenca"
-          />
+          <FrequencyChart :periodo="periodoSelecionado" :celulaId="memberStore.celulaId || undefined" />
         </div>
-        
-        <!-- Reports table -->
-        <div class="bg-white shadow overflow-hidden sm:rounded-lg mb-6">
-          <div class="px-4 py-5 sm:px-6 border-b border-gray-200">
-            <h3 class="text-lg leading-6 font-medium text-gray-900">
-              Relatórios da Semana
-            </h3>
-          </div>
+
+        <!-- Lista de Membros com Estatísticas -->
+        <div class="card p-6">
+          <h3 class="text-lg font-semibold text-neutral-800 mb-4">Presença por Membro - {{ periodoFormatado }}</h3>
           
-          <div class="overflow-x-auto">
-            <table class="min-w-full divide-y divide-gray-200">
-              <thead class="bg-gray-50">
-                <tr>
-                  <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Tipo
-                  </th>
-                  <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Período
-                  </th>
-                  <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Status
-                  </th>
-                  <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Data de Envio
-                  </th>
-                  <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Presenças
-                  </th>
+          <div v-if="estatisticasMembros.length === 0" class="text-center py-8 text-neutral-500">
+            <AppIcon name="users" class="mx-auto text-neutral-300 mb-2" size="lg" />
+            <p class="text-sm">Nenhum dado disponível para este período</p>
+          </div>
+
+          <div v-else class="overflow-x-auto">
+            <table class="w-full">
+              <thead>
+                <tr class="border-b border-neutral-200">
+                  <th class="text-left py-3 px-4 text-sm font-semibold text-neutral-700">Membro</th>
+                  <th class="text-center py-3 px-4 text-sm font-semibold text-neutral-700">Culto</th>
+                  <th class="text-center py-3 px-4 text-sm font-semibold text-neutral-700">Célula</th>
                 </tr>
               </thead>
-              <tbody class="bg-white divide-y divide-gray-200">
-                <tr v-for="relatorio in relatorios" :key="relatorio.id" :class="relatorio.evento === tipoEvento ? 'bg-blue-50' : ''">
-                  <td class="px-6 py-4 whitespace-nowrap">
-                    <div class="text-sm font-medium text-gray-900">
-                      {{ relatorio.evento === TIPO_EVENTO.CELULA ? '🏠 Célula' : '✝️ Culto' }}
+              <tbody>
+                <tr
+                  v-for="membro in estatisticasMembros"
+                  :key="membro.id"
+                  class="border-b border-neutral-100 hover:bg-neutral-50 transition-colors"
+                >
+                  <td class="py-3 px-4">
+                    <div class="flex items-center">
+                      <div class="w-8 h-8 rounded-full bg-primary-100 text-primary-600 flex items-center justify-center font-semibold text-xs mr-2 flex-shrink-0">
+                        {{ membro.nome.charAt(0).toUpperCase() }}
+                      </div>
+                      <span class="text-sm font-medium text-neutral-800">{{ membro.nome }}</span>
                     </div>
                   </td>
-                  <td class="px-6 py-4 whitespace-nowrap">
-                    <div class="text-sm text-gray-900">
-                      {{ formatarData(relatorio.dataInicio) }} - {{ formatarData(relatorio.dataFim) }}
+                  <td class="py-3 px-4 text-center">
+                    <div class="inline-flex items-baseline gap-2">
+                      <span class="text-sm font-semibold text-green-600">{{ membro.culto.percentual }}%</span>
+                      <span class="text-xs text-neutral-500">
+                        ({{ membro.culto.presentes }} / {{ membro.culto.total }})
+                      </span>
                     </div>
                   </td>
-                  <td class="px-6 py-4 whitespace-nowrap">
-                    <span 
-                      class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full"
-                      :class="relatorio.status === STATUS_RELATORIO.ENVIADO ? 'bg-green-100 text-green-800' : 'bg-yellow-100 text-yellow-800'"
-                    >
-                      {{ formatarStatus(relatorio.status) }}
+                  <td class="py-3 px-4 text-center">
+                    <div class="inline-flex items-baseline gap-2">
+                      <span class="text-sm font-semibold text-green-600">{{ membro.celula.percentual }}%</span>
+                      <span class="text-xs text-neutral-500">
+                        ({{ membro.celula.presentes }} / {{ membro.celula.total }})
                     </span>
-                  </td>
-                  <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                    {{ relatorio.dataEnvio ? formatarData(relatorio.dataEnvio) : '—' }}
-                  </td>
-                  <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                    {{ relatorio.presencas?.filter(p => p.status === 1).length || 0 }} / {{ totalMembers }}
-                  </td>
-                </tr>
-              </tbody>
-            </table>
-          </div>
-        </div>
-        
-        <!-- Member attendance details -->
-        <div v-if="relatorios.find(r => r.evento === tipoEvento)" class="bg-white shadow overflow-hidden sm:rounded-lg">
-          <div class="px-4 py-5 sm:px-6 border-b border-gray-200">
-            <h3 class="text-lg leading-6 font-medium text-gray-900">
-              Detalhes de Presença - {{ tipoEvento === TIPO_EVENTO.CELULA ? 'Célula' : 'Culto' }}
-            </h3>
-          </div>
-          
-          <div class="overflow-x-auto">
-            <table class="min-w-full divide-y divide-gray-200">
-              <thead class="bg-gray-50">
-                <tr>
-                  <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Membro
-                  </th>
-                  <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Status
-                  </th>
-                </tr>
-              </thead>
-              <tbody class="bg-white divide-y divide-gray-200">
-                <tr v-for="membro in memberStore.getAllMembers.filter(m => m.isActive)" :key="membro.id">
-                  <td class="px-6 py-4 whitespace-nowrap">
-                    <div class="text-sm font-medium text-gray-900">{{ membro.nome }}</div>
-                  </td>
-                  <td class="px-6 py-4 whitespace-nowrap">
-                    <span 
-                      class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full"
-                      :class="getMembroPresenca(membro.id, tipoEvento) ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'"
-                    >
-                      {{ getMembroPresenca(membro.id, tipoEvento) ? 'Presente' : 'Ausente' }}
-                    </span>
+                    </div>
                   </td>
                 </tr>
               </tbody>
@@ -283,14 +472,6 @@ watch(() => reportStore.currentWeek, () => {
 
 <style scoped>
 .card {
-  @apply bg-white rounded-lg shadow;
-}
-
-.btn {
-  @apply inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-offset-2;
-}
-
-.btn-primary {
-  @apply bg-primary-600 text-white hover:bg-primary-700 focus:ring-primary-500;
+  @apply bg-white rounded-lg shadow-sm border border-neutral-200;
 }
 </style>

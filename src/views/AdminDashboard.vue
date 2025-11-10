@@ -654,14 +654,22 @@ const handleDeleteCell = async () => {
     isLoadingCell.value = true
     await adminService.excluirCelula(entityInfo.value.id)
     showFeedback('Célula excluída com sucesso')
-    await loadCells(cellPagination.value.currentPage)
-  } catch (error) {
+    // Recarregar células na página atual ou voltar para página 1 se a página atual ficou vazia
+    const currentPage = cellPagination.value.currentPage
+    await loadCells(currentPage)
+    // Se não há mais células na página atual e não é a primeira página, voltar para página anterior
+    if (cells.value.length === 0 && currentPage > 1) {
+      await loadCells(currentPage - 1)
+    }
+  } catch (error: any) {
     console.error('Erro ao excluir célula:', error)
-    showFeedback('Erro ao excluir célula', 'error')
+    const mensagemErro = error.message || 'Erro ao excluir célula'
+    showFeedback(mensagemErro, 'error')
   } finally {
     isLoadingCell.value = false
     showDeleteConfirm.value = false
     entityPendingDelete.value = null
+    entityInfo.value = null
   }
 }
 
@@ -721,11 +729,11 @@ const handleSendSsoLink = async () => {
 
 <template>
   <div>
-    <main class="max-w-7xl mx-auto py-6 sm:px-6 lg:px-8">
-      <div class="px-4 sm:px-0">
+    <main class="max-w-7xl mx-auto py-6 px-4 sm:px-6 lg:px-8">
+      <div class="px-0 sm:px-0">
         <!-- Tabs -->
         <div class="border-b border-gray-200">
-          <nav class="-mb-px flex space-x-8">
+          <nav class="-mb-px flex flex-wrap gap-3 md:space-x-8">
             <button
               @click="activeTab = 'dashboard'"
               :class="[
@@ -792,8 +800,8 @@ const handleSendSsoLink = async () => {
         <!-- Dashboard -->
         <div v-if="activeTab === 'dashboard'" class="space-y-6">
           <!-- Seletor de período -->
-          <div class="flex justify-between items-center">
-            <div class="flex space-x-4">
+          <div class="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+            <div class="flex flex-col sm:flex-row sm:items-center sm:gap-4">
               <select
                 v-model="periodoSelecionado"
                 class="mt-1 block w-full pl-3 pr-10 py-2 text-base border-gray-300 focus:outline-none focus:ring-primary-500 focus:border-primary-500 sm:text-sm rounded-md"
@@ -994,6 +1002,67 @@ const handleSendSsoLink = async () => {
                 </select>
               </div>
             </div>
+            <div class="sm:hidden space-y-3 p-4">
+              <div
+                v-for="user in filteredUsers"
+                :key="user.id"
+                class="border border-gray-200 rounded-lg p-4 shadow-sm"
+              >
+                <div class="flex items-center justify-between mb-2">
+                  <div>
+                    <p class="text-sm font-semibold text-gray-900">{{ user.nome }}</p>
+                    <p class="text-xs text-gray-500">{{ user.cargo }}</p>
+                  </div>
+                  <span 
+                    :class="[
+                      user.status === 'ativo' ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800',
+                      'px-2 inline-flex text-xs leading-5 font-semibold rounded-full'
+                    ]"
+                  >
+                    {{ user.status }}
+                  </span>
+                </div>
+                <p class="text-sm text-gray-500">
+                  {{ user.whatsapp || 'Sem WhatsApp' }}
+                </p>
+                <div class="mt-3 flex flex-wrap gap-3 text-sm">
+                  <button 
+                    @click="handleEditarUsuario(user)"
+                    class="text-primary-600 hover:text-primary-900"
+                  >
+                    Editar
+                  </button>
+                  <button 
+                    @click="handleConfirmDelete(user)"
+                    class="text-red-600 hover:text-red-900"
+                  >
+                    Excluir
+                  </button>
+                  <button 
+                    :class="[
+                      user.status === 'ativo' ? 'text-red-600 hover:text-red-900' : 'text-green-600 hover:text-green-900'
+                    ]"
+                    @click="toggleUserStatus(user.id, user.status === 'ativo' ? false : true)"
+                  >
+                    {{ user.status === 'ativo' ? 'Desativar' : 'Ativar' }}
+                  </button>
+                  <button 
+                    v-if="user.cargo.toUpperCase() === 'LIDER' && user.status === 'ativo'"
+                    @click="confirmSendSsoLink(user.id)"
+                    class="text-blue-600 hover:text-blue-900"
+                    :disabled="sendingLink && userSendingLink === user.id"
+                  >
+                    <span v-if="sendingLink && userSendingLink === user.id">
+                      Enviando...
+                    </span>
+                    <span v-else>
+                      Enviar Link
+                    </span>
+                  </button>
+                </div>
+              </div>
+            </div>
+            <div class="hidden sm:block overflow-x-auto">
             <table class="min-w-full divide-y divide-gray-200">
               <thead class="bg-gray-50">
                 <tr>
@@ -1075,6 +1144,7 @@ const handleSendSsoLink = async () => {
                 </tr>
               </tbody>
             </table>
+            </div>
 
             <!-- Paginação -->
             <div class="bg-white px-4 py-3 flex items-center justify-between border-t border-gray-200 sm:px-6">
@@ -1213,6 +1283,50 @@ const handleSendSsoLink = async () => {
           </div>
 
           <div v-else class="bg-white shadow overflow-hidden sm:rounded-lg">
+            <div class="sm:hidden space-y-3 p-4">
+              <div
+                v-for="cell in filteredCells"
+                :key="cell.id"
+                class="border border-gray-200 rounded-lg p-4 shadow-sm"
+              >
+                <div class="flex items-center justify-between mb-2">
+                  <div>
+                    <p class="text-sm font-semibold text-gray-900">{{ cell.nome }}</p>
+                    <p class="text-xs text-gray-500">{{ cell.lider?.nome || 'Sem líder' }}</p>
+                  </div>
+                  <span class="text-xs text-gray-500">
+                    {{ cell.diaSemana }} • {{ cell.horario }}
+                  </span>
+                </div>
+                <p class="text-sm text-gray-500">
+                  Supervisor: {{ cell.supervisor?.nome || 'Sem supervisor' }}
+                </p>
+                <p class="text-sm text-gray-500 truncate">
+                  {{ cell.endereco || 'Sem endereço' }}
+                </p>
+                <div class="mt-3 flex flex-wrap gap-3 text-sm">
+                  <button
+                    @click="handleEditCell(cell)"
+                    class="text-primary-600 hover:text-primary-900"
+                  >
+                    Editar
+                  </button>
+                  <button
+                    @click="handleViewMembers(cell)"
+                    class="text-blue-600 hover:text-blue-900"
+                  >
+                    Ver membros
+                  </button>
+                  <button
+                    @click="handleDeleteCell(cell)"
+                    class="text-red-600 hover:text-red-900"
+                  >
+                    Excluir
+                  </button>
+                </div>
+              </div>
+            </div>
+            <div class="hidden sm:block overflow-x-auto">
             <table class="min-w-full divide-y divide-gray-200">
               <thead class="bg-gray-50">
                 <tr>
@@ -1276,6 +1390,7 @@ const handleSendSsoLink = async () => {
                 </tr>
               </tbody>
             </table>
+            </div>
 
             <!-- Paginação -->
             <div v-if="cellPagination.pages > 1" class="mt-4 flex justify-center">

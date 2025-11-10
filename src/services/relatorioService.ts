@@ -1,6 +1,6 @@
 import api from './api';
 import { Membro } from './celulaService';
-import { format, startOfWeek, endOfWeek, addDays } from 'date-fns';
+import { format, startOfWeek, endOfWeek, addDays, startOfMonth, endOfMonth } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 
 // Constantes para os tipos de evento e status
@@ -82,31 +82,51 @@ const relatorioService = {
   
   // Listar relatórios com filtros obrigatórios
   async listarRelatorios(filtros: { 
-    celulaId: number; 
-    dataInicio: Date | string; 
-    dataFim: Date | string;
+    celulaId?: number; 
+    celula?: number;
+    dataInicio?: Date | string; 
+    dataFim?: Date | string;
+    mes?: number;
+    ano?: number;
     evento?: number;
     status?: number;
   }) {
     try {
-      if (!filtros.celulaId || !filtros.dataInicio || !filtros.dataFim) {
-        console.error('Parâmetros obrigatórios não fornecidos');
+      const params = new URLSearchParams();
+      
+      const celulaId = filtros.celulaId ?? filtros.celula;
+      if (!celulaId) {
+        console.error('Parâmetro obrigatório celulaId não fornecido');
+        return [];
+      }
+      params.append('celulaId', celulaId.toString());
+
+      let dataInicioParam: string | undefined;
+      let dataFimParam: string | undefined;
+
+      if (filtros.dataInicio && filtros.dataFim) {
+        dataInicioParam = typeof filtros.dataInicio === 'string'
+          ? filtros.dataInicio
+          : format(filtros.dataInicio, 'yyyy-MM-dd');
+        dataFimParam = typeof filtros.dataFim === 'string'
+          ? filtros.dataFim
+          : format(filtros.dataFim, 'yyyy-MM-dd');
+      } else if (filtros.mes !== undefined && filtros.ano !== undefined) {
+        const ano = Number(filtros.ano);
+        const mes = Number(filtros.mes);
+        const inicioMes = startOfMonth(new Date(ano, mes - 1, 1));
+        const fimMes = endOfMonth(inicioMes);
+        dataInicioParam = format(inicioMes, 'yyyy-MM-dd');
+        dataFimParam = format(fimMes, 'yyyy-MM-dd');
+      }
+
+      if (!dataInicioParam || !dataFimParam) {
+        console.error('Parâmetros de data não fornecidos');
         return [];
       }
 
-      const params = new URLSearchParams();
-      
-      params.append('celulaId', filtros.celulaId.toString());
-      
-      const dataInicio = typeof filtros.dataInicio === 'string' 
-        ? filtros.dataInicio 
-        : format(filtros.dataInicio, 'yyyy-MM-dd');
-      params.append('dataInicio', dataInicio);
-      
-      const dataFim = typeof filtros.dataFim === 'string' 
-        ? filtros.dataFim 
-        : format(filtros.dataFim, 'yyyy-MM-dd');
-      params.append('dataFim', dataFim);
+      params.append('dataInicio', dataInicioParam);
+      params.append('dataFim', dataFimParam);
       
       if (filtros.evento !== undefined) params.append('evento', filtros.evento.toString());
       if (filtros.status !== undefined) params.append('status', filtros.status.toString());
@@ -122,7 +142,7 @@ const relatorioService = {
   // Obter detalhes de um relatório específico
   async obterRelatorio(id: number) {
     try {
-      return await api.get(`/relatorios/${id}`) as Relatorio & { presencas: Presenca[] };
+      return await api.get(`/relatorios/${id}`) as Relatorio & { presencas: Presenca[]; membros?: Membro[] };
     } catch (error) {
       console.error("Erro ao obter relatório:", error);
       throw error;

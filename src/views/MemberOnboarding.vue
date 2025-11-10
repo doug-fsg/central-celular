@@ -124,6 +124,9 @@ const finalizarCadastro = async () => {
     success.value = `${membros.value.length} membros cadastrados!`
     currentStep.value = 3
 
+    // Limpar flag de pular onboarding, pois o usuário completou o processo
+    sessionStorage.removeItem('skipOnboarding')
+
     // Redirecionar após 2 segundos
     setTimeout(() => {
       router.push({ name: 'dashboard' })
@@ -138,6 +141,8 @@ const finalizarCadastro = async () => {
 }
 
 const pularOnboarding = () => {
+  // Marcar que o usuário pulou o onboarding para evitar loop infinito
+  sessionStorage.setItem('skipOnboarding', 'true')
   router.push({ name: 'dashboard' })
 }
 

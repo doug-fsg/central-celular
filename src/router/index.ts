@@ -2,6 +2,7 @@ import type { RouteLocationNormalized, NavigationGuardNext } from 'vue-router'
 import { createRouter, createWebHistory } from 'vue-router'
 import { useUserStore } from '../stores/userStore'
 import { ssoLinkService } from '../services/ssoLinkService'
+import celulaService from '../services/celulaService'
 import LandingPage from '../views/LandingPage.vue'
 import GileadeLandingPage from '../views/GileadeLandingPage.vue'
 import LoginPage from '../views/LoginPage.vue'
@@ -14,6 +15,7 @@ import AdminDashboard from '../views/AdminDashboard.vue'
 import SupervisorDashboard from '../views/SupervisorDashboard.vue'
 import WhatsAppConnections from '../components/WhatsAppConnections.vue'
 import ConfiguracoesView from '../views/ConfiguracoesView.vue'
+import OnboardingWizard from '../views/OnboardingWizard.vue'
 
 const router = createRouter({
   history: createWebHistory(),
@@ -39,6 +41,12 @@ const router = createRouter({
       path: '/dashboard',
       name: 'dashboard',
       component: Dashboard,
+      meta: { requiresAuth: true, requiresLeader: true, requiresOnboarding: true }
+    },
+    {
+      path: '/onboarding',
+      name: 'onboarding',
+      component: OnboardingWizard,
       meta: { requiresAuth: true, requiresLeader: true }
     },
     {
@@ -63,19 +71,19 @@ const router = createRouter({
       path: '/minha-celula',
       name: 'minha-celula',
       component: MemberList,
-      meta: { requiresAuth: true, requiresLeader: true }
+      meta: { requiresAuth: true, requiresLeader: true, requiresOnboarding: true }
     },
     {
       path: '/attendance',
       name: 'attendance',
       component: AttendanceForm,
-      meta: { requiresAuth: true, requiresLeader: true }
+      meta: { requiresAuth: true, requiresLeader: true, requiresOnboarding: true }
     },
     {
       path: '/reports',
       name: 'reports',
       component: Reports,
-      meta: { requiresAuth: true, requiresLeader: true }
+      meta: { requiresAuth: true, requiresLeader: true, requiresOnboarding: true }
     },
     {
       path: '/profile',
@@ -148,6 +156,43 @@ router.beforeEach(async (to: RouteLocationNormalized, from: RouteLocationNormali
     return next({ name: 'admin-dashboard' })
   }
   
+  // Verificar onboarding para líderes
+  if (to.meta.requiresOnboarding && userStore.isLeader && to.name !== 'onboarding') {
+    try {
+      const liderId = userStore.user?.id
+      if (!liderId) {
+        return next({ name: 'onboarding' })
+      }
+
+      // Buscar células ativas do líder
+      const respostaAtivas = await celulaService.listarCelulas({ lider: liderId, ativo: true })
+      let celula = respostaAtivas?.celulas?.[0]
+
+      // Se não há células ativas, buscar quaisquer células
+      if (!celula) {
+        const respostaTodas = await celulaService.listarCelulas({ lider: liderId })
+        celula = respostaTodas?.celulas?.[0]
+      }
+
+      if (!celula) {
+        console.log('[Router] Líder sem célula, redirecionando para onboarding')
+        return next({ name: 'onboarding' })
+      }
+
+      // Verificar membros
+      const celulaDetalhada = await celulaService.obterCelula(celula.id)
+      const temMembros = Array.isArray(celulaDetalhada?.membros) && celulaDetalhada.membros.length > 0
+
+      if (!temMembros) {
+        console.log('[Router] Líder sem membros, redirecionando para onboarding')
+        return next({ name: 'onboarding' })
+      }
+    } catch (error) {
+      console.error('[Router] Erro ao verificar onboarding:', error)
+      return next({ name: 'onboarding' })
+    }
+  }
+  
   // Verifica se a rota é só para visitantes (login, registro)
   if (to.meta.requiresGuest && userStore.isLoggedIn) {
     if (userStore.isAdmin) {
@@ -160,3 +205,5 @@ router.beforeEach(async (to: RouteLocationNormalized, from: RouteLocationNormali
 })
 
 export default router
+
+

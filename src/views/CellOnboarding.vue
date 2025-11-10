@@ -64,6 +64,9 @@ const criarCelula = async () => {
     
     success.value = 'Célula criada com sucesso!'
     
+    // Limpar flag de pular onboarding, pois agora o usuário está completando o processo
+    sessionStorage.removeItem('skipOnboarding')
+    
     // Recarregar dados do memberStore para atualizar celulaId
     const { useMemberStore } = await import('../stores/memberStore')
     const memberStore = useMemberStore()
@@ -83,6 +86,8 @@ const criarCelula = async () => {
 }
 
 const pularOnboarding = () => {
+  // Marcar que o usuário pulou o onboarding para evitar loop infinito
+  sessionStorage.setItem('skipOnboarding', 'true')
   router.push({ name: 'dashboard' })
 }
 </script>

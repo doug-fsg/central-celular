@@ -139,7 +139,7 @@ const carregarRelatorios = async () => {
   
   try {
     const result = await relatorioService.listarRelatorios({
-      celula: memberStore.celulaId,
+      celulaId: memberStore.celulaId as number,
       dataInicio: reportStore.currentWeek.dataInicio,
       dataFim: reportStore.currentWeek.dataFim,
       evento: tipoEvento.value

@@ -119,15 +119,19 @@ export const useAttendanceStore = defineStore('attendance', () => {
     
     try {
       // Verificar se há um relatório para este mês/ano
-      if (!memberStore.celulaId) {
+      const celulaId = memberStore.celulaId
+      if (!celulaId) {
         loading.value = false;
         return;
       }
       
+      const inicioMes = startOfMonth(new Date(year, month, 1))
+      const fimMes = endOfMonth(inicioMes)
+
       const relatorios = await relatorioService.listarRelatorios({
-        celula: memberStore.celulaId,
-        mes: month + 1, // API espera mês de 1-12
-        ano: year
+        celulaId,
+        dataInicio: inicioMes,
+        dataFim: fimMes
       });
       
       if (relatorios.length === 0) {

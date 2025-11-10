@@ -409,6 +409,40 @@ export const desativarCelula = async (req: Request, res: Response) => {
   }
 };
 
+// Deletar célula permanentemente
+export const deletarCelula = async (req: Request, res: Response) => {
+  try {
+    const { id } = req.params;
+    const celulaId = Number(id);
+
+    // Verificar se a célula existe
+    const celulaExistente = await prisma.celula.findUnique({
+      where: { id: celulaId }
+    });
+
+    if (!celulaExistente) {
+      return res.status(404).json({ message: 'Célula não encontrada' });
+    }
+
+    // Deletar célula e todos os dados relacionados em uma transação
+    await prisma.$transaction(async (tx) => {
+      // 1) Deletar relatórios (presenças cairão por cascade via onDelete: Cascade em Presenca.relatorio)
+      await tx.relatorio.deleteMany({ where: { celulaId } });
+
+      // 2) Deletar membros (presenças já foram deletadas acima)
+      await tx.membro.deleteMany({ where: { celulaId } });
+
+      // 3) Deletar a célula
+      await tx.celula.delete({ where: { id: celulaId } });
+    });
+
+    res.json({ message: 'Célula excluída com sucesso' });
+  } catch (error) {
+    console.error('Erro ao deletar célula:', error);
+    res.status(500).json({ message: 'Erro ao deletar célula' });
+  }
+};
+
 // Adicionar membro
 export const adicionarMembro = async (req: Request, res: Response) => {
   try {
