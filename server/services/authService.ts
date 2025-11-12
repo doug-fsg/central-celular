@@ -48,7 +48,7 @@ export const authService = {
     return jwt.sign(
       { userId, accountId, isSuperAdmin },
       jwtSecret,
-      { expiresIn: '1d' }
+      { expiresIn: '7d' }
     );
   },
 
@@ -348,7 +348,7 @@ export const authService = {
         },
         jwtSecret,
         {
-          expiresIn: '1d'
+          expiresIn: '7d'
         }
       );
       

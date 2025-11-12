@@ -103,7 +103,8 @@ adminRouter.delete('/usuarios/:id', async (req, res) => {
 adminRouter.get('/estatisticas', async (req, res) => {
   try {
     const periodo = req.query.periodo as string || 'mes';
-    console.log(`[DEBUG] Obtendo estatísticas para período: ${periodo}`);
+    const liderId = req.query.liderId ? Number(req.query.liderId) : undefined;
+    console.log(`[DEBUG] Obtendo estatísticas para período: ${periodo}, líder: ${liderId || 'todos'}`);
     
     // Calcular datas baseado no período
     const hoje = new Date();
@@ -112,6 +113,30 @@ adminRouter.get('/estatisticas', async (req, res) => {
     let periodoAnteriorFim: Date;
     
     switch (periodo) {
+      case 'semana': {
+        // Última semana (segunda a domingo)
+        const semanaPassada = new Date(hoje);
+        semanaPassada.setDate(semanaPassada.getDate() - 7);
+        const diaSemana = semanaPassada.getDay(); // 0 = domingo, 1 = segunda, etc.
+        const diasParaSegunda = diaSemana === 0 ? 6 : diaSemana - 1; // Dias para voltar à segunda
+        const segundaPassada = new Date(semanaPassada);
+        segundaPassada.setDate(segundaPassada.getDate() - diasParaSegunda);
+        segundaPassada.setHours(0, 0, 0, 0);
+        const domingoPassado = new Date(segundaPassada);
+        domingoPassado.setDate(domingoPassado.getDate() + 6);
+        domingoPassado.setHours(23, 59, 59, 999);
+        
+        dataInicio = segundaPassada;
+        // Período anterior: semana anterior
+        const segundaAnterior = new Date(segundaPassada);
+        segundaAnterior.setDate(segundaAnterior.getDate() - 7);
+        periodoAnteriorInicio = segundaAnterior;
+        const domingoAnterior = new Date(segundaAnterior);
+        domingoAnterior.setDate(domingoAnterior.getDate() + 6);
+        domingoAnterior.setHours(23, 59, 59, 999);
+        periodoAnteriorFim = domingoAnterior;
+        break;
+      }
       case 'trimestre':
         dataInicio = new Date(hoje.getFullYear(), hoje.getMonth() - 3, 1);
         periodoAnteriorInicio = new Date(hoje.getFullYear(), hoje.getMonth() - 6, 1);
@@ -147,7 +172,8 @@ adminRouter.get('/estatisticas', async (req, res) => {
       celulasPorRegiao,
       membrosPorRegiao,
       relatoriosEnviados,
-      consolidadoresAtivos
+      consolidadoresAtivos,
+      coLideresAtivos
     ] = await Promise.all([
       // Total de células ativas
       prisma.celula.count({
@@ -178,25 +204,35 @@ adminRouter.get('/estatisticas', async (req, res) => {
         where: { ativo: true }
       }),
       
-      // Presença total período atual
+      // Presença total período atual (filtrar por líder se fornecido)
       prisma.presenca.findMany({
         where: {
           relatorio: {
             dataEnvio: {
               gte: dataInicio,
               lte: hoje
-            }
+            },
+            ...(liderId ? {
+              celula: {
+                liderId: liderId
+              }
+            } : {})
           }
         }
       }),
       
-      // Novos membros no período atual
+      // Novos membros no período atual (filtrar por líder se fornecido)
       prisma.membro.count({
         where: {
           dataCadastro: {
             gte: dataInicio,
             lte: hoje
-          }
+          },
+          ...(liderId ? {
+            celula: {
+              liderId: liderId
+            }
+          } : {})
         }
       }),
 
@@ -210,14 +246,19 @@ adminRouter.get('/estatisticas', async (req, res) => {
         }
       }),
 
-      // Presenças período anterior
+      // Presenças período anterior (filtrar por líder se fornecido)
       prisma.presenca.findMany({
         where: {
           relatorio: {
             dataEnvio: {
               gte: periodoAnteriorInicio,
               lte: periodoAnteriorFim
-            }
+            },
+            ...(liderId ? {
+              celula: {
+                liderId: liderId
+              }
+            } : {})
           }
         }
       }),
@@ -271,21 +312,40 @@ adminRouter.get('/estatisticas', async (req, res) => {
         }
       }),
 
-      // Relatórios enviados no período
+      // Relatórios enviados no período (filtrar por líder se fornecido)
       prisma.relatorio.count({
         where: {
           dataEnvio: {
             gte: dataInicio,
             lte: hoje
-          }
+          },
+          ...(liderId ? {
+            celula: {
+              liderId: liderId
+            }
+          } : {})
         }
       }),
 
-      // Consolidadores ativos
+      // Consolidadores ativos (filtrar por accountId via células)
       prisma.membro.count({
         where: {
           ehConsolidador: true,
-          ativo: true
+          ativo: true,
+          celula: {
+            accountId: (req as any).user?.accountId
+          }
+        }
+      }),
+      
+      // Co-líderes ativos (filtrar por accountId via células)
+      prisma.membro.count({
+        where: {
+          ehCoLider: true,
+          ativo: true,
+          celula: {
+            accountId: (req as any).user?.accountId
+          }
         }
       })
     ]);
@@ -345,6 +405,7 @@ adminRouter.get('/estatisticas', async (req, res) => {
       indicadores: {
         relatoriosEnviados,
         consolidadoresAtivos,
+        coLideresAtivos,
         novosMembros,
         mediaMembrosPorCelula: totalCelulas > 0 ? Math.round(totalMembros / totalCelulas) : 0
       },

@@ -491,4 +491,81 @@ export const obterEstatisticas = async (req: Request, res: Response) => {
     console.error('Erro ao obter estatísticas:', error);
     res.status(500).json({ message: 'Erro ao obter estatísticas' });
   }
+};
+
+// Obter últimos relatórios de um membro específico
+export const obterFrequenciaMembro = async (req: Request, res: Response) => {
+  try {
+    const { membroId, celulaId } = req.params;
+
+    if (!membroId || !celulaId) {
+      return res.status(400).json({ message: 'Parâmetros membroId e celulaId são obrigatórios' });
+    }
+
+    // Buscar os últimos 4 relatórios enviados da célula (de ambos os tipos)
+    const relatorios = await prisma.relatorio.findMany({
+      where: {
+        celulaId: Number(celulaId),
+        status: 1, // Apenas relatórios enviados
+      },
+      include: {
+        presencas: {
+          where: {
+            membroId: Number(membroId),
+          },
+        },
+      },
+      orderBy: {
+        dataEnvio: 'desc',
+      },
+      take: 8, // Buscar mais para ter relatórios de ambos os tipos
+    });
+
+    // Agrupar por período (dataInicio + dataFim) e tipo
+    const relatoriosPorPeriodo = new Map<string, { celula?: any; culto?: any }>();
+
+    relatorios.forEach(rel => {
+      const chave = `${rel.dataInicio.toISOString()}_${rel.dataFim.toISOString()}`;
+      if (!relatoriosPorPeriodo.has(chave)) {
+        relatoriosPorPeriodo.set(chave, {});
+      }
+      
+      const periodo = relatoriosPorPeriodo.get(chave)!;
+      const presenca = rel.presencas.find(p => p.membroId === Number(membroId));
+      const presente = presenca ? presenca.status === 1 : false;
+
+      if (rel.evento === 0) {
+        periodo.celula = {
+          id: rel.id,
+          dataEnvio: rel.dataEnvio,
+          presente: presente,
+        };
+      } else {
+        periodo.culto = {
+          id: rel.id,
+          dataEnvio: rel.dataEnvio,
+          presente: presente,
+        };
+      }
+    });
+
+    // Converter para array e pegar os últimos 4 períodos
+    const frequencia = Array.from(relatoriosPorPeriodo.entries())
+      .slice(0, 4)
+      .map(([chave, periodo]) => {
+        const [dataInicioStr, dataFimStr] = chave.split('_');
+        return {
+          dataInicio: new Date(dataInicioStr),
+          dataFim: new Date(dataFimStr),
+          dataEnvio: periodo.celula?.dataEnvio || periodo.culto?.dataEnvio,
+          presenteCelula: periodo.celula?.presente ?? false,
+          presenteCulto: periodo.culto?.presente ?? false,
+        };
+      });
+
+    res.json(frequencia);
+  } catch (error) {
+    console.error('Erro ao obter frequência do membro:', error);
+    res.status(500).json({ message: 'Erro ao obter frequência do membro' });
+  }
 }; 

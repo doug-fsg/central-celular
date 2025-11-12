@@ -3,6 +3,7 @@ import { createRouter, createWebHistory } from 'vue-router'
 import { useUserStore } from '../stores/userStore'
 import { ssoLinkService } from '../services/ssoLinkService'
 import celulaService from '../services/celulaService'
+import api from '../services/api'
 import LandingPage from '../views/LandingPage.vue'
 import GileadeLandingPage from '../views/GileadeLandingPage.vue'
 import LoginPage from '../views/LoginPage.vue'
@@ -137,8 +138,17 @@ router.beforeEach(async (to: RouteLocationNormalized, from: RouteLocationNormali
   }
   
   // Verifica se a rota requer autenticação
-  if (to.meta.requiresAuth && !userStore.isLoggedIn) {
-    return next({ name: 'login' })
+  if (to.meta.requiresAuth) {
+    // Verificar se o token está expirado
+    if (userStore.token && api.isTokenExpired(userStore.token)) {
+      console.log('[Router] Token expirado, limpando sessão e redirecionando para login');
+      userStore.logout();
+      return next({ name: 'login' });
+    }
+    
+    if (!userStore.isLoggedIn) {
+      return next({ name: 'login' });
+    }
   }
   
   // Verifica se a rota requer privilégios de admin

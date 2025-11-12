@@ -1,4 +1,5 @@
 import api from './api';
+import { useUserStore } from '../stores/userStore';
 
 interface WhatsAppConnection {
   id: number;
@@ -34,7 +35,9 @@ export const whatsappService = {
         throw new Error('Email do WhatsApp não configurado');
       }
 
-      const accountId = api.getUsuario()?.accountId;
+      // Obter accountId do userStore
+      const userStore = useUserStore();
+      const accountId = userStore.getUsuario()?.accountId;
       if (!accountId) {
         throw new Error('ID da conta não encontrado');
       }

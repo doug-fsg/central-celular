@@ -7,7 +7,7 @@ services:
       context: .
       dockerfile: Dockerfile.frontend
       args:
-        VITE_API_URL: https://central.manytalks.com.br/api
+        VITE_API_URL: https://apriscoapp.com/api
         VITE_QUEPASA_USER_EMAIL: doug.fsg@gmail.com
     ports:
       - "8181:80"
@@ -27,7 +27,7 @@ services:
       - NODE_ENV=production
       - HOST=0.0.0.0
       - JWT_SECRET=central-celular-secret-key-do-not-share
-      - FRONTEND_URL=https://central.manytalks.com.br
+      - FRONTEND_URL=https://apriscoapp.com
       - VITE_QUEPASA_USER_EMAIL=doug.fsg@gmail.com
     depends_on:
       - db

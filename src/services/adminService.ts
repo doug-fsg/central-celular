@@ -14,6 +14,7 @@ export interface AdminStats {
   indicadores: {
     relatoriosEnviados: number;
     consolidadoresAtivos: number;
+    coLideresAtivos: number;
     novosMembros: number;
     mediaMembrosPorCelula: number;
   };
@@ -83,9 +84,13 @@ export interface PaginatedResponse<T> {
 // Serviço de administração
 export const adminService = {
   // Obter estatísticas
-  async obterEstatisticas(periodo: string): Promise<AdminStats> {
+  async obterEstatisticas(periodo: string, liderId?: number): Promise<AdminStats> {
     try {
-      return await api.get(`/admin/estatisticas?periodo=${periodo}`);
+      let url = `/admin/estatisticas?periodo=${periodo}`;
+      if (liderId) {
+        url += `&liderId=${liderId}`;
+      }
+      return await api.get(url);
     } catch (error) {
       console.error('Erro ao obter estatísticas:', error);
       throw error;

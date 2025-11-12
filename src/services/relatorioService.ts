@@ -304,6 +304,22 @@ const relatorioService = {
       console.error("Erro ao obter estatísticas de líderes:", error);
       throw error;
     }
+  },
+
+  // Obter frequência de um membro (últimos 4 relatórios)
+  async obterFrequenciaMembro(membroId: number, celulaId: number) {
+    try {
+      return await api.get(`/relatorios/membro/${membroId}/celula/${celulaId}`) as Array<{
+        dataInicio: string | Date;
+        dataFim: string | Date;
+        dataEnvio: string | Date;
+        presenteCelula: boolean;
+        presenteCulto: boolean;
+      }>;
+    } catch (error) {
+      console.error("Erro ao obter frequência do membro:", error);
+      throw error;
+    }
   }
 };
 

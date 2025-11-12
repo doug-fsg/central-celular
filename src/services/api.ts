@@ -1,5 +1,3 @@
-import { ref } from 'vue';
-
 // Configurações da API
 // Preferir mesma origem no browser para evitar Mixed Content e CORS
 const inferSameOriginApi = () => {
@@ -15,41 +13,35 @@ const API_URL = RAW_API_URL.endsWith('/api')
   ? RAW_API_URL
   : `${RAW_API_URL.replace(/\/$/, '')}/api`;
 
-// Interface para erros da API (não removida para compatibilidade futura)
-// interface ApiError {
-//   message: string;
-//   errors?: any[];
-//   status?: number;
-// }
+// Função para obter o token atual (será injetada pelo userStore)
+let getTokenFn: (() => string | null) | null = null;
 
-// Estado global para token e usuário logado
-const token = ref<string | null>(localStorage.getItem('token'));
-const usuarioLogado = ref<any | null>(null);
+// Função para definir o getter do token (chamada pelo userStore na inicialização)
+export const setTokenGetter = (fn: () => string | null) => {
+  getTokenFn = fn;
+};
 
-// Função para carregar usuário do localStorage
-const carregarUsuario = () => {
-  const usuarioJson = localStorage.getItem('usuario');
-  if (usuarioJson) {
-    usuarioLogado.value = JSON.parse(usuarioJson);
+// Função para validar se o token JWT está expirado
+const isTokenExpired = (tokenString: string | null): boolean => {
+  if (!tokenString) return true;
+  
+  try {
+    // Decodificar o token JWT (sem verificar assinatura, apenas para ler o payload)
+    const parts = tokenString.split('.');
+    if (parts.length !== 3) return true;
+    
+    const payload = JSON.parse(atob(parts[1]));
+    const exp = payload.exp;
+    
+    if (!exp) return true;
+    
+    // Verificar se expirou (com margem de 1 minuto para evitar problemas de sincronização)
+    const now = Math.floor(Date.now() / 1000);
+    return exp < (now + 60);
+  } catch (error) {
+    console.error('[API] Erro ao validar token:', error);
+    return true;
   }
-};
-
-// Carregar usuário inicialmente
-carregarUsuario();
-
-// Funções para gerenciar sessão
-const salvarSessao = (data: { token: string; usuario: any }) => {
-  token.value = data.token;
-  usuarioLogado.value = data.usuario;
-  localStorage.setItem('token', data.token);
-  localStorage.setItem('usuario', JSON.stringify(data.usuario));
-};
-
-const limparSessao = () => {
-  token.value = null;
-  usuarioLogado.value = null;
-  localStorage.removeItem('token');
-  localStorage.removeItem('usuario');
 };
 
 // Função para fazer requisições à API
@@ -64,8 +56,10 @@ const fetchApi = async (
       'Content-Type': 'application/json',
     };
 
-    if (includeToken && token.value) {
-      headers['Authorization'] = `Bearer ${token.value}`;
+    // Obter token do userStore via getter
+    const currentToken = includeToken && getTokenFn ? getTokenFn() : null;
+    if (currentToken) {
+      headers['Authorization'] = `Bearer ${currentToken}`;
     }
 
     const options: RequestInit = {
@@ -92,6 +86,21 @@ const fetchApi = async (
         }
       } catch (e) {
         errorMessage = 'Erro ao processar resposta do servidor';
+      }
+
+      // Interceptor para erros 401 (Token inválido/expirado)
+      if (response.status === 401) {
+        console.log('[API] Token inválido ou expirado, notificando userStore');
+        
+        // Notificar userStore para limpar sessão
+        if (typeof window !== 'undefined') {
+          window.dispatchEvent(new CustomEvent('auth:token-invalid'));
+        }
+        
+        // Redirecionar para login se não estiver já na página de login
+        if (typeof window !== 'undefined' && !window.location.pathname.includes('/login')) {
+          window.location.href = '/login';
+        }
       }
 
       throw {
@@ -152,8 +161,8 @@ const api = {
     console.log('[API] Normalizando WhatsApp:', { original: whatsapp, digits, normalized });
     const data = await fetchApi('/auth/login', 'POST', { whatsapp: normalized, senha }, false);
     
-    console.log('[API] Login bem-sucedido, salvando sessão');
-    salvarSessao(data);
+    console.log('[API] Login bem-sucedido, retornando dados');
+    // Não salva sessão aqui - userStore vai fazer isso
     return data;
   },
 
@@ -187,12 +196,8 @@ const api = {
       payload.dataNascimento = dataNascimento;
     }
     const data = await fetchApi('/auth/create-password', 'POST', payload, false);
-    salvarSessao(data);
+    // Não salva sessão aqui - userStore vai fazer isso
     return data;
-  },
-
-  async logout() {
-    limparSessao();
   },
 
   async verificarToken() {
@@ -200,7 +205,6 @@ const api = {
       const data = await fetchApi('/auth/verificar');
       return { valido: true, usuario: data.usuario };
     } catch (error) {
-      limparSessao();
       return { valido: false };
     }
   },
@@ -230,15 +234,8 @@ const api = {
     return fetchApi(endpoint, 'DELETE');
   },
 
-  // Método para atualizar o token no módulo da API
-  setAuthToken(newToken: string | null) {
-    token.value = newToken;
-  },
-
-  // Estado da autenticação
-  getToken: () => token.value,
-  getUsuario: () => usuarioLogado.value,
-  estaLogado: () => !!token.value,
+  // Validação de token (função utilitária)
+  isTokenExpired: (tokenString: string | null) => isTokenExpired(tokenString),
 };
 
 export default api; 

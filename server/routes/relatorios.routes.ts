@@ -7,7 +7,8 @@ import {
   registrarPresenca,
   obterEstatisticas,
   enviarRelatorio,
-  obterFrequenciaPorData
+  obterFrequenciaPorData,
+  obterFrequenciaMembro
 } from '../controllers/relatorios.controller';
 import { Request, Response, NextFunction } from 'express';
 import { accountMiddleware } from '../middlewares/accountMiddleware';
@@ -21,6 +22,7 @@ router.use(accountMiddleware);
 router.get('/estatisticas/lideres/:mes/:ano', obterEstatisticas);
 router.get('/estatisticas/:celulaId', obterEstatisticas);
 router.get('/frequencia-por-data', obterFrequenciaPorData);
+router.get('/membro/:membroId/celula/:celulaId', obterFrequenciaMembro);
 
 // Rotas básicas para relatórios
 router.get('/', listarRelatorios);

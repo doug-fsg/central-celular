@@ -1,7 +1,7 @@
 import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
 import { useMemberStore } from './memberStore'
-import api from '../services/api';
+import api, { setTokenGetter } from '../services/api';
 
 export interface UserProfile {
   id: number;
@@ -64,12 +64,21 @@ export const useUserStore = defineStore('user', () => {
 
   function setToken(newToken: string | null) {
     token.value = newToken;
-    api.setAuthToken(newToken); // Atualiza o token no módulo da API
     if (newToken) {
       localStorage.setItem('token', newToken);
     } else {
       localStorage.removeItem('token');
     }
+  }
+  
+  // Função para obter o token atual (usada pelo api.ts)
+  function getToken(): string | null {
+    return token.value;
+  }
+  
+  // Função para obter o usuário atual (usada por outros serviços)
+  function getUsuario() {
+    return user.value;
   }
 
   async function login(loginData: any) {
@@ -127,11 +136,32 @@ export const useUserStore = defineStore('user', () => {
   function loadUserFromStorage() {
     const storedUser = localStorage.getItem('usuario');
     const storedToken = localStorage.getItem('token');
+    
     if (storedUser && storedToken) {
+      // Validar se o token não está expirado antes de carregar
+      if (api.isTokenExpired(storedToken)) {
+        console.log('[UserStore] Token expirado no localStorage, limpando sessão');
+        setUser(null);
+        setToken(null);
+        return;
+      }
+      
       setUser(JSON.parse(storedUser));
       setToken(storedToken);
     }
   }
+  
+  // Escutar evento de token inválido do api.ts
+  if (typeof window !== 'undefined') {
+    window.addEventListener('auth:token-invalid', () => {
+      console.log('[UserStore] Recebido evento de token inválido, limpando sessão');
+      setUser(null);
+      setToken(null);
+    });
+  }
+  
+  // Registrar getter do token no api.ts
+  setTokenGetter(() => token.value);
   
   // Inicialização
   loadUserFromStorage();
@@ -153,6 +183,8 @@ export const useUserStore = defineStore('user', () => {
     loginWithSSO,
     logout,
     loadUserFromStorage,
-    updateProfile
+    updateProfile,
+    getToken,
+    getUsuario
   };
 }); 

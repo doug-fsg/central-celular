@@ -49,7 +49,7 @@ const registroSchema = z.object({
 const gerarToken = (userId: number): string => {
   const secret = process.env.JWT_SECRET || 'central-celular-secret';
   console.log('Gerando token JWT com secret:', secret ? 'Secret disponível' : 'Secret NÃO disponível');
-  return jwt.sign({ id: userId }, secret, { expiresIn: '24h' });
+  return jwt.sign({ id: userId }, secret, { expiresIn: '7d' });
 };
 
 // Controller de autenticação
@@ -295,7 +295,7 @@ export const authController = {
           isSuperAdmin: novoUsuario.isSuperAdmin
         },
         jwtSecret,
-        { expiresIn: '1d' }
+        { expiresIn: '7d' }
       );
 
       // Retornar dados do usuário (sem a senha) e token

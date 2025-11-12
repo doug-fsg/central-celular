@@ -1,5 +1,6 @@
 <script setup lang="ts">
-import { ref, onMounted, watch, computed } from 'vue'
+import { ref, onMounted, onUnmounted, watch, computed } from 'vue'
+import { startOfWeek, endOfWeek, subWeeks } from 'date-fns'
 import UserModal from '../components/UserModal.vue'
 import CellModal from '../components/CellModal.vue'
 import { adminService } from '../services/adminService'
@@ -10,6 +11,7 @@ import WhatsAppConnections from '../components/WhatsAppConnections.vue'
 import CellMembersModal from '../components/CellMembersModal.vue'
 import { ssoLinkService } from '../services/ssoLinkService'
 import FrequencyChart from '../components/FrequencyChart.vue'
+import AppIcon from '../components/AppIcon.vue'
 
 const activeTab = ref('dashboard') // 'dashboard', 'users', 'cells' ou 'whatsapp'
 const whatsappRef = ref<any>(null)
@@ -17,7 +19,7 @@ const whatsappRef = ref<any>(null)
 // Estado para os dados
 const loading = ref(true)
 // const tipoRelatorio = ref('geral') // 'geral', 'celulas', 'supervisores'
-const periodoSelecionado = ref('mes') // 'mes', 'trimestre', 'ano'
+const periodoSelecionado = ref('semana') // 'semana', 'mes', 'trimestre', 'ano'
 
 // Lista de usuários
 const users = ref<Usuario[]>([])
@@ -97,6 +99,7 @@ const stats = ref<AdminStats>({
   indicadores: {
     relatoriosEnviados: 0,
     consolidadoresAtivos: 0,
+    coLideresAtivos: 0,
     novosMembros: 0,
     mediaMembrosPorCelula: 0
   },
@@ -138,6 +141,26 @@ const selectedCellForMembers = ref<{ id: number, nome: string } | null>(null)
 // Lista de líderes disponíveis
 const availableLeaders = ref<Usuario[]>([])
 const leaderFilterId = ref<string>('')
+const leaderSearchTerm = ref('')
+const showLeaderDropdown = ref(false)
+
+// Líderes filtrados para busca
+const filteredLeaders = computed(() => {
+  if (!leaderSearchTerm.value.trim()) {
+    return availableLeaders.value.filter((u: Usuario) => u.cargo === 'LIDER')
+  }
+  const term = leaderSearchTerm.value.toLowerCase().trim()
+  return availableLeaders.value.filter((u: Usuario) => 
+    u.cargo === 'LIDER' && 
+    (u.nome.toLowerCase().includes(term) || (u.whatsapp || '').includes(term))
+  )
+})
+
+const selectedLeaderName = computed(() => {
+  if (!leaderFilterId.value) return ''
+  const leader = availableLeaders.value.find((u: Usuario) => String(u.id) === leaderFilterId.value)
+  return leader?.nome || ''
+})
 
 // Série consolidada por data para cálculo de médias do período
 const chartLabels = ref<string[]>([])
@@ -227,13 +250,35 @@ const showFeedback = (message: string, type: 'success' | 'error' = 'success') =>
   }, 3000)
 }
 
+// Fechar dropdown ao clicar fora
+let isOpening = false
+const handleClickOutside = (event: MouseEvent) => {
+  if (isOpening) {
+    isOpening = false
+    return
+  }
+  const target = event.target as HTMLElement
+  if (!target.closest('.leader-dropdown-container') && showLeaderDropdown.value) {
+    showLeaderDropdown.value = false
+  }
+}
+
+const openLeaderDropdown = () => {
+  isOpening = true
+  showLeaderDropdown.value = true
+  setTimeout(() => {
+    isOpening = false
+  }, 50)
+}
+
 // Carregamento inicial dos dados
 onMounted(async () => {
   try {
     loading.value = true
     
     // Carregar dados do relatório
-    stats.value = await adminService.obterEstatisticas(periodoSelecionado.value)
+    const liderId = leaderFilterId.value ? Number(leaderFilterId.value) : undefined
+    stats.value = await adminService.obterEstatisticas(periodoSelecionado.value, liderId)
     
     // Carregar lista de usuários
     const response = await adminService.listarUsuarios(1)
@@ -241,6 +286,11 @@ onMounted(async () => {
     pagination.value = response.pagination
     await loadAvailableLeaders()
     await loadCharts()
+    
+    // Adicionar listener para fechar dropdown ao clicar fora (com pequeno delay para evitar conflito no primeiro clique)
+    setTimeout(() => {
+      document.addEventListener('click', handleClickOutside)
+    }, 100)
   } catch (error) {
     console.error('Erro ao carregar dados:', error)
   } finally {
@@ -248,11 +298,17 @@ onMounted(async () => {
   }
 })
 
-// Atualizar dados quando mudar o período
+onUnmounted(() => {
+  document.removeEventListener('click', handleClickOutside)
+})
+
+// Atualizar dados quando mudar o período ou líder
 async function atualizarDados() {
   try {
     loading.value = true
-    stats.value = await adminService.obterEstatisticas(periodoSelecionado.value)
+    const liderId = leaderFilterId.value ? Number(leaderFilterId.value) : undefined
+    stats.value = await adminService.obterEstatisticas(periodoSelecionado.value, liderId)
+    await loadCharts() // Recarregar gráficos quando o período mudar
   } catch (error) {
     console.error('Erro ao atualizar dados:', error)
   } finally {
@@ -393,6 +449,11 @@ watch(periodoSelecionado, () => {
   atualizarDados()
 })
 
+// Watch para mudanças no filtro de líder
+watch(leaderFilterId, () => {
+  atualizarDados() // Recarregar estatísticas e gráficos quando o filtro de líder mudar
+})
+
 // Carregar líderes disponíveis
 const loadAvailableLeaders = async () => {
   try {
@@ -413,14 +474,24 @@ const loadAvailableLeaders = async () => {
 function getPeriodRange(periodo: string) {
   const now = new Date()
   let start: Date
-  if (periodo === 'trimestre') {
+  let end: Date
+  
+  if (periodo === 'semana') {
+    // Última semana (segunda a domingo)
+    const semanaPassada = subWeeks(now, 1)
+    start = startOfWeek(semanaPassada, { weekStartsOn: 1 }) // Segunda-feira
+    end = endOfWeek(semanaPassada, { weekStartsOn: 1 }) // Domingo
+  } else if (periodo === 'trimestre') {
     start = new Date(now.getFullYear(), now.getMonth() - 2, 1)
+    end = new Date(now.getFullYear(), now.getMonth() + 1, 0)
   } else if (periodo === 'ano') {
     start = new Date(now.getFullYear(), 0, 1)
+    end = new Date(now.getFullYear(), 11, 31)
   } else {
+    // mes
     start = new Date(now.getFullYear(), now.getMonth(), 1)
+    end = new Date(now.getFullYear(), now.getMonth() + 1, 0)
   }
-  const end = new Date(now.getFullYear(), now.getMonth() + 1, 0)
   return { start, end }
 }
 
@@ -733,14 +804,14 @@ const handleSendSsoLink = async () => {
       <div class="px-0 sm:px-0">
         <!-- Tabs -->
         <div class="border-b border-gray-200">
-          <nav class="-mb-px flex flex-wrap gap-3 md:space-x-8">
+          <nav class="-mb-px flex overflow-x-auto gap-3 md:space-x-8 pb-2 sm:pb-0">
             <button
               @click="activeTab = 'dashboard'"
               :class="[
                 activeTab === 'dashboard'
                   ? 'border-primary-500 text-primary-600'
                   : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300',
-                'whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm'
+                'whitespace-nowrap py-3 sm:py-4 px-1 border-b-2 font-medium text-xs sm:text-sm flex-shrink-0'
               ]"
             >
               Dashboard
@@ -751,7 +822,7 @@ const handleSendSsoLink = async () => {
                 activeTab === 'users'
                   ? 'border-primary-500 text-primary-600'
                   : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300',
-                'whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm'
+                'whitespace-nowrap py-3 sm:py-4 px-1 border-b-2 font-medium text-xs sm:text-sm flex-shrink-0'
               ]"
             >
               Usuários
@@ -762,7 +833,7 @@ const handleSendSsoLink = async () => {
                 activeTab === 'cells'
                   ? 'border-primary-500 text-primary-600'
                   : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300',
-                'whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm'
+                'whitespace-nowrap py-3 sm:py-4 px-1 border-b-2 font-medium text-xs sm:text-sm flex-shrink-0'
               ]"
             >
               Células
@@ -773,10 +844,11 @@ const handleSendSsoLink = async () => {
                 activeTab === 'whatsapp'
                   ? 'border-primary-500 text-primary-600'
                   : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300',
-                'whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm'
+                'whitespace-nowrap py-3 sm:py-4 px-1 border-b-2 font-medium text-xs sm:text-sm flex-shrink-0'
               ]"
             >
-              Conexões WhatsApp
+              <span class="hidden sm:inline">Conexões WhatsApp</span>
+              <span class="sm:hidden">WhatsApp</span>
             </button>
           </nav>
         </div>
@@ -798,167 +870,185 @@ const handleSendSsoLink = async () => {
       <!-- Conteúdo -->
       <div v-else class="mt-6">
         <!-- Dashboard -->
-        <div v-if="activeTab === 'dashboard'" class="space-y-6">
-          <!-- Seletor de período -->
-          <div class="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
-            <div class="flex flex-col sm:flex-row sm:items-center sm:gap-4">
-              <select
-                v-model="periodoSelecionado"
-                class="mt-1 block w-full pl-3 pr-10 py-2 text-base border-gray-300 focus:outline-none focus:ring-primary-500 focus:border-primary-500 sm:text-sm rounded-md"
-              >
-                <option value="mes">Este mês</option>
-                <option value="trimestre">Este trimestre</option>
-                <option value="ano">Este ano</option>
-              </select>
-            </div>
-            <div class="flex items-center gap-2">
-              <label for="leaderFilter" class="text-sm text-gray-600">Filtrar por líder:</label>
-              <select id="leaderFilter" v-model="leaderFilterId" class="mt-1 block pl-3 pr-10 py-2 text-base border-gray-300 focus:outline-none focus:ring-primary-500 focus:border-primary-500 sm:text-sm rounded-md">
-                <option value="">Todos os líderes</option>
-                <option v-for="l in availableLeaders.filter((u: Usuario) => u.cargo === 'LIDER')" :key="l.id" :value="String(l.id)">{{ l.nome }}</option>
-              </select>
-            </div>
+        <div v-if="activeTab === 'dashboard'" class="space-y-6" @click="showLeaderDropdown = false">
+          <!-- Cabeçalho -->
+          <div class="mb-4 sm:mb-6">
+            <h1 class="text-xl sm:text-2xl font-bold text-neutral-800">Dashboard</h1>
+            <p class="mt-1 text-xs sm:text-sm text-neutral-500">Visão geral das células e membros</p>
           </div>
           
-          <!-- Cards de resumo -->
-          <div class="grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-4">
+          <!-- Grupo 1: Cards sempre visíveis (não afetados pelo filtro) -->
+          <div class="grid grid-cols-1 gap-3 sm:gap-4 sm:grid-cols-2 mb-4 sm:mb-6">
             <!-- Total de células -->
-            <div class="bg-white overflow-hidden shadow rounded-lg">
-              <div class="p-5">
-                <div class="flex items-center">
-                  <div class="flex-shrink-0">
-                    <svg class="h-6 w-6 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4"/>
-                    </svg>
+            <div class="card p-4 sm:p-5 bg-white border border-neutral-200">
+              <div class="flex items-center justify-between">
+                <div class="flex-1 min-w-0">
+                  <p class="text-xs sm:text-sm font-medium text-neutral-600 mb-1">Total de Células</p>
+                  <p class="text-2xl sm:text-3xl font-bold text-neutral-900">{{ stats.resumo.totalCelulas }}</p>
                   </div>
-                  <div class="ml-5 w-0 flex-1">
-                    <dl>
-                      <dt class="text-sm font-medium text-gray-500 truncate">
-                      Total de Células
-                      </dt>
-                      <dd class="flex items-baseline">
-                        <div class="text-2xl font-semibold text-gray-900">
-                          {{ stats.resumo.totalCelulas }}
-                    </div>
-                      </dd>
-                    </dl>
-                  </div>
+                <div class="flex items-center justify-center w-8 h-8 sm:w-10 sm:h-10 rounded-lg bg-neutral-100 flex-shrink-0">
+                  <AppIcon name="grid" class="text-neutral-600" size="sm" />
                 </div>
               </div>
             </div>
             
             <!-- Total de membros -->
-            <div class="bg-white overflow-hidden shadow rounded-lg">
-              <div class="p-5">
-                <div class="flex items-center">
-                  <div class="flex-shrink-0">
-                    <svg class="h-6 w-6 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z"/>
-                    </svg>
-                  </div>
-                  <div class="ml-5 w-0 flex-1">
-                    <dl>
-                      <dt class="text-sm font-medium text-gray-500 truncate">
-                        Total de Membros
-                      </dt>
-                      <dd class="flex items-baseline">
-                        <div class="text-2xl font-semibold text-gray-900">
-                          {{ stats.resumo.totalMembros }}
-                    </div>
-                        <div 
+            <div class="card p-4 sm:p-5 bg-white border border-neutral-200">
+              <div class="flex items-center justify-between">
+                <div class="flex-1 min-w-0">
+                  <p class="text-xs sm:text-sm font-medium text-neutral-600 mb-1">Total de Membros</p>
+                  <div class="flex items-baseline gap-1.5 sm:gap-2 mb-1.5 sm:mb-2">
+                    <p class="text-2xl sm:text-3xl font-bold text-neutral-900">{{ stats.resumo.totalMembros }}</p>
+                    <span 
                           :class="[
                             stats.resumo.crescimentoMembros > 0 ? 'text-green-600' : 'text-red-600',
-                            'ml-2 flex items-baseline text-sm font-semibold'
+                        'text-xs font-medium'
                           ]"
                         >
-                          <span class="ml-1">
                             {{ stats.resumo.crescimentoMembros > 0 ? '▲' : '▼' }}
                             {{ Math.abs(stats.resumo.crescimentoMembros) }}%
                           </span>
                     </div>
-                      </dd>
-                    </dl>
+                  <div class="flex flex-col sm:flex-row sm:items-center gap-1.5 sm:gap-3 text-xs text-neutral-500">
+                    <span class="flex items-center gap-1">
+                      <span class="w-1.5 h-1.5 rounded-full bg-purple-400"></span>
+                      <span>{{ stats.indicadores.consolidadoresAtivos }} consolidadores</span>
+                    </span>
+                    <span class="flex items-center gap-1">
+                      <span class="w-1.5 h-1.5 rounded-full bg-yellow-400"></span>
+                      <span>{{ stats.indicadores.coLideresAtivos }} co-líderes</span>
+                    </span>
+                  </div>
+                </div>
+                <div class="flex items-center justify-center w-8 h-8 sm:w-10 sm:h-10 rounded-lg bg-neutral-100 flex-shrink-0">
+                  <AppIcon name="users" class="text-neutral-600" size="sm" />
                   </div>
                 </div>
               </div>
             </div>
             
-            <!-- Média Célula -->
-            <div class="bg-white overflow-hidden shadow rounded-lg">
-              <div class="p-5">
-                <div class="flex items-center">
-                  <div class="flex-shrink-0">
-                    <svg class="h-6 w-6 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 3v18h18"/>
+          <!-- Seletor de período (filtro para os cards abaixo) -->
+          <div class="mb-4 sm:mb-6">
+            <div class="flex flex-col sm:flex-row sm:items-center sm:justify-end gap-3">
+              <div class="flex gap-1 overflow-x-auto pb-1 sm:pb-0">
+                <button
+                  v-for="periodo in [
+                    { key: 'semana', label: 'Semana', labelMobile: 'Semana' },
+                    { key: 'mes', label: 'Mês', labelMobile: 'Mês' },
+                    { key: 'trimestre', label: 'Trimestre', labelMobile: 'Trim.' },
+                    { key: 'ano', label: 'Ano', labelMobile: 'Ano' }
+                  ]"
+                  :key="periodo.key"
+                  @click="periodoSelecionado = periodo.key as any"
+                  class="px-2.5 sm:px-3 py-1.5 rounded-lg text-xs font-medium transition-all duration-200 whitespace-nowrap flex-shrink-0"
+                  :class="periodoSelecionado === periodo.key
+                    ? 'bg-primary-500 text-white shadow-sm'
+                    : 'bg-neutral-100 text-neutral-700 hover:bg-neutral-200'"
+                >
+                  <span class="sm:hidden">{{ periodo.labelMobile }}</span>
+                  <span class="hidden sm:inline">{{ periodo.label }}</span>
+                </button>
+              </div>
+              <div class="flex items-center gap-2">
+                <label class="text-xs text-neutral-600 whitespace-nowrap">Líder:</label>
+                <div class="relative leader-dropdown-container flex-1 sm:flex-none">
+                  <!-- Input de busca com dropdown -->
+                  <div 
+                    class="relative"
+                  >
+                    <input
+                      v-model="leaderSearchTerm"
+                      @focus="openLeaderDropdown()"
+                      @click.stop="openLeaderDropdown()"
+                      @input="showLeaderDropdown = true"
+                      type="text"
+                      :placeholder="selectedLeaderName || 'Buscar líder...'"
+                      class="px-2.5 py-1.5 text-xs border border-neutral-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-primary-500 bg-white text-neutral-700 w-full sm:w-48"
+                    />
+                    <div class="absolute right-2 top-1/2 -translate-y-1/2 pointer-events-none">
+                      <svg class="w-3 h-3 text-neutral-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7" />
                     </svg>
                   </div>
-                  <div class="ml-5 w-0 flex-1">
-                    <dl>
-                      <dt class="text-sm font-medium text-gray-500 truncate">
-                        Média Célula (período)
-                      </dt>
-                      <dd class="flex items-baseline">
-                        <div class="text-2xl font-semibold text-gray-900">
-                          {{ mediaCelulaPeriodo }}%
                         </div>
-                      </dd>
-                    </dl>
+                  
+                  <!-- Dropdown de líderes -->
+                  <div 
+                    v-if="showLeaderDropdown"
+                    class="absolute z-50 mt-1 w-full sm:w-48 bg-white border border-neutral-300 rounded-lg shadow-lg max-h-60 overflow-y-auto"
+                    @click.stop
+                  >
+                    <div class="p-1">
+                      <button
+                        @click="leaderFilterId = ''; leaderSearchTerm = ''; showLeaderDropdown = false"
+                        class="w-full text-left px-2 py-1.5 text-xs text-neutral-700 hover:bg-neutral-100 rounded transition-colors"
+                        :class="!leaderFilterId ? 'bg-primary-50 text-primary-700 font-medium' : ''"
+                      >
+                        Todos os líderes
+                      </button>
+                      <div v-if="filteredLeaders.length === 0" class="px-2 py-2 text-xs text-neutral-500 text-center">
+                        Nenhum líder encontrado
                   </div>
+                      <button
+                        v-for="l in filteredLeaders"
+                        :key="l.id"
+                        @click="leaderFilterId = String(l.id); leaderSearchTerm = ''; showLeaderDropdown = false"
+                        class="w-full text-left px-2 py-1.5 text-xs text-neutral-700 hover:bg-neutral-100 rounded transition-colors"
+                        :class="leaderFilterId === String(l.id) ? 'bg-primary-50 text-primary-700 font-medium' : ''"
+                      >
+                        {{ l.nome }}
+                      </button>
                 </div>
               </div>
             </div>
-
-            <!-- Média Culto -->
-            <div class="bg-white overflow-hidden shadow rounded-lg">
-              <div class="p-5">
-                <div class="flex items-center">
-                  <div class="flex-shrink-0">
-                    <svg class="h-6 w-6 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 3v18h18"/>
-                    </svg>
                   </div>
-                  <div class="ml-5 w-0 flex-1">
-                    <dl>
-                      <dt class="text-sm font-medium text-gray-500 truncate">
-                        Média Culto (período)
-                      </dt>
-                      <dd class="flex items-baseline">
-                        <div class="text-2xl font-semibold text-gray-900">
-                          {{ mediaCultoPeriodo }}%
                         </div>
-                      </dd>
-                    </dl>
                   </div>
+
+          <!-- Grupo 2: Cards afetados pelo filtro -->
+          <div class="grid grid-cols-1 gap-3 sm:gap-4 sm:grid-cols-2 lg:grid-cols-3 mb-4 sm:mb-6">
+            <!-- Média Célula -->
+            <div class="card p-4 sm:p-6 bg-gradient-to-br from-green-50 to-green-100 border-green-200">
+              <div class="flex items-center">
+                <div class="flex items-center justify-center w-10 h-10 sm:w-12 sm:h-12 rounded-full bg-green-500 mr-3 sm:mr-4 flex-shrink-0">
+                  <AppIcon name="chart-bar" class="text-white" size="sm" />
                 </div>
+                <div class="flex-1 min-w-0">
+                  <p class="text-xs font-medium text-green-700 mb-1">Média Célula</p>
+                  <p class="text-xl sm:text-2xl font-bold text-green-900">{{ mediaCelulaPeriodo }}%</p>
               </div>
             </div>
           </div>
 
-          <!-- Indicadores adicionais -->
-          <div class="grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-4">
-            <div class="bg-white overflow-hidden shadow rounded-lg">
-              <div class="p-5">
-                <h3 class="text-lg leading-6 font-medium text-gray-900">Relatórios Enviados</h3>
-                <div class="mt-2 text-3xl font-semibold text-gray-900">
-                  {{ stats.indicadores.relatoriosEnviados }}
+            <!-- Média Culto -->
+            <div class="card p-4 sm:p-6 bg-gradient-to-br from-blue-50 to-blue-100 border-blue-200">
+              <div class="flex items-center">
+                <div class="flex items-center justify-center w-10 h-10 sm:w-12 sm:h-12 rounded-full bg-blue-500 mr-3 sm:mr-4 flex-shrink-0">
+                  <AppIcon name="chart-bar" class="text-white" size="sm" />
+                </div>
+                <div class="flex-1 min-w-0">
+                  <p class="text-xs font-medium text-blue-700 mb-1">Média Culto</p>
+                  <p class="text-xl sm:text-2xl font-bold text-blue-900">{{ mediaCultoPeriodo }}%</p>
                 </div>
               </div>
             </div>
 
-            <div class="bg-white overflow-hidden shadow rounded-lg">
-              <div class="p-5">
-                <h3 class="text-lg leading-6 font-medium text-gray-900">Consolidadores Ativos</h3>
-                <div class="mt-2 text-3xl font-semibold text-gray-900">
-                  {{ stats.indicadores.consolidadoresAtivos }}
+            <!-- Relatórios Enviados -->
+            <div class="card p-4 sm:p-6 bg-gradient-to-br from-purple-50 to-purple-100 border-purple-200">
+              <div class="flex items-center">
+                <div class="flex items-center justify-center w-10 h-10 sm:w-12 sm:h-12 rounded-full bg-purple-500 mr-3 sm:mr-4 flex-shrink-0">
+                  <AppIcon name="calendar" class="text-white" size="sm" />
                 </div>
+                <div class="flex-1 min-w-0">
+                  <p class="text-xs font-medium text-purple-700 mb-1">Relatórios Enviados</p>
+                  <p class="text-xl sm:text-2xl font-bold text-purple-900">{{ stats.indicadores.relatoriosEnviados }}</p>
               </div>
             </div>
-
-
+            </div>
           </div>
 
           <!-- Relatório de Frequência por Data -->
-          <div class="mt-8">
+          <div class="mt-4 sm:mt-8">
             <FrequencyChart 
               :periodo="periodoSelecionado" 
               :celula-id="leaderFilterId && leaderFilterId !== '' ? Number(leaderFilterId) : undefined"
@@ -1287,39 +1377,42 @@ const handleSendSsoLink = async () => {
               <div
                 v-for="cell in filteredCells"
                 :key="cell.id"
-                class="border border-gray-200 rounded-lg p-4 shadow-sm"
+                @click="handleVerCelula(cell)"
+                class="border border-gray-200 rounded-lg p-4 shadow-sm cursor-pointer transition-all duration-200 active:bg-blue-50 active:shadow-md active:border-l-4 active:border-l-primary-500 group"
               >
                 <div class="flex items-center justify-between mb-2">
-                  <div>
-                    <p class="text-sm font-semibold text-gray-900">{{ cell.nome }}</p>
-                    <p class="text-xs text-gray-500">{{ cell.lider?.nome || 'Sem líder' }}</p>
+                  <div class="flex-1">
+                    <div class="flex items-center">
+                      <p class="text-sm font-semibold text-gray-900 group-active:text-primary-700 transition-colors">{{ cell.nome }}</p>
+                      <span class="ml-2 text-primary-500 opacity-0 group-active:opacity-100 transition-opacity">→</span>
                   </div>
-                  <span class="text-xs text-gray-500">
+                    <p class="text-xs text-gray-500 mt-1">{{ cell.lider?.nome || 'Sem líder' }}</p>
+                  </div>
+                  <span class="text-xs text-gray-500 ml-2">
                     {{ cell.diaSemana }} • {{ cell.horario }}
                   </span>
                 </div>
+                <div class="flex items-center justify-between mb-2">
                 <p class="text-sm text-gray-500">
-                  Supervisor: {{ cell.supervisor?.nome || 'Sem supervisor' }}
+                    Total de Membros:
                 </p>
+                  <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800 group-active:bg-blue-200 transition-colors">
+                    {{ cell._count?.membros || 0 }}
+                  </span>
+                </div>
                 <p class="text-sm text-gray-500 truncate">
                   {{ cell.endereco || 'Sem endereço' }}
                 </p>
-                <div class="mt-3 flex flex-wrap gap-3 text-sm">
+                <div class="mt-3 flex flex-wrap gap-3 text-sm" @click.stop>
                   <button
-                    @click="handleEditCell(cell)"
-                    class="text-primary-600 hover:text-primary-900"
+                    @click="handleEditarCelula(cell)"
+                    class="text-primary-600 hover:text-primary-900 active:text-primary-700 transition-colors"
                   >
                     Editar
                   </button>
                   <button
-                    @click="handleViewMembers(cell)"
-                    class="text-blue-600 hover:text-blue-900"
-                  >
-                    Ver membros
-                  </button>
-                  <button
-                    @click="handleDeleteCell(cell)"
-                    class="text-red-600 hover:text-red-900"
+                    @click="handleConfirmDeleteCell(cell)"
+                    class="text-red-600 hover:text-red-900 active:text-red-700 transition-colors"
                   >
                     Excluir
                   </button>
@@ -1337,7 +1430,7 @@ const handleSendSsoLink = async () => {
                     Líder
                   </th>
                   <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Supervisor
+                    Total de Membros
                   </th>
                   <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                     Dia/Horário
@@ -1351,38 +1444,42 @@ const handleSendSsoLink = async () => {
                 </tr>
               </thead>
               <tbody class="bg-white divide-y divide-gray-200">
-                <tr v-for="cell in filteredCells" :key="cell.id">
-                  <td class="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
+                <tr 
+                  v-for="cell in filteredCells" 
+                  :key="cell.id"
+                  @click="handleVerCelula(cell)"
+                  class="cursor-pointer transition-all duration-200 hover:bg-blue-50 hover:shadow-sm hover:border-l-4 hover:border-l-primary-500 group"
+                >
+                  <td class="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900 group-hover:text-primary-700 transition-colors">
                     {{ cell.nome }}
+                    <span class="ml-2 text-primary-500 opacity-0 group-hover:opacity-100 transition-opacity inline-block">
+                      →
+                    </span>
                   </td>
-                  <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                  <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500 group-hover:text-gray-700 transition-colors">
                     {{ cell.lider?.nome }}
                   </td>
-                  <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                    {{ cell.supervisor?.nome }}
+                  <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500 group-hover:text-gray-700 transition-colors">
+                    <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800 group-hover:bg-blue-200 transition-colors">
+                      {{ cell._count?.membros || 0 }}
+                    </span>
                   </td>
-                  <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                  <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500 group-hover:text-gray-700 transition-colors">
                     {{ cell.diaSemana }} - {{ cell.horario }}
                   </td>
-                  <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                  <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500 group-hover:text-gray-700 transition-colors">
                     {{ cell.endereco }}
                   </td>
-                  <td class="px-6 py-4 whitespace-nowrap text-sm font-medium">
-                    <button 
-                      @click="handleVerCelula(cell)"
-                      class="text-blue-600 hover:text-blue-900 mr-3"
-                    >
-                      Ver
-                    </button>
+                  <td class="px-6 py-4 whitespace-nowrap text-sm font-medium" @click.stop>
                     <button 
                       @click="handleEditarCelula(cell)"
-                      class="text-primary-600 hover:text-primary-900 mr-3"
+                      class="text-primary-600 hover:text-primary-900 mr-3 transition-colors"
                     >
                       Editar
                     </button>
                     <button 
                       @click="handleConfirmDeleteCell(cell)"
-                      class="text-red-600 hover:text-red-900"
+                      class="text-red-600 hover:text-red-900 transition-colors"
                     >
                       Excluir
                     </button>
@@ -1522,3 +1619,9 @@ const handleSendSsoLink = async () => {
     />
   </div>
 </template> 
+
+<style scoped>
+.card {
+  @apply bg-white rounded-lg shadow-sm border border-neutral-200;
+}
+</style> 
