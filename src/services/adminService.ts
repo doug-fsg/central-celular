@@ -122,14 +122,19 @@ export const adminService = {
   },
 
   // Criar novo usuário
-  async criarUsuario(dados: Omit<Usuario, 'id' | 'status'>): Promise<Usuario> {
+  async criarUsuario(dados: Omit<Usuario, 'id' | 'status'> & { enviarConvite?: boolean }): Promise<Usuario> {
     try {
       // Garantir que o whatsapp tenha apenas números
-      const { whatsapp, nome, cargo } = dados
-      const dadosFormatados = {
+      const { whatsapp, nome, cargo, enviarConvite } = dados
+      const dadosFormatados: any = {
         nome,
         cargo,
         whatsapp: whatsapp.replace(/\D/g, '')
+      }
+      
+      // Incluir enviarConvite se fornecido
+      if (enviarConvite !== undefined) {
+        dadosFormatados.enviarConvite = enviarConvite
       }
       
       return await api.post('/admin/usuarios', dadosFormatados);

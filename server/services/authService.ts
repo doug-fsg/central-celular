@@ -55,17 +55,37 @@ export const authService = {
   async login({ whatsapp, senha, accountId }: LoginData): Promise<LoginResult> {
     console.log(`[AuthService] Iniciando login - WhatsApp: ${whatsapp}, AccountId: ${accountId || 'não fornecido'}`);
     
-    // Se não for fornecido accountId, busca o usuário em qualquer account
-    const whereClause: any = accountId ? { accountId } : {};
+    // Normalização conservadora (mesma usada ao criar usuário)
+    const digits = whatsapp.replace(/\D/g, '');
+    const whatsappNormalizado = digits.startsWith('55') && (digits.length === 12 || digits.length === 13)
+      ? digits
+      : digits.length <= 11
+        ? `55${digits}`
+        : digits;
     
-    // Adicionar critério de busca por whatsapp
-    whereClause.whatsapp = this.formatWhatsApp(whatsapp);
+    // Busca flexível: tentar com o número normalizado e também com variação do 9
+    const whatsappVariacoes = [whatsappNormalizado];
     
-    console.log('[AuthService] Buscando usuário com:', whereClause);
+    // Se tem 12 dígitos, tentar também com 13 (adicionando 9 após DDD)
+    if (whatsappNormalizado.length === 12 && whatsappNormalizado.startsWith('55')) {
+      const ddd = whatsappNormalizado.substring(2, 4);
+      const numero = whatsappNormalizado.substring(4);
+      whatsappVariacoes.push(`55${ddd}9${numero}`);
+    }
+    
+    // Se tem 13 dígitos, tentar também com 12 (removendo 9 após DDD)
+    if (whatsappNormalizado.length === 13 && whatsappNormalizado.startsWith('55')) {
+      const ddd = whatsappNormalizado.substring(2, 4);
+      const numero = whatsappNormalizado.substring(5); // Pula o 9
+      whatsappVariacoes.push(`55${ddd}${numero}`);
+    }
+    
+    console.log('[AuthService] Buscando usuário com variações:', whatsappVariacoes);
     
     const user = await prisma.usuario.findFirst({
       where: {
-        ...whereClause,
+        whatsapp: { in: whatsappVariacoes },
+        ...(accountId ? { accountId } : {}),
         ativo: true
       },
       include: {
@@ -284,8 +304,15 @@ export const authService = {
     try {
       console.log(`[AuthService] Definindo senha para usuário com WhatsApp: ${whatsapp}`);
       
-      // Formatar o número
-      const whatsappFormatado = this.formatWhatsApp(whatsapp);
+      // Normalização conservadora: mesma lógica usada ao criar usuário
+      const digits = whatsapp.replace(/\D/g, '');
+      const whatsappFormatado = digits.startsWith('55') && (digits.length === 12 || digits.length === 13)
+        ? digits
+        : digits.length <= 11
+          ? `55${digits}`
+          : digits;
+      
+      console.log(`[AuthService] WhatsApp normalizado: ${whatsappFormatado}`);
       
       // Verificar se o usuário existe e não tem senha
       const existingUser = await prisma.usuario.findFirst({

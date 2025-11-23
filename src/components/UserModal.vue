@@ -33,6 +33,9 @@ const form = ref({
 // Opção para criar célula após criar líder
 const criarCelulaApos = ref(false)
 
+// Opção para enviar convite via WhatsApp (marcado por padrão apenas em modo create)
+const enviarConvite = ref(props.mode === 'create')
+
 // Erro de validação do telefone
 const phoneError = ref<string | null>(null)
 
@@ -45,6 +48,7 @@ watch(() => props.user, (newUser) => {
       whatsapp: newUser.whatsapp || '',
       cargo: newUser.cargo || 'LIDER'
     }
+    enviarConvite.value = false // Em modo edit, não enviar convite
   } else {
     form.value = {
       id: undefined,
@@ -52,14 +56,21 @@ watch(() => props.user, (newUser) => {
       whatsapp: '',
       cargo: 'LIDER'
     }
+    enviarConvite.value = props.mode === 'create' // Resetar para padrão
   }
 }, { immediate: true })
+
+// Resetar enviarConvite quando o modo mudar
+watch(() => props.mode, (newMode) => {
+  enviarConvite.value = newMode === 'create'
+})
 
 // Salvar usuário
 const handleSubmit = () => {
   const dadosParaSalvar = {
     ...form.value,
-    criarCelulaApos: criarCelulaApos.value
+    criarCelulaApos: criarCelulaApos.value,
+    enviarConvite: enviarConvite.value && props.mode === 'create'
   }
 
   // Validar WhatsApp
@@ -139,11 +150,9 @@ const handleSubmit = () => {
                 mode="admin"
               />
               <p class="mt-1 text-sm text-gray-500">
-                O usuário receberá um código de acesso neste número para criar sua senha
+                O usuário receberá um link de acesso neste número para criar sua senha
               </p>
             </div>
-
-
 
             <!-- Cargo -->
             <div>
@@ -166,6 +175,17 @@ const handleSubmit = () => {
                     {{ cargo }}
                   </option>
                 </select>
+              </div>
+            </div>
+
+            <!-- Opção: enviar convite via WhatsApp (apenas em modo create) -->
+            <div v-if="mode === 'create'" class="flex items-start">
+              <div class="flex items-center h-5">
+                <input id="enviar-convite" type="checkbox" v-model="enviarConvite" class="h-4 w-4 text-primary-600 border-gray-300 rounded" />
+              </div>
+              <div class="ml-3 text-sm">
+                <label for="enviar-convite" class="font-medium text-gray-700">Enviar convite via WhatsApp</label>
+                <p class="text-gray-500">O usuário receberá um link direto para criar sua senha de acesso.</p>
               </div>
             </div>
 

@@ -3,6 +3,7 @@ import { ref, reactive } from 'vue'
 import { useRouter } from 'vue-router'
 import { useUserStore } from '../stores/userStore'
 import FirstAccessForm from '../components/FirstAccessForm.vue'
+import PasswordResetRequestForm from '../components/PasswordResetRequestForm.vue'
 
 const router = useRouter()
 const userStore = useUserStore()
@@ -20,6 +21,9 @@ const phoneError = ref<string | null>(null)
 
 // Estado do modal de primeiro acesso
 const showFirstAccessModal = ref(false)
+
+// Estado do modal de reset de senha
+const showPasswordResetModal = ref(false)
 
 // Formatação sutil para WhatsApp (BR) enquanto digita
 function formatWhatsappBR(value: string): string {
@@ -238,15 +242,26 @@ const handleRequestCode = async () => {
             </button>
           </div>
 
-          <!-- Link para primeiro acesso -->
-          <div class="text-center">
-            <button
-              type="button"
-              @click="showFirstAccessModal = true"
-              class="text-sm text-primary-600 hover:text-primary-500"
-            >
-              Primeiro acesso? Solicite seu código
-            </button>
+          <!-- Links para primeiro acesso e reset de senha -->
+          <div class="text-center space-y-2">
+            <div>
+              <button
+                type="button"
+                @click="showFirstAccessModal = true"
+                class="text-sm text-primary-600 hover:text-primary-500"
+              >
+                Primeiro acesso? Solicite seu código
+              </button>
+            </div>
+            <div>
+              <button
+                type="button"
+                @click="showPasswordResetModal = true"
+                class="text-sm text-primary-600 hover:text-primary-500"
+              >
+                Esqueci minha senha
+              </button>
+            </div>
           </div>
         </form>
       </div>
@@ -284,6 +299,42 @@ const handleRequestCode = async () => {
           <FirstAccessForm 
             :onClose="() => showFirstAccessModal = false"
             @success="handleFirstAccessSuccess"
+          />
+        </div>
+      </div>
+    </div>
+
+    <!-- Modal de reset de senha -->
+    <div
+      v-if="showPasswordResetModal"
+      class="fixed inset-0 z-50 overflow-y-auto"
+      aria-labelledby="modal-title"
+      role="dialog"
+      aria-modal="true"
+    >
+      <!-- Overlay -->
+      <div class="fixed inset-0 bg-gray-500 bg-opacity-75 transition-opacity"></div>
+
+      <!-- Modal container -->
+      <div class="flex min-h-screen items-center justify-center p-4 text-center sm:p-0">
+        <div 
+          class="relative transform overflow-hidden rounded-lg bg-white text-left shadow-xl transition-all sm:my-8 sm:w-full sm:max-w-lg"
+        >
+          <!-- Botão de fechar -->
+          <button
+            type="button"
+            @click="showPasswordResetModal = false"
+            class="absolute right-4 top-4 text-gray-400 hover:text-gray-500"
+          >
+            <span class="sr-only">Fechar</span>
+            <svg class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
+            </svg>
+          </button>
+
+          <!-- Componente de reset de senha -->
+          <PasswordResetRequestForm 
+            :onClose="() => showPasswordResetModal = false"
           />
         </div>
       </div>

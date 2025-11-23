@@ -39,7 +39,11 @@ const badgeIcon = computed(() => {
 // Computed para controlar quais links mostrar
 const navLinks = computed(() => {
   if (userStore.isAdmin) {
-    return []
+    return [
+      { name: 'admin-dashboard', label: 'Dashboard' },
+      { name: 'admin-users', label: 'Usuários' },
+      { name: 'admin-cells', label: 'Células' }
+    ]
   } else if (userStore.isSupervisor) {
     return [
       { name: 'supervisor-dashboard', label: 'Início' },
@@ -87,7 +91,7 @@ function toggleDropdown() {
               <img src="/src/assets/brand/logo-icon.png" alt="Aprisco" class="h-7 w-7" />
             </router-link>
           </div>
-          <div v-if="!userStore.isAdmin" class="ml-6 flex space-x-8">
+          <div class="ml-6 flex space-x-8">
             <router-link
               v-for="link in navLinks"
               :key="link.name"

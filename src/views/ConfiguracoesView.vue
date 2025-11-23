@@ -2,9 +2,11 @@
 import { ref, onMounted, computed } from 'vue';
 import { useUsuarioConfigStore } from '../stores/usuarioConfigStore';
 import { useUserStore } from '../stores/userStore';
+import WhatsAppConnections from '../components/WhatsAppConnections.vue';
 
 const userStore = useUserStore();
 const configStore = useUsuarioConfigStore();
+const whatsappRef = ref<any>(null);
 
 // Estados do formulário
 const form = ref({
@@ -25,6 +27,11 @@ const isLider = computed(() => {
   return userStore.user?.cargo === 'LIDER';
 });
 
+// Verificar se o usuário é admin
+const isAdmin = computed(() => {
+  return userStore.isAdmin;
+});
+
 // Verificar se estamos em ambiente de desenvolvimento
 const isDevelopment = computed(() => {
   return import.meta.env.MODE === 'development';
@@ -40,6 +47,15 @@ onMounted(async () => {
       diasAntecedencia1: configStore.config.diasAntecedencia1,
       diasAntecedencia2: configStore.config.diasAntecedencia2
     };
+  }
+  
+  // Verificar conexões do WhatsApp quando a página for carregada (apenas para admin)
+  if (isAdmin.value) {
+    setTimeout(() => {
+      if (whatsappRef.value && typeof whatsappRef.value.checkActiveConnection === 'function') {
+        whatsappRef.value.checkActiveConnection();
+      }
+    }, 100);
   }
 });
 
@@ -201,6 +217,12 @@ const testAniversarioNotification = async () => {
                 <p class="text-sm text-gray-700">
                   As configurações de notificação de aniversário estão disponíveis apenas para líderes de célula.
                 </p>
+              </div>
+              
+              <!-- Seção de Conexões WhatsApp (apenas para admin) -->
+              <div v-if="isAdmin" class="space-y-6 border-t border-gray-200 pt-6 mt-6">
+                <h4 class="text-md font-medium text-gray-900">Conexões WhatsApp</h4>
+                <WhatsAppConnections ref="whatsappRef" />
               </div>
               
               <div class="flex flex-col space-y-3">

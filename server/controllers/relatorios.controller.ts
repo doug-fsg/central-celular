@@ -347,10 +347,13 @@ export const obterFrequenciaPorData = async (req: Request, res: Response) => {
     console.log('[DEBUG] obterFrequenciaPorData - Todos os relatórios:', todosRelatorios);
 
     const whereClause: any = {
-      // Temporariamente incluir rascunhos para debug
-      status: { in: [0, 1] }, // 0 = rascunho, 1 = enviado
-      dataInicio: { gte: inicio },
-      dataFim: { lte: fim }
+      // Apenas relatórios enviados (status = 1)
+      status: 1,
+      // Filtrar relatórios cuja dataInicio esteja dentro do período
+      dataInicio: { 
+        gte: inicio,
+        lte: fim
+      }
     };
 
     // Filtrar por célula específica se fornecido
@@ -387,17 +390,18 @@ export const obterFrequenciaPorData = async (req: Request, res: Response) => {
 
       const dadosData = dadosPorData.get(dataKey);
       
-      // Contar presenças por tipo
+      // Contar presenças por tipo (independente do evento do relatório)
+      // Um relatório pode ter presenças de ambos os tipos (célula e culto)
       const presencasCelula = relatorio.presencas.filter(p => p.tipo === 0);
       const presencasCulto = relatorio.presencas.filter(p => p.tipo === 1);
 
-      if (relatorio.evento === 0) { // Célula
-        dadosData.celula.presentes += presencasCelula.filter(p => p.status === 1).length;
-        dadosData.celula.total += presencasCelula.length;
-      } else if (relatorio.evento === 1) { // Culto
-        dadosData.culto.presentes += presencasCulto.filter(p => p.status === 1).length;
-        dadosData.culto.total += presencasCulto.length;
-      }
+      // Contar presenças de célula (tipo === 0)
+      dadosData.celula.presentes += presencasCelula.filter(p => p.status === 1).length;
+      dadosData.celula.total += presencasCelula.length;
+
+      // Contar presenças de culto (tipo === 1)
+      dadosData.culto.presentes += presencasCulto.filter(p => p.status === 1).length;
+      dadosData.culto.total += presencasCulto.length;
     }
 
     // Converter para array e ordenar por data

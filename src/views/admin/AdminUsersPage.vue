@@ -1,0 +1,698 @@
+<script setup lang="ts">
+import { ref, computed, watch, onMounted, onUnmounted, Teleport } from 'vue'
+import UserModal from '../../components/UserModal.vue'
+import { adminService } from '../../services/adminService'
+import type { Usuario } from '../../services/adminService'
+import { ssoLinkService } from '../../services/ssoLinkService'
+import AppIcon from '../../components/AppIcon.vue'
+
+// Estado para os dados
+const loading = ref(false)
+
+// Lista de usuários
+const users = ref<Usuario[]>([])
+const usersAll = ref<Usuario[]>([])
+const loadingAllUsers = ref(false)
+const pagination = ref({
+  total: 0,
+  pages: 0,
+  currentPage: 1,
+  perPage: 10
+})
+
+// Filtros da lista de usuários
+const userSearchTerm = ref('')
+const userRoleFilter = ref('')
+const isFilteringUsers = computed(() => userSearchTerm.value.trim() !== '' || userRoleFilter.value.trim() !== '')
+const filteredUsers = computed(() => {
+  const term = userSearchTerm.value.toLowerCase().trim()
+  const source = isFilteringUsers.value ? usersAll.value : users.value
+  return source.filter(u => {
+    const matchesTerm = !term ||
+      u.nome.toLowerCase().includes(term) ||
+      (u.whatsapp || '').toLowerCase().includes(term) ||
+      (u.cargo || '').toLowerCase().includes(term)
+    const matchesRole = !userRoleFilter.value || (u.cargo || '').toUpperCase() === userRoleFilter.value
+    return matchesTerm && matchesRole
+  })
+})
+
+// Carregar todas as páginas de usuários quando filtrar
+const loadAllUsers = async () => {
+  try {
+    loadingAllUsers.value = true
+    const first = await adminService.listarUsuarios(1, 100)
+    let all: Usuario[] = first.usuarios
+    const totalPages = first.pagination.pages
+    for (let p = 2; p <= totalPages; p++) {
+      const resp = await adminService.listarUsuarios(p, 100)
+      all = all.concat(resp.usuarios)
+    }
+    usersAll.value = all
+  } catch (error) {
+    console.error('Erro ao carregar todas as páginas de usuários:', error)
+  } finally {
+    loadingAllUsers.value = false
+  }
+}
+
+watch([userSearchTerm, userRoleFilter], async ([term, role]) => {
+  if ((term && term.trim() !== '') || (role && role.trim() !== '')) {
+    if (usersAll.value.length === 0 && !loadingAllUsers.value) {
+      await loadAllUsers()
+    }
+  }
+})
+
+// Estado do modal
+const showUserModal = ref(false)
+const modalMode = ref<'create' | 'edit'>('create')
+const selectedUser = ref<Partial<Usuario> | undefined>(undefined)
+
+// Confirmação de exclusão
+const showDeleteConfirm = ref(false)
+const userToDelete = ref<Usuario | null>(null)
+const showTextConfirm = ref(false)
+const confirmText = ref('')
+const entityPendingDelete = ref<'user' | null>(null)
+const entityInfo = ref<{ id: number, name: string } | null>(null)
+
+// Mensagens de feedback
+const feedbackMessage = ref('')
+const feedbackType = ref<'success' | 'error'>('success')
+
+// Estado para envio de link SSO
+const sendingLink = ref(false)
+const userSendingLink = ref<number | null>(null)
+const showConfirmSendLink = ref(false)
+const userIdToSendLink = ref<number | null>(null)
+
+// Estado para menu de ações mobile
+const openActionMenu = ref<number | null>(null)
+const menuPosition = ref({ top: 0, right: 0 })
+
+// Mostrar mensagem de feedback
+const showFeedback = (message: string, type: 'success' | 'error' = 'success') => {
+  feedbackMessage.value = message
+  feedbackType.value = type
+  setTimeout(() => {
+    feedbackMessage.value = ''
+  }, 3000)
+}
+
+// Carregamento inicial dos dados
+const loadUsers = async (page: number = 1) => {
+  try {
+    loading.value = true
+    const response = await adminService.listarUsuarios(page)
+    users.value = response.usuarios
+    pagination.value = response.pagination
+  } catch (error) {
+    console.error('Erro ao carregar usuários:', error)
+  } finally {
+    loading.value = false
+  }
+}
+
+// Abrir modal para criar usuário
+const handleNovoUsuario = () => {
+  modalMode.value = 'create'
+  selectedUser.value = undefined
+  showUserModal.value = true
+}
+
+// Abrir modal para editar usuário
+const handleEditarUsuario = (user: Usuario) => {
+  modalMode.value = 'edit'
+  selectedUser.value = user
+  showUserModal.value = true
+}
+
+// Confirmar exclusão de usuário
+const handleConfirmDelete = (user: Usuario) => {
+  userToDelete.value = user
+  entityPendingDelete.value = 'user'
+  entityInfo.value = { id: user.id, name: user.nome }
+  confirmText.value = ''
+  showDeleteConfirm.value = true
+  showTextConfirm.value = true
+}
+
+// Excluir usuário
+const handleDeleteUser = async () => {
+  if (!userToDelete.value) return
+
+  try {
+    await adminService.excluirUsuario(userToDelete.value.id)
+    showFeedback('Usuário excluído com sucesso')
+    
+    // Recarregar lista atual
+    await handlePageChange(pagination.value.currentPage)
+    
+    // Se estiver filtrando, recarregar também usersAll
+    if (isFilteringUsers.value) {
+      await loadAllUsers()
+    }
+    
+    entityPendingDelete.value = null
+  } catch (error) {
+    console.error('Erro ao excluir usuário:', error)
+    showFeedback('Erro ao excluir usuário', 'error')
+  } finally {
+    showDeleteConfirm.value = false
+    userToDelete.value = null
+  }
+}
+
+// Salvar usuário (criar/editar)
+const handleSaveUser = async (userData: Partial<Usuario> & { criarCelulaApos?: boolean; enviarConvite?: boolean }) => {
+  try {
+    if (modalMode.value === 'create') {
+      await adminService.criarUsuario(userData as any)
+      if (userData.enviarConvite) {
+        showFeedback('Usuário criado com sucesso. Um link de convite foi enviado via WhatsApp para criar a senha.')
+      } else {
+        showFeedback('Usuário criado com sucesso.')
+      }
+    } else {
+      const atualizado = await adminService.atualizarUsuario(userData.id!, userData)
+      const idx = users.value.findIndex(u => u.id === atualizado.id)
+      if (idx !== -1) {
+        users.value[idx] = atualizado
+      }
+      const idxAll = usersAll.value.findIndex(u => u.id === atualizado.id)
+      if (idxAll !== -1) {
+        usersAll.value[idxAll] = atualizado
+      }
+      showFeedback('Usuário atualizado com sucesso')
+    }
+    
+    await handlePageChange(pagination.value.currentPage)
+    if (isFilteringUsers.value) {
+      await loadAllUsers()
+    }
+    showUserModal.value = false
+  } catch (error) {
+    console.error('Erro ao salvar usuário:', error)
+    showFeedback('Erro ao salvar usuário', 'error')
+  }
+}
+
+// Ativar/desativar usuário
+const toggleUserStatus = async (userId: number, novoStatus: boolean) => {
+  try {
+    const usuarioAtualizado = await adminService.toggleStatusUsuario(userId, novoStatus)
+    const index = users.value.findIndex(u => u.id === userId)
+    if (index !== -1) {
+      users.value[index] = usuarioAtualizado
+    }
+  } catch (error) {
+    console.error('Erro ao alterar status do usuário:', error)
+  }
+}
+
+// Mudar página da lista de usuários
+const handlePageChange = async (page: number) => {
+  await loadUsers(page)
+}
+
+// Confirmar envio de link SSO
+const confirmSendSsoLink = (userId: number) => {
+  userIdToSendLink.value = userId
+  showConfirmSendLink.value = true
+}
+
+// Enviar link SSO para um líder
+const handleSendSsoLink = async () => {
+  try {
+    sendingLink.value = true
+    userSendingLink.value = userIdToSendLink.value
+    
+    const result = await ssoLinkService.gerarEnviarLink(userIdToSendLink.value as number)
+    
+    if (result.success) {
+      showFeedback('Link enviado com sucesso para o líder')
+    } else {
+      showFeedback('Erro ao enviar link: ' + result.message, 'error')
+    }
+  } catch (error) {
+    console.error('Erro ao enviar link SSO:', error)
+    showFeedback('Erro ao enviar link SSO', 'error')
+  } finally {
+    sendingLink.value = false
+    showConfirmSendLink.value = false
+    userSendingLink.value = null
+  }
+}
+
+// Fechar menu de ações ao clicar fora
+const handleClickOutside = (event: MouseEvent) => {
+  const target = event.target as HTMLElement
+  if (!target.closest('.action-menu-container')) {
+    openActionMenu.value = null
+  }
+}
+
+onMounted(() => {
+  document.addEventListener('click', handleClickOutside)
+  loadUsers()
+})
+
+onUnmounted(() => {
+  document.removeEventListener('click', handleClickOutside)
+})
+
+// Toggle menu de ações
+const toggleActionMenu = (userId: number, event: Event) => {
+  event.stopPropagation()
+  if (openActionMenu.value === userId) {
+    openActionMenu.value = null
+  } else {
+    const button = event.target as HTMLElement
+    const rect = button.getBoundingClientRect()
+    menuPosition.value = {
+      top: rect.bottom + 4,
+      right: window.innerWidth - rect.right
+    }
+    openActionMenu.value = userId
+  }
+}
+
+// Formatar WhatsApp removendo DDI (55)
+const formatWhatsApp = (whatsapp: string | null | undefined): string => {
+  if (!whatsapp) return 'Sem WhatsApp'
+  if (whatsapp.startsWith('55') && whatsapp.length >= 12) {
+    return whatsapp.substring(2)
+  }
+  return whatsapp
+}
+</script>
+
+<template>
+  <main class="max-w-7xl mx-auto py-6 px-4 sm:px-6 lg:px-8">
+    <div class="flex justify-between items-center mb-6">
+      <div>
+        <h1 class="text-xl sm:text-2xl font-bold text-neutral-800">Usuários</h1>
+        <p class="mt-1 text-xs sm:text-sm text-neutral-500">Gerencie usuários do sistema</p>
+      </div>
+      <button 
+        @click="handleNovoUsuario"
+        class="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-primary-600 hover:bg-primary-700"
+      >
+        Novo Usuário
+      </button>
+    </div>
+    
+    <div class="bg-white shadow overflow-hidden sm:rounded-lg">
+      <!-- Filtros da lista de usuários -->
+      <div class="p-4 border-b border-gray-200 flex flex-row gap-3 items-center sm:justify-between">
+        <div class="flex-1">
+          <input
+            v-model="userSearchTerm"
+            type="text"
+            class="block w-full rounded-md border-gray-300 shadow-sm focus:border-primary-500 focus:ring-primary-500 text-sm"
+            placeholder="Pesquisar por nome, WhatsApp ou cargo"
+          />
+        </div>
+        <div class="flex-shrink-0">
+          <select
+            v-model="userRoleFilter"
+            class="block w-full rounded-md border-gray-300 shadow-sm focus:border-primary-500 focus:ring-primary-500 sm:text-sm"
+          >
+            <option value="">Todos</option>
+            <option value="LIDER">Líder</option>
+            <option value="SUPERVISOR">Supervisor</option>
+            <option value="ADMINISTRADOR">Administrador</option>
+          </select>
+        </div>
+      </div>
+      
+      <!-- Loading -->
+      <div v-if="loading" class="p-8 text-center">
+        <div class="inline-block animate-spin rounded-full h-8 w-8 border-b-2 border-primary-600"></div>
+      </div>
+      
+      <!-- Conteúdo quando não está carregando -->
+      <template v-else>
+        <!-- Lista mobile -->
+        <div class="sm:hidden space-y-3 p-4">
+          <div v-if="filteredUsers.length === 0" class="text-center py-8 text-gray-500">
+            <p>Nenhum usuário encontrado</p>
+          </div>
+          <div
+            v-for="user in filteredUsers"
+            :key="user.id"
+            class="border border-gray-200 rounded-lg p-4 shadow-sm relative"
+          >
+          <div class="flex items-start justify-between mb-2">
+            <div class="flex-1">
+              <p class="text-sm font-semibold text-gray-900">{{ user.nome }}</p>
+              <p class="text-xs text-gray-500">{{ user.cargo }}</p>
+            </div>
+            <div class="flex items-center gap-2">
+              <span 
+                :class="[
+                  user.status === 'ativo' ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800',
+                  'px-2 inline-flex text-xs leading-5 font-semibold rounded-full'
+                ]"
+              >
+                {{ user.status }}
+              </span>
+              <div class="relative action-menu-container">
+                <button
+                  @click="toggleActionMenu(user.id, $event)"
+                  :class="[
+                    'p-1.5 rounded-md transition-colors',
+                    openActionMenu === user.id 
+                      ? 'bg-gray-100 text-gray-700' 
+                      : 'text-gray-400 hover:text-gray-600 hover:bg-gray-50'
+                  ]"
+                  aria-label="Menu de ações"
+                >
+                  <AppIcon name="dots" size="sm" />
+                </button>
+                <Teleport to="body">
+                  <div
+                    v-if="openActionMenu === user.id"
+                    :style="{ top: `${menuPosition.top}px`, right: `${menuPosition.right}px` }"
+                    class="fixed w-48 bg-white rounded-lg shadow-lg border border-gray-200 z-[9999] py-1"
+                    @click.stop
+                  >
+                  <button
+                    @click="handleEditarUsuario(user); openActionMenu = null"
+                    class="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-50 flex items-center gap-2 transition-colors"
+                  >
+                    <AppIcon name="edit" size="xs" />
+                    Editar
+                  </button>
+                  <button
+                    @click="toggleUserStatus(user.id, user.status === 'ativo' ? false : true); openActionMenu = null"
+                    :class="[
+                      'w-full text-left px-4 py-2 text-sm hover:bg-gray-50 flex items-center gap-2 transition-colors',
+                      user.status === 'ativo' ? 'text-red-600' : 'text-green-600'
+                    ]"
+                  >
+                    <AppIcon name="refresh" size="xs" />
+                    {{ user.status === 'ativo' ? 'Desativar' : 'Ativar' }}
+                  </button>
+                  <button
+                    v-if="user.cargo.toUpperCase() === 'LIDER' && user.status === 'ativo'"
+                    @click="confirmSendSsoLink(user.id); openActionMenu = null"
+                    class="w-full text-left px-4 py-2 text-sm text-blue-600 hover:bg-gray-50 flex items-center gap-2 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                    :disabled="sendingLink && userSendingLink === user.id"
+                  >
+                    <AppIcon name="email" size="xs" />
+                    <span v-if="sendingLink && userSendingLink === user.id">
+                      Enviando...
+                    </span>
+                    <span v-else>
+                      Enviar Link
+                    </span>
+                  </button>
+                  <div class="border-t border-gray-100 my-1"></div>
+                  <button
+                    @click="handleConfirmDelete(user); openActionMenu = null"
+                    class="w-full text-left px-4 py-2 text-sm text-red-600 hover:bg-red-50 flex items-center gap-2 transition-colors"
+                  >
+                    <AppIcon name="delete" size="xs" />
+                    Excluir
+                  </button>
+                  </div>
+                </Teleport>
+              </div>
+            </div>
+          </div>
+          <p class="text-sm text-gray-500">
+            {{ formatWhatsApp(user.whatsapp) }}
+          </p>
+        </div>
+        </div>
+        
+        <!-- Lista desktop -->
+        <div class="hidden sm:block overflow-x-auto">
+          <div v-if="filteredUsers.length === 0" class="text-center py-8 text-gray-500">
+            <p>Nenhum usuário encontrado</p>
+          </div>
+          <table v-else class="min-w-full divide-y divide-gray-200">
+          <thead class="bg-gray-50">
+            <tr>
+              <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                Nome
+              </th>
+              <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                Whatsapp
+              </th>
+              <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                Função
+              </th>
+              <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                Status
+              </th>
+              <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                Ações
+              </th>
+            </tr>
+          </thead>
+          <tbody class="bg-white divide-y divide-gray-200">
+            <tr v-for="user in filteredUsers" :key="user.id" class="hover:bg-gray-50">
+              <td class="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
+                {{ user.nome }}
+              </td>
+              <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                {{ formatWhatsApp(user.whatsapp) }}
+              </td>
+              <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                {{ user.cargo }}
+              </td>
+              <td class="px-6 py-4 whitespace-nowrap">
+                <span 
+                  :class="[
+                    user.status === 'ativo' ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800',
+                    'px-2 inline-flex text-xs leading-5 font-semibold rounded-full'
+                  ]"
+                >
+                  {{ user.status }}
+                </span>
+              </td>
+              <td class="px-6 py-4 whitespace-nowrap text-sm font-medium">
+                <div class="relative action-menu-container">
+                  <button
+                    @click="toggleActionMenu(user.id, $event)"
+                    :class="[
+                      'p-1.5 rounded-md transition-colors',
+                      openActionMenu === user.id 
+                        ? 'bg-gray-100 text-gray-700' 
+                        : 'text-gray-400 hover:text-gray-600 hover:bg-gray-50'
+                    ]"
+                    aria-label="Menu de ações"
+                  >
+                    <AppIcon name="dots" size="sm" />
+                  </button>
+                  <Teleport to="body">
+                    <div
+                      v-if="openActionMenu === user.id"
+                      :style="{ top: `${menuPosition.top}px`, right: `${menuPosition.right}px` }"
+                      class="fixed w-48 bg-white rounded-lg shadow-lg border border-gray-200 z-[9999] py-1"
+                      @click.stop
+                    >
+                    <button
+                      @click="handleEditarUsuario(user); openActionMenu = null"
+                      class="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-50 flex items-center gap-2 transition-colors"
+                    >
+                      <AppIcon name="edit" size="xs" />
+                      Editar
+                    </button>
+                    <button
+                      @click="toggleUserStatus(user.id, user.status === 'ativo' ? false : true); openActionMenu = null"
+                      :class="[
+                        'w-full text-left px-4 py-2 text-sm hover:bg-gray-50 flex items-center gap-2 transition-colors',
+                        user.status === 'ativo' ? 'text-red-600' : 'text-green-600'
+                      ]"
+                    >
+                      <AppIcon name="refresh" size="xs" />
+                      {{ user.status === 'ativo' ? 'Desativar' : 'Ativar' }}
+                    </button>
+                    <button
+                      v-if="user.cargo.toUpperCase() === 'LIDER' && user.status === 'ativo'"
+                      @click="confirmSendSsoLink(user.id); openActionMenu = null"
+                      class="w-full text-left px-4 py-2 text-sm text-blue-600 hover:bg-gray-50 flex items-center gap-2 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                      :disabled="sendingLink && userSendingLink === user.id"
+                    >
+                      <AppIcon name="email" size="xs" />
+                      <span v-if="sendingLink && userSendingLink === user.id">
+                        Enviando...
+                      </span>
+                      <span v-else>
+                        Enviar Link
+                      </span>
+                    </button>
+                    <div class="border-t border-gray-100 my-1"></div>
+                    <button
+                      @click="handleConfirmDelete(user); openActionMenu = null"
+                      class="w-full text-left px-4 py-2 text-sm text-red-600 hover:bg-red-50 flex items-center gap-2 transition-colors"
+                    >
+                    <AppIcon name="delete" size="xs" />
+                    Excluir
+                  </button>
+                    </div>
+                  </Teleport>
+                </div>
+              </td>
+            </tr>
+          </tbody>
+        </table>
+        </div>
+      </template>
+
+      <!-- Paginação -->
+      <div v-if="!loading && filteredUsers.length > 0" class="bg-white px-4 py-3 flex items-center justify-between border-t border-gray-200 sm:px-6">
+        <div class="flex-1 flex justify-between sm:hidden">
+          <button
+            :disabled="pagination.currentPage === 1"
+            @click="handlePageChange(pagination.currentPage - 1)"
+            class="relative inline-flex items-center px-4 py-2 border border-gray-300 text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50"
+          >
+            Anterior
+          </button>
+          <button
+            :disabled="pagination.currentPage === pagination.pages"
+            @click="handlePageChange(pagination.currentPage + 1)"
+            class="ml-3 relative inline-flex items-center px-4 py-2 border border-gray-300 text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50"
+          >
+            Próxima
+          </button>
+        </div>
+        <div class="hidden sm:flex-1 sm:flex sm:items-center sm:justify-between">
+          <div>
+            <p class="text-sm text-gray-700">
+              Mostrando
+              <span class="font-medium">{{ ((pagination.currentPage - 1) * pagination.perPage) + 1 }}</span>
+              até
+              <span class="font-medium">{{ Math.min(pagination.currentPage * pagination.perPage, pagination.total) }}</span>
+              de
+              <span class="font-medium">{{ pagination.total }}</span>
+              resultados
+            </p>
+          </div>
+          <div>
+            <nav class="relative z-0 inline-flex rounded-md shadow-sm -space-x-px" aria-label="Pagination">
+              <button
+                :disabled="pagination.currentPage === 1"
+                @click="handlePageChange(pagination.currentPage - 1)"
+                class="relative inline-flex items-center px-2 py-2 rounded-l-md border border-gray-300 bg-white text-sm font-medium text-gray-500 hover:bg-gray-50"
+              >
+                <span class="sr-only">Anterior</span>
+                <svg class="h-5 w-5" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
+                  <path fill-rule="evenodd" d="M12.707 5.293a1 1 0 010 1.414L9.414 10l3.293 3.293a1 1 0 01-1.414 1.414l-4-4a1 1 0 010-1.414l4-4a1 1 0 011.414 0z" clip-rule="evenodd" />
+                </svg>
+              </button>
+              <button
+                v-for="page in pagination.pages"
+                :key="page"
+                @click="handlePageChange(page)"
+                :class="[
+                  page === pagination.currentPage
+                    ? 'z-10 bg-primary-50 border-primary-500 text-primary-600'
+                    : 'bg-white border-gray-300 text-gray-500 hover:bg-gray-50',
+                  'relative inline-flex items-center px-4 py-2 border text-sm font-medium'
+                ]"
+              >
+                {{ page }}
+              </button>
+              <button
+                :disabled="pagination.currentPage === pagination.pages"
+                @click="handlePageChange(pagination.currentPage + 1)"
+                class="relative inline-flex items-center px-2 py-2 rounded-r-md border border-gray-300 bg-white text-sm font-medium text-gray-500 hover:bg-gray-50"
+              >
+                <span class="sr-only">Próxima</span>
+                <svg class="h-5 w-5" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
+                  <path fill-rule="evenodd" d="M7.293 14.707a1 1 0 010-1.414L10.586 10 7.293 6.707a1 1 0 011.414-1.414l4 4a1 1 0 010 1.414l-4 4a1 1 0 01-1.414 0z" clip-rule="evenodd" />
+                </svg>
+              </button>
+            </nav>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Confirmar envio de link SSO -->
+    <div v-if="showConfirmSendLink" class="fixed inset-0 bg-gray-500 bg-opacity-75 flex items-center justify-center z-50">
+      <div class="bg-white rounded-lg px-4 pt-5 pb-4 overflow-hidden shadow-xl transform transition-all sm:max-w-md sm:w-full sm:p-6">
+        <h3 class="text-lg leading-6 font-medium text-gray-900 mb-2">Confirmar envio</h3>
+        <p class="text-sm text-gray-700 mb-4">Deseja enviar o link do relatório semanal para este líder agora?</p>
+        <div class="sm:flex sm:flex-row-reverse gap-3">
+          <button @click="handleSendSsoLink" class="inline-flex justify-center px-4 py-2 rounded-md text-white bg-primary-600 hover:bg-primary-700">Enviar</button>
+          <button @click="showConfirmSendLink = false" class="inline-flex justify-center px-4 py-2 rounded-md border border-gray-300 bg-white text-gray-700 hover:bg-gray-50">Cancelar</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Mensagem de feedback -->
+    <div
+      v-if="feedbackMessage"
+      :class="[
+        'fixed top-4 right-4 px-4 py-2 rounded-md z-50',
+        feedbackType === 'success' ? 'bg-green-500' : 'bg-red-500',
+        'text-white'
+      ]"
+    >
+      {{ feedbackMessage }}
+    </div>
+
+    <!-- Modal de usuário -->
+    <UserModal
+      :is-open="showUserModal"
+      :mode="modalMode"
+      :user="selectedUser"
+      @close="showUserModal = false"
+      @save="handleSaveUser"
+    />
+
+    <!-- Modal de confirmação de exclusão -->
+    <div v-if="showDeleteConfirm" class="fixed inset-0 bg-gray-500 bg-opacity-75 flex items-center justify-center z-50">
+      <div class="bg-white rounded-lg px-4 pt-5 pb-4 overflow-hidden shadow-xl transform transition-all sm:max-w-lg sm:w-full sm:p-6">
+        <div class="sm:flex sm:items-start">
+          <div class="mt-3 text-center sm:mt-0 sm:text-left w-full">
+            <h3 class="text-lg leading-6 font-medium text-gray-900">
+              Confirmar Exclusão
+            </h3>
+            <div class="mt-2 space-y-3">
+              <p class="text-sm text-gray-700">
+                Você está prestes a excluir o usuário <span class="font-semibold">"{{ entityInfo?.name }}"</span>.
+                Se este usuário for líder de uma célula, a célula e todos os membros associados serão apagados.
+              </p>
+              <p class="text-sm text-red-600">
+                Para continuar, digite <span class="font-mono bg-red-50 px-1 rounded">delete</span> no campo abaixo.
+              </p>
+              <input
+                v-model="confirmText"
+                type="text"
+                placeholder="Digite delete para confirmar"
+                class="block w-full rounded-md border-gray-300 shadow-sm focus:border-red-500 focus:ring-red-500 sm:text-sm"
+              />
+            </div>
+          </div>
+        </div>
+        <div class="mt-5 sm:mt-4 sm:flex sm:flex-row-reverse">
+          <button
+            type="button"
+            :disabled="confirmText.trim().toLowerCase() !== 'delete'"
+            @click="handleDeleteUser()"
+            class="w-full inline-flex justify-center rounded-md border border-transparent shadow-sm px-4 py-2 text-base font-medium text-white sm:ml-3 sm:w-auto sm:text-sm"
+            :class="confirmText.trim().toLowerCase() === 'delete' ? 'bg-red-600 hover:bg-red-700 focus:ring-red-500' : 'bg-red-400 cursor-not-allowed'"
+          >
+            Excluir
+          </button>
+          <button
+            type="button"
+            @click="showDeleteConfirm = false"
+            class="mt-3 w-full inline-flex justify-center rounded-md border border-gray-300 shadow-sm px-4 py-2 bg-white text-base font-medium text-gray-700 hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500 sm:mt-0 sm:w-auto sm:text-sm"
+          >
+            Cancelar
+          </button>
+        </div>
+      </div>
+    </div>
+  </main>
+</template>
+

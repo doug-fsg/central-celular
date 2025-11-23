@@ -182,10 +182,20 @@ const api = {
     return fetchApi('/auth/verify-otp', 'POST', { whatsapp: normalized, code }, false);
   },
 
+  async verifyInviteToken(token: string) {
+    console.log('[API] Verificando token de convite:', token.substring(0, 8) + '...');
+    return fetchApi(`/auth/verify-invite/${token}`, 'GET', undefined, false);
+  },
+
   async createPassword(whatsapp: string, nome: string, senha: string, dataNascimento?: string) {
     console.log('[API] Criando senha para:', whatsapp, 'nome:', nome);
+    // Normalização conservadora: remover caracteres não numéricos e garantir prefixo 55
     const digits = whatsapp.replace(/\D/g, '');
-    const normalized = `+55${digits}`;
+    const normalized = digits.startsWith('55') && (digits.length === 12 || digits.length === 13)
+      ? digits
+      : digits.length <= 11
+        ? `55${digits}`
+        : digits;
     console.log('[API] Normalizando para criação de senha:', { original: whatsapp, digits, normalized });
     const payload: { whatsapp: string; nome: string; senha: string; dataNascimento?: string } = { 
       whatsapp: normalized, 
@@ -211,6 +221,25 @@ const api = {
 
   async alterarSenha(userId: number, senhaAtual: string, novaSenha: string) {
     return fetchApi(`/usuarios/${userId}/senha`, 'POST', { senhaAtual, novaSenha });
+  },
+
+  // Reset de senha
+  async requestPasswordReset(whatsapp: string, dataNascimento: string) {
+    console.log('[API] Solicitando reset de senha para:', whatsapp);
+    const digits = whatsapp.replace(/\D/g, '');
+    const normalized = `+55${digits}`;
+    console.log('[API] Normalizando para reset:', { original: whatsapp, digits, normalized });
+    return fetchApi('/auth/request-password-reset', 'POST', { whatsapp: normalized, dataNascimento }, false);
+  },
+
+  async verifyResetToken(token: string) {
+    console.log('[API] Verificando token de reset:', token);
+    return fetchApi(`/auth/verify-reset-token/${token}`, 'GET', undefined, false);
+  },
+
+  async resetPassword(token: string, novaSenha: string) {
+    console.log('[API] Redefinindo senha com token:', token);
+    return fetchApi('/auth/reset-password', 'POST', { token, novaSenha }, false);
   },
 
   // CRUD Genérico

@@ -17,12 +17,25 @@ type NavItem = {
   icon: IconName;
 };
 
-const navItems: NavItem[] = [
-  { name: 'dashboard', label: 'Início', icon: 'home' },
-  { name: 'minha-celula', label: 'Minha Célula', icon: 'users' },
-  { name: 'attendance', label: 'Frequência', icon: 'calendar' },
-  { name: 'reports', label: 'Relatórios', icon: 'chart-bar' },
-];
+// Itens de navegação baseados no cargo do usuário
+const navItems = computed<NavItem[]>(() => {
+  if (userStore.isAdmin) {
+    // Menu para admin/pastor
+    return [
+      { name: 'admin-dashboard', label: 'Dashboard', icon: 'home' },
+      { name: 'admin-users', label: 'Usuários', icon: 'users' },
+      { name: 'admin-cells', label: 'Células', icon: 'grid' },
+    ];
+  } else {
+    // Menu para membros/líderes
+    return [
+      { name: 'dashboard', label: 'Início', icon: 'home' },
+      { name: 'minha-celula', label: 'Minha Célula', icon: 'users' },
+      { name: 'attendance', label: 'Frequência', icon: 'calendar' },
+      { name: 'reports', label: 'Relatórios', icon: 'chart-bar' },
+    ];
+  }
+});
 
 const profileItems = [
   { name: 'profile', label: 'Meu Perfil', icon: 'user' },

@@ -7,12 +7,17 @@ import api from '../services/api'
 import LandingPage from '../views/LandingPage.vue'
 import GileadeLandingPage from '../views/GileadeLandingPage.vue'
 import LoginPage from '../views/LoginPage.vue'
+import ResetPasswordPage from '../views/ResetPasswordPage.vue'
+import FirstAccessPage from '../views/FirstAccessPage.vue'
 import Dashboard from '../views/Dashboard.vue'
 import MemberList from '../views/MemberList.vue'
 import AttendanceForm from '../views/AttendanceForm.vue'
 import Reports from '../views/Reports.vue'
 import Profile from '../views/Profile.vue'
 import AdminDashboard from '../views/AdminDashboard.vue'
+import AdminDashboardPage from '../views/admin/AdminDashboardPage.vue'
+import AdminUsersPage from '../views/admin/AdminUsersPage.vue'
+import AdminCellsPage from '../views/admin/AdminCellsPage.vue'
 import SupervisorDashboard from '../views/SupervisorDashboard.vue'
 import WhatsAppConnections from '../components/WhatsAppConnections.vue'
 import ConfiguracoesView from '../views/ConfiguracoesView.vue'
@@ -39,6 +44,18 @@ const router = createRouter({
       meta: { requiresGuest: true }
     },
     {
+      path: '/reset-password/:token',
+      name: 'reset-password',
+      component: ResetPasswordPage,
+      meta: { requiresGuest: true }
+    },
+    {
+      path: '/first-access/:token',
+      name: 'first-access',
+      component: FirstAccessPage,
+      meta: { requiresGuest: true }
+    },
+    {
       path: '/dashboard',
       name: 'dashboard',
       component: Dashboard,
@@ -53,13 +70,25 @@ const router = createRouter({
     {
       path: '/admin',
       name: 'admin-dashboard',
-      component: AdminDashboard,
+      component: AdminDashboardPage,
       meta: { requiresAuth: true, requiresAdmin: true }
     },
     {
-      path: '/admin/whatsapp',
-      name: 'whatsapp-connections',
-      component: WhatsAppConnections,
+      path: '/admin/dashboard',
+      name: 'admin-dashboard-page',
+      component: AdminDashboardPage,
+      meta: { requiresAuth: true, requiresAdmin: true }
+    },
+    {
+      path: '/admin/usuarios',
+      name: 'admin-users',
+      component: AdminUsersPage,
+      meta: { requiresAuth: true, requiresAdmin: true }
+    },
+    {
+      path: '/admin/celulas',
+      name: 'admin-cells',
+      component: AdminCellsPage,
       meta: { requiresAuth: true, requiresAdmin: true }
     },
     {

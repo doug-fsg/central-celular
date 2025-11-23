@@ -2,6 +2,7 @@ import { Request, Response } from 'express';
 import { prisma } from '../lib/prisma';
 import bcrypt from 'bcryptjs';
 import { z } from 'zod';
+import { otpService } from '../services/otpService';
 
 // Normalização conservadora para números BR: garante prefixo 55
 function normalizeBrazilPhone(raw: string): string {
@@ -27,7 +28,8 @@ const criarUsuarioSchema = z.object({
   cargo: z.enum(['ADMINISTRADOR', 'SUPERVISOR', 'LIDER'], {
     errorMap: () => ({ message: 'Cargo deve ser ADMINISTRADOR, SUPERVISOR ou LIDER' })
   }),
-  senha: z.string().min(6, 'Senha deve ter pelo menos 6 caracteres').optional()
+  senha: z.string().min(6, 'Senha deve ter pelo menos 6 caracteres').optional(),
+  enviarConvite: z.boolean().optional()
 });
 
 // Schema de validação para atualizar usuário
@@ -198,6 +200,51 @@ export const criarUsuario = async (req: Request, res: Response) => {
         ativo: true
       }
     });
+
+    // Enviar convite via WhatsApp se solicitado
+    if (dados.enviarConvite === true && !dados.senha) {
+      try {
+        console.log('[UsuariosController] Enviando convite via WhatsApp para:', novoUsuario.nome);
+        
+        // Gerar token de convite usando o WhatsApp exatamente como está salvo no banco
+        const { code: token } = await otpService.createOtp({
+          whatsapp: novoUsuario.whatsapp,
+          accountId: accountId,
+          isInvite: true
+        });
+
+        // Criar link de convite
+        const FRONTEND_URL = process.env.FRONTEND_URL || 'https://central-celular.vercel.app';
+        const inviteLink = `${FRONTEND_URL}/first-access/${token}`;
+
+        // Extrair primeiro nome
+        const primeiroNome = dados.nome.split(' ')[0];
+
+        // Montar mensagem de convite
+        const mensagem = `Olá ${primeiroNome}!\n\n` +
+          `Você foi cadastrado no sistema *Aprisco*.\n\n` +
+          `Para criar sua senha de acesso, clique no link abaixo:\n\n` +
+          `${inviteLink}\n\n` +
+          `Este link expira em 10 minutos.\n\n` +
+          `_Se você não solicitou este cadastro, ignore esta mensagem._`;
+
+        // Enviar mensagem via WhatsApp
+        const enviado = await otpService.sendCustomMessageWhatsApp(
+          whatsappNormalizado,
+          mensagem,
+          accountId
+        );
+
+        if (enviado) {
+          console.log('[UsuariosController] Convite enviado com sucesso via WhatsApp');
+        } else {
+          console.error('[UsuariosController] Falha ao enviar convite via WhatsApp');
+        }
+      } catch (error) {
+        console.error('[UsuariosController] Erro ao enviar convite:', error);
+        // Não falhar a criação do usuário se o envio falhar
+      }
+    }
 
     // Retornar dados do usuário (sem a senha)
     const { senha: _, ...usuarioSemSenha } = novoUsuario;
