@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { ref, onMounted, onUnmounted, watch, computed } from 'vue'
+import { useRouter } from 'vue-router'
 import { startOfWeek, endOfWeek, subWeeks } from 'date-fns'
 import { adminService } from '../../services/adminService'
 import type { AdminStats } from '../../services/adminService'
@@ -7,6 +8,8 @@ import relatorioService from '../../services/relatorioService'
 import FrequencyChart from '../../components/FrequencyChart.vue'
 import AppIcon from '../../components/AppIcon.vue'
 import type { Usuario, Celula } from '../../services/adminService'
+
+const router = useRouter()
 
 // Estado para os dados
 const loading = ref(true)
@@ -287,9 +290,9 @@ async function loadCharts() {
       </div>
 
       <!-- Conteúdo -->
-      <div v-else class="mt-6">
+      <div v-else class="mt-1">
         <!-- Dashboard -->
-        <div class="space-y-6" @click="showLeaderDropdown = false">
+        <div class="space-y-3 sm:space-y-5" @click="showLeaderDropdown = true">
           <!-- Cabeçalho -->
           <div class="mb-4 sm:mb-6">
             <h1 class="text-xl sm:text-2xl font-bold text-neutral-800">Dashboard</h1>
@@ -297,27 +300,35 @@ async function loadCharts() {
           </div>
           
           <!-- Grupo 1: Cards sempre visíveis -->
-          <div class="grid grid-cols-2 gap-3 sm:gap-4 sm:grid-cols-2 mb-4 sm:mb-6">
+          <div class="grid grid-cols-2 gap-3 sm:gap-4 sm:grid-cols-2 mb-1 sm:mb-6">
             <!-- Total de células -->
-            <div class="card p-4 sm:p-5 bg-white border border-neutral-200">
+            <div 
+              @click="router.push({ name: 'admin-cells' })"
+              class="card p-4 sm:p-5 bg-white border border-neutral-200 cursor-pointer transition-all duration-200 hover:shadow-md hover:border-primary-300 active:scale-[0.98] group touch-manipulation"
+              style="-webkit-tap-highlight-color: rgba(59, 130, 246, 0.1);"
+            >
               <div class="flex items-center justify-between">
                 <div class="flex-1 min-w-0">
-                  <p class="text-xs sm:text-sm font-medium text-neutral-600 mb-1">Total de Células</p>
-                  <p class="text-2xl sm:text-3xl font-bold text-neutral-900">{{ stats.resumo.totalCelulas }}</p>
+                  <p class="text-xs sm:text-sm font-medium text-neutral-600 mb-1 group-hover:text-primary-600 transition-colors">Total de Células</p>
+                  <p class="text-2xl sm:text-3xl font-bold text-neutral-900 group-hover:text-primary-700 transition-colors">{{ stats.resumo.totalCelulas }}</p>
                 </div>
-                <div class="flex items-center justify-center w-8 h-8 sm:w-10 sm:h-10 rounded-lg bg-neutral-100 flex-shrink-0">
-                  <AppIcon name="grid" class="text-neutral-600" size="sm" />
+                <div class="flex items-center justify-center w-8 h-8 sm:w-10 sm:h-10 rounded-lg bg-neutral-100 group-hover:bg-primary-50 flex-shrink-0 transition-colors">
+                  <AppIcon name="grid" class="text-neutral-600 group-hover:text-primary-600 transition-colors" size="sm" />
                 </div>
               </div>
             </div>
             
             <!-- Total de membros -->
-            <div class="card p-4 sm:p-5 bg-white border border-neutral-200">
+            <div 
+              @click="router.push({ name: 'admin-members' })"
+              class="card p-4 sm:p-5 bg-white border border-neutral-200 cursor-pointer transition-all duration-200 hover:shadow-md hover:border-primary-300 active:scale-[0.98] group touch-manipulation"
+              style="-webkit-tap-highlight-color: rgba(59, 130, 246, 0.1);"
+            >
               <div class="flex items-center justify-between">
                 <div class="flex-1 min-w-0">
-                  <p class="text-xs sm:text-sm font-medium text-neutral-600 mb-1">Total de Membros</p>
+                  <p class="text-xs sm:text-sm font-medium text-neutral-600 mb-1 group-hover:text-primary-600 transition-colors">Total de Membros</p>
                   <div class="flex items-baseline gap-1.5 sm:gap-2 mb-1.5 sm:mb-2">
-                    <p class="text-2xl sm:text-3xl font-bold text-neutral-900">{{ stats.resumo.totalMembros }}</p>
+                    <p class="text-2xl sm:text-3xl font-bold text-neutral-900 group-hover:text-primary-700 transition-colors">{{ stats.resumo.totalMembros }}</p>
                     <span 
                       :class="[
                         stats.resumo.crescimentoMembros > 0 ? 'text-green-600' : 'text-red-600',
@@ -328,10 +339,11 @@ async function loadCharts() {
                       {{ Math.abs(stats.resumo.crescimentoMembros) }}%
                     </span>
                   </div>
-                  <div class="flex flex-row items-center gap-1.5 sm:gap-3 text-xs text-neutral-500">
+                  <!-- Informações dentro do card (desktop) -->
+                  <div class="hidden sm:flex flex-row items-center gap-1.5 sm:gap-3 text-xs text-neutral-500">
                     <span class="flex items-center gap-1">
                       <span class="w-1.5 h-1.5 rounded-full bg-purple-400"></span>
-                      <span>{{ stats.indicadores.consolidadoresAtivos }} consolid. </span>
+                      <span>{{ stats.indicadores.consolidadoresAtivos }} consolidadores </span>
                     </span>
                     <span class="flex items-center gap-1">
                       <span class="w-1.5 h-1.5 rounded-full bg-yellow-400"></span>
@@ -339,13 +351,26 @@ async function loadCharts() {
                     </span>
                   </div>
                 </div>
-                <div class="flex items-center justify-center w-8 h-8 sm:w-10 sm:h-10 rounded-lg bg-neutral-100 flex-shrink-0">
-                  <AppIcon name="users" class="text-neutral-600" size="sm" />
+                <div class="flex items-center justify-center w-8 h-8 sm:w-10 sm:h-10 rounded-lg bg-neutral-100 group-hover:bg-primary-50 flex-shrink-0 transition-colors">
+                  <AppIcon name="users" class="text-neutral-600 group-hover:text-primary-600 transition-colors" size="sm" />
                 </div>
               </div>
             </div>
-            
-            <!-- Seletor de período -->
+          </div>
+          
+          <!-- Informações de consolidadores e co-líderes (mobile) -->
+          <div class="flex sm:hidden justify-center items-center gap-4 -mt-2 mb-1 text-[10px] text-neutral-500">
+            <span class="flex items-center gap-1.5">
+              <span class="w-1.5 h-1.5 rounded-full bg-purple-400"></span>
+              <span>{{ stats.indicadores.consolidadoresAtivos }} consolidadores</span>
+            </span>
+            <span class="flex items-center gap-1.5">
+              <span class="w-1.5 h-1.5 rounded-full bg-yellow-400"></span>
+              <span>{{ stats.indicadores.coLideresAtivos }} co-líderes</span>
+            </span>
+          </div>
+          
+          <!-- Seletor de período -->
             <div class="mb-4 sm:mb-6">
               <div class="flex flex-col sm:flex-row sm:items-center sm:justify-end gap-3">
                 <div class="flex gap-1.5 flex-nowrap">
@@ -406,7 +431,6 @@ async function loadCharts() {
                 </div>
               </div>
             </div>
-          </div>
 
           <!-- Grupo 2: Cards afetados pelo filtro -->
           <div class="grid grid-cols-1 gap-3 sm:gap-4 sm:grid-cols-2 lg:grid-cols-3 mb-4 sm:mb-6">

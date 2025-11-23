@@ -71,6 +71,25 @@ export interface Celula {
   updatedAt: string;
 }
 
+export interface MembroCompleto {
+  id: number;
+  nome: string;
+  telefone?: string;
+  celulaId: number;
+  ativo: boolean;
+  ehConsolidador: boolean;
+  ehCoLider: boolean;
+  ehAnfitriao: boolean;
+  celula: {
+    id: number;
+    nome: string;
+    lider: {
+      id: number;
+      nome: string;
+    } | null;
+  };
+}
+
 export interface PaginatedResponse<T> {
   usuarios: T[];
   pagination: {
@@ -300,5 +319,32 @@ export const adminService = {
   async obterEstatisticasFrequencia(celulaId: number) {
     // Reaproveita controller de relatorios: GET /api/relatorios/estatisticas/:celulaId
     return api.get(`/relatorios/estatisticas/${celulaId}`)
+  },
+
+  // Listar todos os membros com paginação
+  async listarMembros(page: number = 1, limit: number = 20) {
+    try {
+      const params = new URLSearchParams({ page: String(page), limit: String(limit) });
+      const response = await api.get(`/admin/membros?${params.toString()}`);
+      
+      if (!response || typeof response !== 'object') {
+        throw new Error('Resposta inválida do servidor');
+      }
+
+      if (response.membros && response.pagination) {
+        return response;
+      }
+
+      if (response.data && typeof response.data === 'object') {
+        if (response.data.membros && response.data.pagination) {
+          return response.data;
+        }
+      }
+
+      throw new Error('Formato de resposta inválido');
+    } catch (error) {
+      console.error('Erro ao listar membros:', error);
+      throw error;
+    }
   }
 }; 

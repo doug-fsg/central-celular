@@ -806,4 +806,90 @@ export const listarMembros = async (req: Request, res: Response) => {
     console.error('Erro ao listar membros:', error);
     res.status(500).json({ message: 'Erro ao listar membros' });
   }
+};
+
+// Listar todos os membros (admin) com paginação
+export const listarTodosMembros = async (req: Request, res: Response) => {
+  try {
+    const page = Number(req.query.page) || 1;
+    const limit = Number(req.query.limit) || 20;
+    const skip = (page - 1) * limit;
+
+    // Obter o accountId do usuário autenticado
+    const accountId = (req as any).user?.accountId || (req as any).usuario?.accountId;
+    
+    if (!accountId) {
+      return res.status(401).json({ message: 'Conta não identificada' });
+    }
+
+    // Buscar total de membros filtrado por accountId (através das células)
+    const total = await prisma.membro.count({
+      where: {
+        celula: {
+          accountId: accountId
+        }
+      }
+    });
+
+    // Buscar membros com paginação, incluindo celula e lider
+    const membros = await prisma.membro.findMany({
+      where: {
+        celula: {
+          accountId: accountId
+        }
+      },
+      include: {
+        celula: {
+          select: {
+            id: true,
+            nome: true,
+            lider: {
+              select: {
+                id: true,
+                nome: true
+              }
+            }
+          }
+        }
+      },
+      orderBy: {
+        nome: 'asc'
+      },
+      skip,
+      take: limit
+    });
+
+    // Formatar resposta
+    const membrosFormatados = membros.map(membro => ({
+      id: membro.id,
+      nome: membro.nome,
+      telefone: membro.telefone,
+      celulaId: membro.celulaId,
+      ativo: membro.ativo,
+      ehConsolidador: membro.ehConsolidador,
+      ehCoLider: membro.ehCoLider,
+      ehAnfitriao: membro.ehAnfitriao,
+      celula: {
+        id: membro.celula.id,
+        nome: membro.celula.nome,
+        lider: membro.celula.lider ? {
+          id: membro.celula.lider.id,
+          nome: membro.celula.lider.nome
+        } : null
+      }
+    }));
+
+    res.json({
+      membros: membrosFormatados,
+      pagination: {
+        total,
+        pages: Math.ceil(total / limit),
+        currentPage: page,
+        perPage: limit
+      }
+    });
+  } catch (error) {
+    console.error('Erro ao listar todos os membros:', error);
+    res.status(500).json({ message: 'Erro ao listar membros' });
+  }
 }; 

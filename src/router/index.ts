@@ -18,6 +18,7 @@ import AdminDashboard from '../views/AdminDashboard.vue'
 import AdminDashboardPage from '../views/admin/AdminDashboardPage.vue'
 import AdminUsersPage from '../views/admin/AdminUsersPage.vue'
 import AdminCellsPage from '../views/admin/AdminCellsPage.vue'
+import AdminMembersPage from '../views/admin/AdminMembersPage.vue'
 import SupervisorDashboard from '../views/SupervisorDashboard.vue'
 import WhatsAppConnections from '../components/WhatsAppConnections.vue'
 import ConfiguracoesView from '../views/ConfiguracoesView.vue'
@@ -89,6 +90,12 @@ const router = createRouter({
       path: '/admin/celulas',
       name: 'admin-cells',
       component: AdminCellsPage,
+      meta: { requiresAuth: true, requiresAdmin: true }
+    },
+    {
+      path: '/admin/membros',
+      name: 'admin-members',
+      component: AdminMembersPage,
       meta: { requiresAuth: true, requiresAdmin: true }
     },
     {

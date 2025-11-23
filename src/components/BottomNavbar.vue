@@ -25,6 +25,7 @@ const navItems = computed<NavItem[]>(() => {
       { name: 'admin-dashboard', label: 'Dashboard', icon: 'home' },
       { name: 'admin-users', label: 'Usuários', icon: 'users' },
       { name: 'admin-cells', label: 'Células', icon: 'grid' },
+      { name: 'admin-members', label: 'Membros', icon: 'users' },
     ];
   } else {
     // Menu para membros/líderes

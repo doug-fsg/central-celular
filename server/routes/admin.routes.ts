@@ -15,7 +15,8 @@ import {
   criarCelula,
   atualizarCelula,
   desativarCelula,
-  deletarCelula
+  deletarCelula,
+  listarTodosMembros
 } from '../controllers/celulas.controller';
 
 const adminRouter = Router();
@@ -453,5 +454,8 @@ adminRouter.post('/celulas', criarCelula);
 adminRouter.put('/celulas/:id', atualizarCelula);
 adminRouter.patch('/celulas/:id/desativar', desativarCelula);
 adminRouter.delete('/celulas/:id', deletarCelula);
+
+// Rotas para membros
+adminRouter.get('/membros', listarTodosMembros);
 
 export { adminRouter }; 
