@@ -10,6 +10,7 @@ import type { Usuario, Celula } from '../../services/adminService'
 
 // Estado para os dados
 const loading = ref(true)
+const loadingCharts = ref(false)
 const periodoSelecionado = ref('semana') // 'semana', 'mes', 'trimestre', 'ano'
 
 // Dados dos relatórios
@@ -48,25 +49,12 @@ const stats = ref<AdminStats>({
 // Lista de líderes disponíveis
 const availableLeaders = ref<Usuario[]>([])
 const leaderFilterId = ref<string>('')
-const leaderSearchTerm = ref('')
-const showLeaderDropdown = ref(false)
 
-// Líderes filtrados para busca
+// Líderes filtrados (apenas líderes ativos)
 const filteredLeaders = computed(() => {
-  if (!leaderSearchTerm.value.trim()) {
-    return availableLeaders.value.filter((u: Usuario) => u.cargo === 'LIDER')
-  }
-  const term = leaderSearchTerm.value.toLowerCase().trim()
   return availableLeaders.value.filter((u: Usuario) => 
-    u.cargo === 'LIDER' && 
-    (u.nome.toLowerCase().includes(term) || (u.whatsapp || '').includes(term))
+    u.cargo === 'LIDER' && u.status === 'ativo'
   )
-})
-
-const selectedLeaderName = computed(() => {
-  if (!leaderFilterId.value) return ''
-  const leader = availableLeaders.value.find((u: Usuario) => String(u.id) === leaderFilterId.value)
-  return leader?.nome || ''
 })
 
 // Série consolidada por data para cálculo de médias do período
@@ -103,43 +91,29 @@ const mediaCultoPeriodo = computed(() => {
   return diasComEventos > 0 ? Math.round(sum / diasComEventos) : 0
 })
 
-// Fechar dropdown ao clicar fora
-let isOpening = false
-const handleClickOutside = (event: MouseEvent) => {
-  if (isOpening) {
-    isOpening = false
-    return
-  }
-  const target = event.target as HTMLElement
-  if (!target.closest('.leader-dropdown-container') && showLeaderDropdown.value) {
-    showLeaderDropdown.value = false
-  }
-}
-
-const openLeaderDropdown = () => {
-  isOpening = true
-  showLeaderDropdown.value = true
-  setTimeout(() => {
-    isOpening = false
-  }, 50)
-}
 
 // Carregamento inicial dos dados
 onMounted(async () => {
   try {
     loading.value = true
     
-    // Carregar dados do relatório
+    // Carregar dados essenciais em paralelo (não bloqueia a renderização)
     const liderId = leaderFilterId.value ? Number(leaderFilterId.value) : undefined
-    stats.value = await adminService.obterEstatisticas(periodoSelecionado.value, liderId)
     
-    await loadAvailableLeaders()
-    await loadCharts()
+    // Carregar stats e líderes em paralelo para acelerar
+    const [statsData] = await Promise.all([
+      adminService.obterEstatisticas(periodoSelecionado.value, liderId),
+      loadAvailableLeaders()
+    ])
     
-    // Adicionar listener para fechar dropdown ao clicar fora
-    setTimeout(() => {
-      document.addEventListener('click', handleClickOutside)
-    }, 100)
+    stats.value = statsData
+    
+    
+    // Carregar gráficos de forma assíncrona (não bloqueia a renderização)
+    // Isso permite que a página apareça rapidamente
+    loadCharts().catch(err => {
+      console.error('Erro ao carregar gráficos (não crítico):', err)
+    })
   } catch (error) {
     console.error('Erro ao carregar dados:', error)
   } finally {
@@ -153,7 +127,10 @@ async function atualizarDados() {
     loading.value = true
     const liderId = leaderFilterId.value ? Number(leaderFilterId.value) : undefined
     stats.value = await adminService.obterEstatisticas(periodoSelecionado.value, liderId)
-    await loadCharts()
+    // Carregar gráficos de forma assíncrona para não bloquear
+    loadCharts().catch(err => {
+      console.error('Erro ao atualizar gráficos:', err)
+    })
   } catch (error) {
     console.error('Erro ao atualizar dados:', error)
   } finally {
@@ -211,16 +188,26 @@ async function fetchAllCells(): Promise<Celula[]> {
   const first = await adminService.listarCelulas(1, 100)
   let all = first.celulas || []
   const totalPages = first.pagination?.pages || 1
-  for (let p = 2; p <= totalPages; p++) {
-    const resp = await adminService.listarCelulas(p, 100)
-    all = all.concat(resp.celulas || [])
+  
+  // Buscar páginas restantes em paralelo para acelerar
+  if (totalPages > 1) {
+    const promises = []
+    for (let p = 2; p <= totalPages; p++) {
+      promises.push(adminService.listarCelulas(p, 100))
+    }
+    const responses = await Promise.all(promises)
+    responses.forEach(resp => {
+      all = all.concat(resp.celulas || [])
+    })
   }
+  
   return all
 }
 
 // Consolida dados apenas para médias dos cards
 async function loadCharts() {
   try {
+    loadingCharts.value = true
     chartLabels.value = []
     chartSeriesCelula.value = []
     chartSeriesCulto.value = []
@@ -236,24 +223,33 @@ async function loadCharts() {
 
     const agg = new Map<string, { cel: { pres: number; tot: number }; cul: { pres: number; tot: number } }>()
 
-    for (const cell of filteredCells) {
-      const rels = await relatorioService.listarRelatorios({ celulaId: cell.id, dataInicio: startStr, dataFim: endStr })
-      for (const r of rels) {
-        const key = String(r.dataInicio).slice(0, 10)
-        if (!agg.has(key)) agg.set(key, { cel: { pres: 0, tot: 0 }, cul: { pres: 0, tot: 0 } })
-        const entry = agg.get(key)!
+    // Buscar relatórios de todas as células em paralelo (muito mais rápido!)
+    const relatorioPromises = filteredCells.map(cell => 
+      relatorioService.listarRelatorios({ celulaId: cell.id, dataInicio: startStr, dataFim: endStr })
+        .catch(err => {
+          console.warn(`Erro ao buscar relatórios da célula ${cell.id}:`, err)
+          return [] // Retorna array vazio em caso de erro para não quebrar o fluxo
+        })
+    )
+    
+    const allRelatorios = await Promise.all(relatorioPromises)
+    
+    // Processar todos os relatórios
+    allRelatorios.flat().forEach((r: any) => {
+      const key = String(r.dataInicio).slice(0, 10)
+      if (!agg.has(key)) agg.set(key, { cel: { pres: 0, tot: 0 }, cul: { pres: 0, tot: 0 } })
+      const entry = agg.get(key)!
 
-        const presentesCel = (r as any).presentesCelula ?? 0
-        const totalCel = (r as any).totalCelula ?? 0
-        const presentesCul = (r as any).presentesCulto ?? 0
-        const totalCul = (r as any).totalCulto ?? 0
+      const presentesCel = r.presentesCelula ?? 0
+      const totalCel = r.totalCelula ?? 0
+      const presentesCul = r.presentesCulto ?? 0
+      const totalCul = r.totalCulto ?? 0
 
-        entry.cel.pres += presentesCel
-        entry.cel.tot += totalCel
-        entry.cul.pres += presentesCul
-        entry.cul.tot += totalCul
-      }
-    }
+      entry.cel.pres += presentesCel
+      entry.cel.tot += totalCel
+      entry.cul.pres += presentesCul
+      entry.cul.tot += totalCul
+    })
 
     const sortedKeys = Array.from(agg.keys()).sort()
     chartLabels.value = sortedKeys.map(k => k.slice(8, 10) + '/' + k.slice(5, 7))
@@ -267,12 +263,11 @@ async function loadCharts() {
     })
   } catch (err) {
     console.error('[Dashboard] Erro ao carregar gráficos:', err)
+  } finally {
+    loadingCharts.value = false
   }
 }
 
-onUnmounted(() => {
-  document.removeEventListener('click', handleClickOutside)
-})
 </script>
 
 <template>
@@ -353,7 +348,7 @@ onUnmounted(() => {
             <!-- Seletor de período -->
             <div class="mb-4 sm:mb-6">
               <div class="flex flex-col sm:flex-row sm:items-center sm:justify-end gap-3">
-                <div class="flex gap-1 overflow-x-auto pb-1 sm:pb-0">
+                <div class="flex gap-1.5 flex-nowrap">
                   <button
                     v-for="periodo in [
                       { key: 'semana', label: 'Semana', labelMobile: 'Semana' },
@@ -372,54 +367,41 @@ onUnmounted(() => {
                     <span class="hidden sm:inline">{{ periodo.label }}</span>
                   </button>
                 </div>
-                <div class="flex items-center gap-2">
-                  <label class="text-xs text-neutral-600 whitespace-nowrap">Líder:</label>
-                  <div class="relative leader-dropdown-container flex-1 sm:flex-none">
-                    <div class="relative">
-                      <input
-                        v-model="leaderSearchTerm"
-                        @focus="openLeaderDropdown()"
-                        @click.stop="openLeaderDropdown()"
-                        @input="showLeaderDropdown = true"
-                        type="text"
-                        :placeholder="selectedLeaderName || 'Buscar líder...'"
-                        class="px-2.5 py-1.5 text-xs border border-neutral-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-primary-500 bg-white text-neutral-700 w-full sm:w-48"
-                      />
+                <div class="flex items-center gap-2 min-w-0">
+                  <label class="text-xs text-neutral-600 whitespace-nowrap flex-shrink-0">Líder:</label>
+                  <div class="flex items-center gap-1.5 min-w-0 flex-1 sm:flex-none sm:w-auto">
+                    <div class="relative min-w-0 flex-1 sm:w-48">
+                      <select
+                        v-model="leaderFilterId"
+                        class="w-full min-w-0 px-3 py-1.5 pr-8 text-xs border border-neutral-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-primary-500 bg-white text-neutral-700 appearance-none cursor-pointer"
+                      >
+                        <option value="">Todos os líderes</option>
+                        <option 
+                          v-for="l in filteredLeaders" 
+                          :key="l.id" 
+                          :value="String(l.id)"
+                        >
+                          {{ l.nome }}
+                        </option>
+                      </select>
                       <div class="absolute right-2 top-1/2 -translate-y-1/2 pointer-events-none">
-                        <svg class="w-3 h-3 text-neutral-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <svg class="w-4 h-4 text-neutral-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                           <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7" />
                         </svg>
                       </div>
                     </div>
-                    
-                    <!-- Dropdown de líderes -->
-                    <div 
-                      v-if="showLeaderDropdown"
-                      class="absolute z-50 mt-1 w-full sm:w-48 bg-white border border-neutral-300 rounded-lg shadow-lg max-h-60 overflow-y-auto"
-                      @click.stop
+                    <button
+                      v-if="leaderFilterId"
+                      @click="leaderFilterId = ''"
+                      type="button"
+                      class="flex-shrink-0 p-1.5 text-neutral-400 hover:text-neutral-600 active:text-neutral-700 transition-colors touch-manipulation"
+                      aria-label="Limpar filtro de líder"
+                      title="Limpar filtro"
                     >
-                      <div class="p-1">
-                        <button
-                          @click="leaderFilterId = ''; leaderSearchTerm = ''; showLeaderDropdown = false"
-                          class="w-full text-left px-2 py-1.5 text-xs text-neutral-700 hover:bg-neutral-100 rounded transition-colors"
-                          :class="!leaderFilterId ? 'bg-primary-50 text-primary-700 font-medium' : ''"
-                        >
-                          Todos os líderes
-                        </button>
-                        <div v-if="filteredLeaders.length === 0" class="px-2 py-2 text-xs text-neutral-500 text-center">
-                          Nenhum líder encontrado
-                        </div>
-                        <button
-                          v-for="l in filteredLeaders"
-                          :key="l.id"
-                          @click="leaderFilterId = String(l.id); leaderSearchTerm = ''; showLeaderDropdown = false"
-                          class="w-full text-left px-2 py-1.5 text-xs text-neutral-700 hover:bg-neutral-100 rounded transition-colors"
-                          :class="leaderFilterId === String(l.id) ? 'bg-primary-50 text-primary-700 font-medium' : ''"
-                        >
-                          {{ l.nome }}
-                        </button>
-                      </div>
-                    </div>
+                      <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
+                      </svg>
+                    </button>
                   </div>
                 </div>
               </div>

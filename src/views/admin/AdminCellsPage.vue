@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, computed, watch } from 'vue'
+import { ref, computed } from 'vue'
 import CellModal from '../../components/CellModal.vue'
 import CellMembersModal from '../../components/CellMembersModal.vue'
 import { adminService } from '../../services/adminService'
@@ -282,26 +282,40 @@ loadCells()
     </div>
 
     <!-- Filtros -->
-    <div class="bg-white shadow rounded-lg p-4 mb-6">
-      <div>
-        <!-- Busca -->
-        <div>
-          <label for="search" class="block text-sm font-medium text-gray-700">Buscar células</label>
-          <div class="mt-1 relative rounded-md shadow-sm">
-            <input
-              type="text"
-              id="search"
-              v-model="cellFilters.searchTerm"
-              class="focus:ring-primary-500 focus:border-primary-500 block w-full pl-3 pr-10 py-2 sm:text-sm border-gray-300 rounded-md"
-              placeholder="Buscar por nome, endereço, líder ou supervisor"
-            >
-            <div class="absolute inset-y-0 right-0 pr-3 flex items-center pointer-events-none">
-              <svg class="h-5 w-5 text-gray-400" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor">
-                <path fill-rule="evenodd" d="M8 4a4 4 0 100 8 4 4 0 000-8zM2 8a6 6 0 1110.89 3.476l4.817 4.817a1 1 0 01-1.414 1.414l-4.816-4.816A6 6 0 012 8z" clip-rule="evenodd" />
-              </svg>
-            </div>
-          </div>
+    <div class="bg-white shadow-sm rounded-xl border border-gray-100 p-4 sm:p-5 mb-4">
+      <!-- Busca -->
+      <div class="relative">
+        <div class="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none">
+          <svg class="h-5 w-5 text-gray-400" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor">
+            <path fill-rule="evenodd" d="M8 4a4 4 0 100 8 4 4 0 000-8zM2 8a6 6 0 1110.89 3.476l4.817 4.817a1 1 0 01-1.414 1.414l-4.816-4.816A6 6 0 012 8z" clip-rule="evenodd" />
+          </svg>
         </div>
+        <input
+          type="text"
+          id="search"
+          v-model="cellFilters.searchTerm"
+          class="block w-full pl-12 pr-11 py-3 text-sm sm:text-base border border-gray-200 rounded-xl bg-gray-50 focus:bg-white focus:ring-2 focus:ring-primary-500 focus:border-primary-500 transition-all duration-200 placeholder:text-gray-400 text-gray-900"
+          placeholder="Busque por lider ou endereço..."
+        >
+        <button
+          v-if="cellFilters.searchTerm"
+          @click="cellFilters.searchTerm = ''"
+          type="button"
+          class="absolute inset-y-0 right-0 pr-4 flex items-center text-gray-400 hover:text-gray-600 active:text-gray-700 transition-colors touch-manipulation"
+          style="-webkit-tap-highlight-color: rgba(0, 0, 0, 0.1);"
+          aria-label="Limpar busca"
+        >
+          <svg class="h-5 w-5" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor">
+            <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clip-rule="evenodd" />
+          </svg>
+        </button>
+      </div>
+      <!-- Contador de resultados -->
+      <div v-if="cellFilters.searchTerm && filteredCells.length > 0" class="mt-3 text-xs sm:text-sm text-gray-600 flex items-center gap-1.5">
+        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+        </svg>
+        <span>{{ filteredCells.length }} {{ filteredCells.length === 1 ? 'célula encontrada' : 'células encontradas' }}</span>
       </div>
     </div>
 
@@ -309,53 +323,99 @@ loadCells()
       <div class="animate-spin rounded-full h-8 w-8 border-b-2 border-primary-600"></div>
     </div>
 
-    <div v-else-if="filteredCells.length === 0" class="bg-white shadow overflow-hidden sm:rounded-lg p-6 text-center text-gray-500">
-      {{ cells.length === 0 ? 'Nenhuma célula encontrada' : 'Nenhuma célula corresponde aos filtros aplicados' }}
+    <div v-else-if="filteredCells.length === 0" class="bg-white shadow-sm rounded-xl border border-gray-100 overflow-hidden p-8 sm:p-12">
+      <div class="text-center">
+        <div class="mx-auto flex items-center justify-center h-16 w-16 rounded-full bg-gray-100 mb-4">
+          <svg class="h-8 w-8 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9.172 16.172a4 4 0 015.656 0M9 10h.01M15 10h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+          </svg>
+        </div>
+        <h3 class="text-base sm:text-lg font-semibold text-gray-900 mb-2">
+          {{ cellFilters.searchTerm ? 'Nenhuma célula encontrada' : 'Nenhuma célula cadastrada' }}
+        </h3>
+        <p class="text-sm sm:text-base text-gray-500 max-w-sm mx-auto">
+          {{ cellFilters.searchTerm 
+            ? `Não encontramos células que correspondam a "${cellFilters.searchTerm}". Tente buscar com outros termos.` 
+            : 'Comece criando sua primeira célula usando o botão acima.' }}
+        </p>
+        <button
+          v-if="cellFilters.searchTerm"
+          @click="cellFilters.searchTerm = ''"
+          class="mt-4 inline-flex items-center gap-2 px-4 py-2 text-sm font-medium text-primary-600 hover:text-primary-700 active:text-primary-800 transition-colors"
+        >
+          <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
+          </svg>
+          Limpar busca
+        </button>
+      </div>
     </div>
 
     <div v-else class="bg-white shadow overflow-hidden sm:rounded-lg">
       <!-- Lista mobile -->
-      <div class="sm:hidden space-y-3 p-4">
+      <div class="sm:hidden space-y-2.5 p-3">
         <div
           v-for="cell in filteredCells"
           :key="cell.id"
           @click="handleVerCelula(cell)"
-          class="border border-gray-200 rounded-lg p-4 shadow-sm cursor-pointer transition-all duration-200 active:bg-blue-50 active:shadow-md active:border-l-4 active:border-l-primary-500 group"
+          class="relative border border-gray-200 rounded-xl px-4 py-3 shadow-md bg-white cursor-pointer transition-all duration-200 active:scale-[0.98] active:shadow-lg active:bg-blue-50 active:border-primary-300 group touch-manipulation"
+          style="-webkit-tap-highlight-color: rgba(59, 130, 246, 0.1);"
         >
-          <div class="flex items-center justify-between mb-2">
-            <div class="flex-1">
-              <div class="flex items-center">
-                <p class="text-sm font-semibold text-gray-900 group-active:text-primary-700 transition-colors">{{ cell.lider?.nome || 'Sem líder' }}</p>
-                <span class="ml-2 text-primary-500 opacity-0 group-active:opacity-100 transition-opacity">→</span>
+          <!-- Indicador visual de clicável -->
+          <div class="absolute top-2.5 right-3 flex items-center justify-center w-7 h-7 rounded-full bg-primary-50 group-active:bg-primary-100 transition-colors">
+            <svg class="w-4 h-4 text-primary-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7" />
+            </svg>
+          </div>
+          
+          <div class="flex items-start justify-between mb-2 pr-10">
+            <div class="flex-1 min-w-0">
+              <div class="flex items-center mb-0.5">
+                <p class="text-sm font-semibold text-gray-900 group-active:text-primary-700 transition-colors truncate">{{ cell.lider?.nome || 'Sem líder' }}</p>
               </div>
-              <p class="text-xs text-gray-500 mt-1">{{ cell.nome }}</p>
+              <p class="text-xs font-medium text-gray-700 truncate">{{ cell.nome }}</p>
             </div>
-            <span class="text-xs text-gray-500 ml-2">
-              {{ cell.diaSemana }} • {{ cell.horario }}
-            </span>
           </div>
+          
           <div class="flex items-center justify-between mb-2">
-            <p class="text-sm text-gray-500">
-              Total de Membros:
-            </p>
-            <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800 group-active:bg-blue-200 transition-colors">
-              {{ cell._count?.membros || 0 }}
+            <div class="flex items-center gap-1.5 text-xs text-gray-600">
+              <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+              </svg>
+              <span>{{ cell.diaSemana }} • {{ cell.horario }}</span>
+            </div>
+            <span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold bg-primary-100 text-primary-700 group-active:bg-primary-200 group-active:text-primary-800 transition-colors">
+              {{ cell._count?.membros || 0 }} membros
             </span>
           </div>
-          <p class="text-sm text-gray-500 truncate">
-            {{ cell.endereco || 'Sem endereço' }}
+          
+          <p class="text-xs text-gray-600 truncate mb-2 flex items-center gap-1">
+            <svg class="w-3.5 h-3.5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
+            </svg>
+            <span class="truncate">{{ cell.endereco || 'Sem endereço' }}</span>
           </p>
-          <div class="mt-3 flex flex-wrap gap-3 text-sm" @click.stop>
+          
+          <div class="mt-2 pt-2 border-t border-gray-100 flex flex-wrap gap-3 text-xs" @click.stop>
             <button
               @click="handleEditarCelula(cell)"
-              class="text-primary-600 hover:text-primary-900 active:text-primary-700 transition-colors"
+              class="flex items-center gap-1 text-primary-600 hover:text-primary-700 active:text-primary-800 font-medium transition-colors touch-manipulation"
+              style="-webkit-tap-highlight-color: rgba(59, 130, 246, 0.1);"
             >
+              <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+              </svg>
               Editar
             </button>
             <button
               @click="handleConfirmDeleteCell(cell)"
-              class="text-red-600 hover:text-red-900 active:text-red-700 transition-colors"
+              class="flex items-center gap-1 text-red-600 hover:text-red-700 active:text-red-800 font-medium transition-colors touch-manipulation"
+              style="-webkit-tap-highlight-color: rgba(239, 68, 68, 0.1);"
             >
+              <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+              </svg>
               Excluir
             </button>
           </div>
