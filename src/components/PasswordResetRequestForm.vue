@@ -20,6 +20,20 @@ const form = reactive({
   dataNascimento: ''
 })
 
+// Máscara de data DD/MM/AAAA
+const formatDateInput = (value: string) => {
+  const digits = value.replace(/\D/g, '')
+  if (digits.length <= 2) return digits
+  if (digits.length <= 4) return `${digits.slice(0, 2)}/${digits.slice(2)}`
+  return `${digits.slice(0, 2)}/${digits.slice(2, 4)}/${digits.slice(4, 8)}`
+}
+
+const onDateInput = (event: Event) => {
+  const input = event.target as HTMLInputElement
+  const formatted = formatDateInput(input.value)
+  form.dataNascimento = formatted
+}
+
 // Funções de validação
 const validate = () => {
   error.value = ''
@@ -39,10 +53,36 @@ const validate = () => {
     return false
   }
   
-  const dataNasc = new Date(form.dataNascimento)
+  // Validar formato DD/MM/AAAA
+  const dateRegex = /^(\d{2})\/(\d{2})\/(\d{4})$/
+  const match = form.dataNascimento.match(dateRegex)
+  if (!match) {
+    error.value = 'Data inválida. Use o formato DD/MM/AAAA'
+    return false
+  }
+  
+  const [, dia, mes, ano] = match
+  const diaNum = parseInt(dia, 10)
+  const mesNum = parseInt(mes, 10)
+  const anoNum = parseInt(ano, 10)
+  
+  // Validações básicas
+  if (diaNum < 1 || diaNum > 31 || mesNum < 1 || mesNum > 12 || anoNum < 1900 || anoNum > new Date().getFullYear()) {
+    error.value = 'Data inválida'
+    return false
+  }
+  
+  // Criar data no formato ISO para enviar ao backend
+  const dataNasc = new Date(anoNum, mesNum - 1, diaNum)
   const hoje = new Date()
   if (dataNasc > hoje) {
     error.value = 'A data de nascimento não pode ser no futuro'
+    return false
+  }
+  
+  // Verificar se a data é válida (ex: 31/02 não existe)
+  if (dataNasc.getDate() !== diaNum || dataNasc.getMonth() !== mesNum - 1 || dataNasc.getFullYear() !== anoNum) {
+    error.value = 'Data inválida'
     return false
   }
   
@@ -56,10 +96,14 @@ const requestReset = async () => {
   
   if (!validate()) return
   
-  try {
-    loading.value = true
-    
-    const response = await api.requestPasswordReset(form.whatsapp, form.dataNascimento)
+    try {
+      loading.value = true
+      
+      // Converter DD/MM/AAAA para AAAA-MM-DD
+      const [dia, mes, ano] = form.dataNascimento.split('/')
+      const dataISO = `${ano}-${mes}-${dia}`
+      
+      const response = await api.requestPasswordReset(form.whatsapp, dataISO)
     
     if (response.success) {
       success.value = response.message || 'Link de recuperação enviado para seu WhatsApp. Verifique sua mensagem.'
@@ -108,12 +152,14 @@ const requestReset = async () => {
           </label>
           <input
             id="dataNascimento"
-            v-model="form.dataNascimento"
-            type="date"
+            :value="form.dataNascimento"
+            @input="onDateInput"
+            type="text"
+            placeholder="DD/MM/AAAA"
+            maxlength="10"
             required
             class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-primary-500 focus:border-primary-500"
             :disabled="loading"
-            :max="new Date().toISOString().split('T')[0]"
           />
         </div>
         

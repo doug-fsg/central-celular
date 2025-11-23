@@ -243,6 +243,30 @@ const createEmptyForm = () => ({
 
 const form = ref(createEmptyForm())
 
+// Máscara de data DD/MM/AAAA
+const formatDateInput = (value: string) => {
+  const digits = value.replace(/\D/g, '')
+  if (digits.length <= 2) return digits
+  if (digits.length <= 4) return `${digits.slice(0, 2)}/${digits.slice(2)}`
+  return `${digits.slice(0, 2)}/${digits.slice(2, 4)}/${digits.slice(4, 8)}`
+}
+
+const onDateInput = (event: Event) => {
+  const input = event.target as HTMLInputElement
+  const formatted = formatDateInput(input.value)
+  form.value.dataNascimento = formatted
+}
+
+// Converter DD/MM/AAAA para AAAA-MM-DD antes de salvar
+const convertDateToISO = (dateStr: string): string | undefined => {
+  if (!dateStr.trim()) return undefined
+  const dateRegex = /^(\d{2})\/(\d{2})\/(\d{4})$/
+  const match = dateStr.match(dateRegex)
+  if (!match) return undefined
+  const [, dia, mes, ano] = match
+  return `${ano}-${mes}-${dia}`
+}
+
 // Notes modal state
 const showNotesModal = ref(false)
 const selectedForNotes = ref<Member | null>(null)
@@ -265,7 +289,7 @@ async function handleSubmit() {
   try {
     await memberStore.addMember({
       ...form.value,
-      dataNascimento: form.value.dataNascimento || undefined,
+      dataNascimento: convertDateToISO(form.value.dataNascimento),
       isActive: true
     })
     await memberStore.carregarMembros()
@@ -378,11 +402,13 @@ async function handleSubmit() {
                         Data de nascimento <span class="text-neutral-400 lowercase">(opcional)</span>
                       </label>
                       <input
-                        type="date"
+                        type="text"
                         id="dataNascimento"
-                        v-model="form.dataNascimento"
+                        :value="form.dataNascimento"
+                        @input="onDateInput"
+                        placeholder="DD/MM/AAAA"
+                        maxlength="10"
                         class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-primary-500 transition-all"
-                        :max="new Date().toISOString().split('T')[0]"
                       />
                     </div>
 

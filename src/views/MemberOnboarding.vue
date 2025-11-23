@@ -39,6 +39,30 @@ const novoMembro = reactive({
 // Contador para IDs únicos temporários
 let membroIdCounter = 1
 
+// Máscara de data DD/MM/AAAA
+const formatDateInput = (value: string) => {
+  const digits = value.replace(/\D/g, '')
+  if (digits.length <= 2) return digits
+  if (digits.length <= 4) return `${digits.slice(0, 2)}/${digits.slice(2)}`
+  return `${digits.slice(0, 2)}/${digits.slice(2, 4)}/${digits.slice(4, 8)}`
+}
+
+const onDateInput = (event: Event) => {
+  const input = event.target as HTMLInputElement
+  const formatted = formatDateInput(input.value)
+  novoMembro.dataNascimento = formatted
+}
+
+// Converter DD/MM/AAAA para AAAA-MM-DD antes de salvar
+const convertDateToISO = (dateStr: string): string => {
+  if (!dateStr.trim()) return ''
+  const dateRegex = /^(\d{2})\/(\d{2})\/(\d{4})$/
+  const match = dateStr.match(dateRegex)
+  if (!match) return dateStr
+  const [, dia, mes, ano] = match
+  return `${ano}-${mes}-${dia}`
+}
+
 const adicionarMembro = () => {
   if (!novoMembro.nome.trim()) {
     error.value = 'Nome é obrigatório'
@@ -112,7 +136,7 @@ const finalizarCadastro = async () => {
       await memberStore.addMember({
         name: membro.nome,
         telefone: membro.telefone,
-        dataNascimento: membro.dataNascimento,
+        dataNascimento: convertDateToISO(membro.dataNascimento) || undefined,
         isConsolidator: membro.ehConsolidador,
         isCoLeader: membro.ehCoLider,
         isHost: membro.ehAnfitriao,
@@ -228,10 +252,12 @@ onMounted(async () => {
 
             <div>
               <input
-                v-model="novoMembro.dataNascimento"
-                type="date"
+                :value="novoMembro.dataNascimento"
+                @input="onDateInput"
+                type="text"
+                placeholder="DD/MM/AAAA"
+                maxlength="10"
                 class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
-                :max="new Date().toISOString().split('T')[0]"
               />
             </div>
 
