@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, onMounted, onUnmounted, watch, computed } from 'vue'
+import { ref, onMounted, watch, computed } from 'vue'
 import { useRouter } from 'vue-router'
 import { startOfWeek, endOfWeek, subWeeks } from 'date-fns'
 import { adminService } from '../../services/adminService'
