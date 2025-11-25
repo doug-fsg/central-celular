@@ -56,10 +56,10 @@ const getPeriodRange = (periodo: string) => {
   let end = new Date()
   
   if (periodo === 'semana') {
-    // Última semana (segunda a domingo)
+    // Última semana completa (segunda a domingo da semana passada)
     const semanaPassada = subWeeks(now, 1)
-    start = startOfWeek(semanaPassada, { weekStartsOn: 1 }) // Segunda-feira
-    end = endOfWeek(semanaPassada, { weekStartsOn: 1 }) // Domingo
+    start = startOfWeek(semanaPassada, { weekStartsOn: 1 }) // Segunda-feira da semana passada
+    end = endOfWeek(semanaPassada, { weekStartsOn: 1 }) // Domingo da semana passada
   } else if (periodo === 'trimestre' || periodo === '3meses') {
     start = new Date(now.getFullYear(), now.getMonth() - 2, 1)
     end = new Date(now.getFullYear(), now.getMonth() + 1, 0)
@@ -85,7 +85,6 @@ const loadFrequencyData = async () => {
     error.value = null
     
     if (!props.periodo) {
-      console.warn('Período não definido para carregar dados de frequência')
       return
     }
     
@@ -102,16 +101,12 @@ const loadFrequencyData = async () => {
       params.append('celulaId', props.celulaId.toString())
     }
     
-    console.log('[FrequencyChart] Fazendo requisição para:', `/relatorios/frequencia-por-data?${params}`)
     const response = await api.get(`/relatorios/frequencia-por-data?${params}`)
-    console.log('[FrequencyChart] Resposta completa da API:', response)
     const data = Array.isArray(response) ? response : []
-    console.log('[FrequencyChart] Dados recebidos da API:', data)
     frequencyData.value = data
     isInitialized.value = true
   } catch (err) {
     console.error('Erro ao carregar dados de frequência:', err)
-    console.error('Detalhes do erro:', err)
     error.value = 'Erro ao carregar dados'
     frequencyData.value = []
     isInitialized.value = true
@@ -122,10 +117,7 @@ const loadFrequencyData = async () => {
 
 // Dados do gráfico
 const chartData = computed(() => {
-  console.log('[FrequencyChart] Computando chartData, frequencyData:', frequencyData.value)
-  
   if (!frequencyData.value || !frequencyData.value.length) {
-    console.log('[FrequencyChart] Sem dados para o gráfico')
     return {
       labels: [],
       datasets: []
@@ -135,8 +127,6 @@ const chartData = computed(() => {
   const labels = frequencyData.value.map(item => item.formatDate)
   const celulaData = frequencyData.value.map(item => item.celula)
   const cultoData = frequencyData.value.map(item => item.culto)
-  
-  console.log('[FrequencyChart] Dados do gráfico:', { labels, celulaData, cultoData })
 
   return {
     labels: labels,
@@ -301,7 +291,7 @@ watch([() => props.periodo, () => props.celulaId], () => {
   if (props.periodo) {
     loadFrequencyData()
   }
-}, { immediate: false })
+}, { immediate: true })
 
 onMounted(() => {
   if (props.periodo) {

@@ -324,27 +324,12 @@ export const obterFrequenciaPorData = async (req: Request, res: Response) => {
   try {
     const { dataInicio, dataFim, celulaId } = req.query;
 
-    console.log('[DEBUG] obterFrequenciaPorData - Parâmetros:', { dataInicio, dataFim, celulaId });
-
     if (!dataInicio || !dataFim) {
       return res.status(400).json({ message: 'Parâmetros dataInicio e dataFim são obrigatórios' });
     }
 
     const inicio = new Date(dataInicio as string);
     const fim = new Date(dataFim as string);
-
-    console.log('[DEBUG] obterFrequenciaPorData - Datas convertidas:', { inicio, fim });
-
-    // Primeiro vamos verificar se há relatórios de qualquer status
-    const todosRelatorios = await prisma.relatorio.findMany({
-      where: {
-        dataInicio: { gte: inicio },
-        dataFim: { lte: fim }
-      },
-      select: { id: true, status: true, evento: true, dataInicio: true, celulaId: true }
-    });
-
-    console.log('[DEBUG] obterFrequenciaPorData - Todos os relatórios:', todosRelatorios);
 
     const whereClause: any = {
       // Apenas relatórios enviados (status = 1)
@@ -361,8 +346,6 @@ export const obterFrequenciaPorData = async (req: Request, res: Response) => {
       whereClause.celulaId = Number(celulaId);
     }
 
-    console.log('[DEBUG] obterFrequenciaPorData - Where clause:', whereClause);
-
     const relatorios = await prisma.relatorio.findMany({
       where: whereClause,
       include: {
@@ -371,8 +354,6 @@ export const obterFrequenciaPorData = async (req: Request, res: Response) => {
       },
       orderBy: { dataInicio: 'asc' }
     });
-
-    console.log('[DEBUG] obterFrequenciaPorData - Relatórios encontrados:', relatorios.length);
 
     // Agrupar dados por data
     const dadosPorData = new Map();
@@ -416,9 +397,6 @@ export const obterFrequenciaPorData = async (req: Request, res: Response) => {
       totalCelula: dados.celula.total,
       totalCulto: dados.culto.total
     })).sort((a, b) => a.data.localeCompare(b.data));
-
-    console.log('[DEBUG] obterFrequenciaPorData - Resultado final:', resultado);
-    console.log('[DEBUG] obterFrequenciaPorData - Enviando resposta...');
 
     res.json(resultado);
   } catch (error) {
@@ -535,20 +513,28 @@ export const obterFrequenciaMembro = async (req: Request, res: Response) => {
       }
       
       const periodo = relatoriosPorPeriodo.get(chave)!;
-      const presenca = rel.presencas.find(p => p.membroId === Number(membroId));
-      const presente = presenca ? presenca.status === 1 : false;
+      
+      // Buscar presenças por tipo (não por evento do relatório)
+      const presencaCelula = rel.presencas.find(p => p.membroId === Number(membroId) && p.tipo === 0);
+      const presencaCulto = rel.presencas.find(p => p.membroId === Number(membroId) && p.tipo === 1);
+      
+      const presenteCelula = presencaCelula ? presencaCelula.status === 1 : false;
+      const presenteCulto = presencaCulto ? presencaCulto.status === 1 : false;
 
-      if (rel.evento === 0) {
+      // Atualizar período com presenças de célula e culto (se existirem)
+      if (presencaCelula !== undefined) {
         periodo.celula = {
           id: rel.id,
           dataEnvio: rel.dataEnvio,
-          presente: presente,
+          presente: presenteCelula,
         };
-      } else {
+      }
+      
+      if (presencaCulto !== undefined) {
         periodo.culto = {
           id: rel.id,
           dataEnvio: rel.dataEnvio,
-          presente: presente,
+          presente: presenteCulto,
         };
       }
     });

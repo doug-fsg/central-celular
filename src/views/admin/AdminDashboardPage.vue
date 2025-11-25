@@ -171,9 +171,10 @@ function getPeriodRange(periodo: string) {
   let end: Date
   
   if (periodo === 'semana') {
+    // Última semana completa (segunda a domingo da semana passada)
     const semanaPassada = subWeeks(now, 1)
-    start = startOfWeek(semanaPassada, { weekStartsOn: 1 })
-    end = endOfWeek(semanaPassada, { weekStartsOn: 1 })
+    start = startOfWeek(semanaPassada, { weekStartsOn: 1 }) // Segunda-feira da semana passada
+    end = endOfWeek(semanaPassada, { weekStartsOn: 1 }) // Domingo da semana passada
   } else if (periodo === 'trimestre') {
     start = new Date(now.getFullYear(), now.getMonth() - 2, 1)
     end = new Date(now.getFullYear(), now.getMonth() + 1, 0)
@@ -376,7 +377,7 @@ async function loadCharts() {
                 <div class="flex gap-1.5 flex-nowrap">
                   <button
                     v-for="periodo in [
-                      { key: 'semana', label: 'Semana', labelMobile: 'Semana' },
+                      { key: 'semana', label: 'Última Semana', labelMobile: 'Últ. Semana' },
                       { key: 'mes', label: 'Mês', labelMobile: 'Mês' },
                       { key: 'trimestre', label: 'Trimestre', labelMobile: 'Trim.' },
                       { key: 'ano', label: 'Ano', labelMobile: 'Ano' }
@@ -475,10 +476,10 @@ async function loadCharts() {
           </div>
 
           <!-- Relatório de Frequência por Data -->
-          <div class="mt-4 sm:mt-8">
+          <div class="mt-4 sm:mt-8" v-if="periodoSelecionado">
             <FrequencyChart 
               :periodo="periodoSelecionado" 
-              :celula-id="leaderFilterId && leaderFilterId !== '' ? Number(leaderFilterId) : undefined"
+              :celulaId="leaderFilterId && leaderFilterId !== '' ? Number(leaderFilterId) : undefined"
             />
           </div>
         </div>

@@ -1,9 +1,11 @@
 <script setup lang="ts">
-import { ref, computed } from 'vue'
+import { ref, computed, onMounted } from 'vue'
+import { startOfWeek, endOfWeek, startOfMonth, endOfMonth, addWeeks } from 'date-fns'
 import CellModal from '../../components/CellModal.vue'
 import CellMembersModal from '../../components/CellMembersModal.vue'
 import { adminService } from '../../services/adminService'
 import type { Celula, Usuario } from '../../services/adminService'
+import relatorioService from '../../services/relatorioService'
 
 // Estado para os dados
 const loading = ref(false)
@@ -31,6 +33,96 @@ const availableLeaders = ref<Usuario[]>([])
 const cellFilters = ref({
   searchTerm: ''
 })
+
+// Status de relatórios por semana do mês (Map<celulaId, boolean[]>)
+// Array de 4 posições: [semana1, semana2, semana3, semana4]
+const statusSemanas = ref<Map<number, boolean[]>>(new Map())
+const mesAtual = ref(new Date().getMonth())
+const anoAtual = ref(new Date().getFullYear())
+
+// Calcular as 4 semanas do mês atual
+const calcularSemanasDoMes = () => {
+  const hoje = new Date()
+  const inicioMes = startOfMonth(hoje)
+  const fimMes = endOfMonth(hoje)
+  
+  const semanas: Array<{ inicio: Date; fim: Date }> = []
+  let semanaAtual = startOfWeek(inicioMes, { weekStartsOn: 1 })
+  
+  // Sempre retornar 4 semanas
+  for (let i = 0; i < 4; i++) {
+    const fimSemana = endOfWeek(semanaAtual, { weekStartsOn: 1 })
+    semanas.push({
+      inicio: semanaAtual,
+      fim: fimSemana > fimMes ? fimMes : fimSemana
+    })
+    semanaAtual = addWeeks(semanaAtual, 1)
+  }
+  
+  return semanas
+}
+
+// Determinar quantas semanas já passaram no mês
+const semanasPassadas = computed(() => {
+  const hoje = new Date()
+  hoje.setHours(23, 59, 59, 999) // Fim do dia atual
+  const semanas = calcularSemanasDoMes()
+  let count = 0
+  
+  for (const semana of semanas) {
+    // Se a semana já terminou ou está em andamento
+    if (semana.fim <= hoje) {
+      count++
+    } else {
+      break
+    }
+  }
+  
+  return Math.max(1, count) // Sempre mostrar pelo menos 1 bolinha
+})
+
+// Verificar status de relatórios das semanas do mês
+const verificarStatusSemanas = async () => {
+  const hoje = new Date()
+  const mes = hoje.getMonth()
+  const ano = hoje.getFullYear()
+  
+  // Reiniciar se mudou o mês
+  if (mes !== mesAtual.value || ano !== anoAtual.value) {
+    statusSemanas.value.clear()
+    mesAtual.value = mes
+    anoAtual.value = ano
+  }
+  
+  if (cells.value.length === 0) return
+  
+  const semanas = calcularSemanasDoMes()
+  
+  // Verificar cada célula
+  await Promise.all(cells.value.map(async (celula) => {
+    const status: boolean[] = []
+    
+    for (const semana of semanas) {
+      try {
+        const relatorios = await relatorioService.listarRelatorios({
+          celulaId: celula.id,
+          dataInicio: semana.inicio,
+          dataFim: semana.fim
+        })
+        status.push(relatorios.some(r => r.status === 1))
+      } catch {
+        status.push(false)
+      }
+    }
+    
+    statusSemanas.value.set(celula.id, status)
+  }))
+}
+
+// Obter status das semanas de uma célula
+const getStatusSemanas = (celulaId: number) => {
+  return statusSemanas.value.get(celulaId) || []
+}
 
 // Células filtradas
 const filteredCells = computed(() => {
@@ -83,6 +175,7 @@ const loadAvailableLeaders = async () => {
   }
 }
 
+
 // Carregar células
 const loadCells = async (page: number = 1) => {
   try {
@@ -116,6 +209,9 @@ const loadCells = async (page: number = 1) => {
     })
 
     cellPagination.value = response.pagination
+    
+    // Verificar status das semanas do mês
+    await verificarStatusSemanas()
   } catch (error) {
     console.error('Erro ao carregar células:', error)
     showFeedback('Erro ao carregar células', 'error')
@@ -258,7 +354,9 @@ const handleCellPageChange = (page: number) => {
 }
 
 // Carregar dados ao montar
-loadCells()
+onMounted(() => {
+  loadCells()
+})
 </script>
 
 <template>
@@ -370,8 +468,17 @@ loadCells()
           
           <div class="flex items-start justify-between mb-2 pr-10">
             <div class="flex-1 min-w-0">
-              <div class="flex items-center mb-0.5">
+              <div class="flex items-center mb-0.5 gap-1.5">
                 <p class="text-sm font-semibold text-gray-900 group-active:text-primary-700 transition-colors truncate">{{ cell.lider?.nome || 'Sem líder' }}</p>
+                <div class="flex items-center gap-1 ml-1">
+                  <span
+                    v-for="(enviado, index) in getStatusSemanas(cell.id).slice(0, semanasPassadas)"
+                    :key="index"
+                    :class="enviado ? 'bg-green-500' : 'bg-red-500'"
+                    class="w-2 h-2 rounded-full flex-shrink-0"
+                    :title="`Semana ${index + 1}: ${enviado ? 'Relatório enviado' : 'Relatório não enviado'}`"
+                  ></span>
+                </div>
               </div>
               <p class="text-xs font-medium text-gray-700 truncate">{{ cell.nome }}</p>
             </div>
@@ -455,10 +562,21 @@ loadCells()
               class="cursor-pointer transition-all duration-200 hover:bg-blue-50 hover:shadow-sm hover:border-l-4 hover:border-l-primary-500 group"
             >
               <td class="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900 group-hover:text-primary-700 transition-colors">
-                {{ cell.lider?.nome || 'Sem líder' }}
-                <span class="ml-2 text-primary-500 opacity-0 group-hover:opacity-100 transition-opacity inline-block">
-                  →
-                </span>
+                <div class="flex items-center gap-2">
+                  <span>{{ cell.lider?.nome || 'Sem líder' }}</span>
+                  <div class="flex items-center gap-1">
+                    <span
+                      v-for="(enviado, index) in getStatusSemanas(cell.id).slice(0, semanasPassadas)"
+                      :key="index"
+                      :class="enviado ? 'bg-green-500' : 'bg-red-500'"
+                      class="w-2 h-2 rounded-full"
+                      :title="`Semana ${index + 1}: ${enviado ? 'Relatório enviado' : 'Relatório não enviado'}`"
+                    ></span>
+                  </div>
+                  <span class="ml-2 text-primary-500 opacity-0 group-hover:opacity-100 transition-opacity inline-block">
+                    →
+                  </span>
+                </div>
               </td>
               <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500 group-hover:text-gray-700 transition-colors">
                 {{ cell.nome }}

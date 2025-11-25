@@ -82,43 +82,63 @@ async function carregarEstatisticas() {
 
       const totalMembros = memberStore.getActiveMembers.length
 
-      // Calcular estatísticas de culto usando dados já retornados
-      const relatoriosCulto = relatoriosEnviados.filter(r => r.evento === 1)
+      // Calcular estatísticas de culto - buscar presenças de culto (tipo === 1) em todos os relatórios
       let presentesCulto = 0
-      let eventosCulto = relatoriosCulto.length
+      let eventosCulto = 0
+      
+      // Contar quantos relatórios têm presenças de culto
+      const relatoriosComCulto = new Set<number>()
 
-      for (const rel of relatoriosCulto) {
+      for (const rel of relatoriosEnviados) {
         // Usar dados já disponíveis no relatório ou buscar detalhes se necessário
         const presentes = (rel as any).presentesCulto
         
         if (presentes === undefined) {
           // Se não tiver dados agregados, buscar detalhes
           const detalhes = await relatorioService.obterRelatorio(rel.id)
-          const presentesDetalhes = detalhes.presencas?.filter(p => p.status === 1).length || 0
-          presentesCulto += presentesDetalhes
+          const presentesDetalhes = detalhes.presencas?.filter(p => p.status === 1 && p.tipo === 1).length || 0
+          if (presentesDetalhes > 0) {
+            relatoriosComCulto.add(rel.id)
+            presentesCulto += presentesDetalhes
+          }
         } else {
-          presentesCulto += presentes
+          if (presentes > 0) {
+            relatoriosComCulto.add(rel.id)
+            presentesCulto += presentes
+          }
         }
       }
+      
+      eventosCulto = relatoriosComCulto.size
 
-      // Calcular estatísticas de célula usando dados já retornados
-      const relatoriosCelula = relatoriosEnviados.filter(r => r.evento === 0)
+      // Calcular estatísticas de célula - buscar presenças de célula (tipo === 0) em todos os relatórios
       let presentesCelula = 0
-      let eventosCelula = relatoriosCelula.length
+      let eventosCelula = 0
+      
+      // Contar quantos relatórios têm presenças de célula
+      const relatoriosComCelula = new Set<number>()
 
-      for (const rel of relatoriosCelula) {
+      for (const rel of relatoriosEnviados) {
         // Usar dados já disponíveis no relatório ou buscar detalhes se necessário
         const presentes = (rel as any).presentesCelula
         
         if (presentes === undefined) {
           // Se não tiver dados agregados, buscar detalhes
           const detalhes = await relatorioService.obterRelatorio(rel.id)
-          const presentesDetalhes = detalhes.presencas?.filter(p => p.status === 1).length || 0
-          presentesCelula += presentesDetalhes
+          const presentesDetalhes = detalhes.presencas?.filter(p => p.status === 1 && p.tipo === 0).length || 0
+          if (presentesDetalhes > 0) {
+            relatoriosComCelula.add(rel.id)
+            presentesCelula += presentesDetalhes
+          }
         } else {
-          presentesCelula += presentes
+          if (presentes > 0) {
+            relatoriosComCelula.add(rel.id)
+            presentesCelula += presentes
+          }
         }
       }
+      
+      eventosCelula = relatoriosComCelula.size
 
       // Total = número de eventos × número de membros
       const totalCulto = eventosCulto * totalMembros
@@ -183,32 +203,51 @@ async function carregarEstatisticasMembros() {
       const detalhes = await relatorioService.obterRelatorio(relatorio.id)
       
       const presencas = detalhes.presencas || []
-      const tipoEvento = relatorio.evento === 1 ? 'culto' : 'celula'
 
-      // Preparar mapa de presença por membro
-      const presencaPorMembro = new Map<string, boolean>()
-      presencas.forEach((presenca: any) => {
-        const membroId = presenca.membroId?.toString() || String(presenca.membroId)
-        presencaPorMembro.set(membroId, presenca.status === 1)
-      })
+      // Separar presenças por tipo (célula e culto)
+      const presencasCelula = presencas.filter((p: any) => p.tipo === 0)
+      const presencasCulto = presencas.filter((p: any) => p.tipo === 1)
 
       // Usar membros retornados pelo relatório ou fallback para membros ativos
       const membrosDoRelatorio = (detalhes.membros || memberStore.getActiveMembers).map((m: any) =>
         m.id?.toString() || String(m.id)
       )
 
-      membrosDoRelatorio.forEach((membroId: string) => {
-        const stats = membrosStats.get(membroId)
-        if (!stats) return
+      // Processar presenças de célula
+      if (presencasCelula.length > 0) {
+        const presencaPorMembroCelula = new Map<string, boolean>()
+        presencasCelula.forEach((presenca: any) => {
+          const membroId = presenca.membroId?.toString() || String(presenca.membroId)
+          presencaPorMembroCelula.set(membroId, presenca.status === 1)
+        })
 
-        // Incrementa total de eventos para este membro
-        stats[tipoEvento].total += 1
+        membrosDoRelatorio.forEach((membroId: string) => {
+          const stats = membrosStats.get(membroId)
+          if (!stats) return
+          stats.celula.total += 1
+          if (presencaPorMembroCelula.get(membroId)) {
+            stats.celula.presentes += 1
+          }
+        })
+      }
 
-        // Incrementa presença se estiver marcado como presente
-        if (presencaPorMembro.get(membroId)) {
-          stats[tipoEvento].presentes += 1
-        }
-      })
+      // Processar presenças de culto
+      if (presencasCulto.length > 0) {
+        const presencaPorMembroCulto = new Map<string, boolean>()
+        presencasCulto.forEach((presenca: any) => {
+          const membroId = presenca.membroId?.toString() || String(presenca.membroId)
+          presencaPorMembroCulto.set(membroId, presenca.status === 1)
+        })
+
+        membrosDoRelatorio.forEach((membroId: string) => {
+          const stats = membrosStats.get(membroId)
+          if (!stats) return
+          stats.culto.total += 1
+          if (presencaPorMembroCulto.get(membroId)) {
+            stats.culto.presentes += 1
+          }
+        })
+      }
     }
 
     // Calcular percentuais e converter para array
