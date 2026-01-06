@@ -200,6 +200,9 @@ model UsuarioConfig {
   notificacaoAniversarioAtiva Boolean @default(true) @map("notificacao_aniversario_ativa")
   diasAntecedencia1       Int       @default(3) @map("dias_antecedencia_1")
   diasAntecedencia2       Int       @default(0) @map("dias_antecedencia_2")
+  notificacaoAniversarioLiderAtiva Boolean @default(false) @map("notificacao_aniversario_lider_ativa")
+  diasAntecedenciaLider1  Int       @default(3) @map("dias_antecedencia_lider_1")
+  diasAntecedenciaLider2  Int       @default(0) @map("dias_antecedencia_lider_2")
   createdAt               DateTime  @default(now()) @map("created_at")
   updatedAt               DateTime  @updatedAt @map("updated_at")
 

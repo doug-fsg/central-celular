@@ -43,7 +43,7 @@ export const usuarioConfigController = {
       }
 
       // Validar dados de entrada
-      const { notificacaoAniversarioAtiva, diasAntecedencia1, diasAntecedencia2 } = req.body;
+      const { notificacaoAniversarioAtiva, diasAntecedencia1, diasAntecedencia2, notificacaoAniversarioLiderAtiva, diasAntecedenciaLider1, diasAntecedenciaLider2 } = req.body;
 
       // Validar os dias de antecedência
       if (diasAntecedencia1 !== undefined && (isNaN(diasAntecedencia1) || diasAntecedencia1 < 0 || diasAntecedencia1 > 30)) {
@@ -54,10 +54,21 @@ export const usuarioConfigController = {
         return res.status(400).json({ error: 'Dias de antecedência 2 deve ser um número entre 0 e 30' });
       }
 
+      if (diasAntecedenciaLider1 !== undefined && (isNaN(diasAntecedenciaLider1) || diasAntecedenciaLider1 < 0 || diasAntecedenciaLider1 > 30)) {
+        return res.status(400).json({ error: 'Dias de antecedência líder 1 deve ser um número entre 0 e 30' });
+      }
+
+      if (diasAntecedenciaLider2 !== undefined && (isNaN(diasAntecedenciaLider2) || diasAntecedenciaLider2 < 0 || diasAntecedenciaLider2 > 30)) {
+        return res.status(400).json({ error: 'Dias de antecedência líder 2 deve ser um número entre 0 e 30' });
+      }
+
       const config = await usuarioConfigService.updateUsuarioConfig(usuarioId, {
         notificacaoAniversarioAtiva,
         diasAntecedencia1,
-        diasAntecedencia2
+        diasAntecedencia2,
+        notificacaoAniversarioLiderAtiva,
+        diasAntecedenciaLider1,
+        diasAntecedenciaLider2
       });
 
       return res.status(200).json(config);

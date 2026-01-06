@@ -193,12 +193,13 @@ export const adminService = {
     }
   },
 
-  // Listar células com paginação (opcionalmente filtrando por líder)
-  async listarCelulas(page: number = 1, limit: number = 10, liderId?: number) {
-    console.log('[adminService] Iniciando busca de células:', { page, limit });
+  // Listar células com paginação (opcionalmente filtrando por líder e dia da semana)
+  async listarCelulas(page: number = 1, limit: number = 10, liderId?: number, diaSemana?: string) {
+    console.log('[adminService] Iniciando busca de células:', { page, limit, liderId, diaSemana });
     try {
       const params = new URLSearchParams({ page: String(page), limit: String(limit) })
       if (liderId) params.append('lider', String(liderId))
+      if (diaSemana) params.append('diaSemana', diaSemana)
       const response = await api.get(`/admin/celulas?${params.toString()}`);
       console.log('[adminService] Resposta da API:', response);
       

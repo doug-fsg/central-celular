@@ -1,10 +1,10 @@
-# Central Celular
+# Aprisco
 
-Sistema para gestão de células de igrejas, com controle de líderes, membros, relatórios e estatísticas de presença.
+Central celular - Sistema para gestão de células de igrejas, com controle de líderes, membros, relatórios e estatísticas de presença.
 
 ## Sobre o Sistema
 
-O Central Celular é um sistema web moderno, feito especialmente para igrejas que trabalham com células. Foi pensado para ser usado principalmente pelo celular, com uma interface simples, intuitiva e adaptada para telas menores.
+O Aprisco é um sistema web moderno, feito especialmente para igrejas que trabalham com células. Foi pensado para ser usado principalmente pelo celular, com uma interface simples, intuitiva e adaptada para telas menores.
 
 ### Funcionalidades
 

@@ -61,7 +61,7 @@ const membroSchema = z.object({
 // Listar células (com filtros e paginação)
 export const listarCelulas = async (req: Request, res: Response) => {
   try {
-    const { page = '1', limit = '10', lider, ativo } = req.query;
+    const { page = '1', limit = '10', lider, ativo, diaSemana } = req.query;
     const skip = (Number(page) - 1) * Number(limit);
     
     // Obter o accountId do usuário autenticado
@@ -82,6 +82,10 @@ export const listarCelulas = async (req: Request, res: Response) => {
     
     if (ativo !== undefined) {
       where.ativo = ativo === 'true';
+    }
+    
+    if (diaSemana) {
+      where.diaSemana = diaSemana as string;
     }
 
     // Buscar total de registros com filtros

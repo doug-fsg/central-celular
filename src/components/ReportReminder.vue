@@ -2,6 +2,7 @@
 import { ref, computed, onMounted, watch } from 'vue'
 import { useMemberStore } from '../stores/memberStore'
 import { useReportStore } from '../stores/reportStore'
+import { useUserStore } from '../stores/userStore'
 import { format, differenceInDays } from 'date-fns'
 import { ptBR } from 'date-fns/locale'
 import AppIcon from '../components/AppIcon.vue'
@@ -10,6 +11,7 @@ import relatorioService, { STATUS_RELATORIO } from '../services/relatorioService
 
 const memberStore = useMemberStore()
 const reportStore = useReportStore()
+const userStore = useUserStore()
 const router = useRouter()
 
 const showReminder = ref(true)
@@ -143,7 +145,7 @@ function goToattendance() {
 
 <template>
   <div 
-    v-if="showReminder"
+    v-if="showReminder && userStore.isUserActive"
     class="rounded-lg border p-3 mb-5 flex items-center justify-between"
     :class="reminderClasses"
   >

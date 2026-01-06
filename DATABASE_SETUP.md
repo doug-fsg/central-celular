@@ -1,6 +1,6 @@
 # Configuração do Banco de Dados
 
-Este documento explica como configurar o banco de dados para o sistema Central Celular.
+Este documento explica como configurar o banco de dados para o sistema Aprisco.
 
 ## Pré-requisitos
 

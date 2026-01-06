@@ -198,12 +198,12 @@ router.beforeEach(async (to: RouteLocationNormalized, from: RouteLocationNormali
   }
 
   // Verifica se a rota requer privilégios de líder
-  if (to.meta.requiresLeader && userStore.isAdmin) {
+  if (to.meta.requiresLeader && userStore.isAdmin && !(userStore.canToggleView && userStore.currentView === 'cell')) {
     return next({ name: 'admin-dashboard' })
   }
   
-  // Verificar onboarding para líderes
-  if (to.meta.requiresOnboarding && userStore.isLeader && to.name !== 'onboarding') {
+  // Verificar onboarding para líderes (incluindo admins/pastores na visão célula)
+  if (to.meta.requiresOnboarding && (userStore.isLeader || (userStore.canToggleView && userStore.currentView === 'cell')) && to.name !== 'onboarding') {
     try {
       const liderId = userStore.user?.id
       if (!liderId) {
@@ -241,7 +241,7 @@ router.beforeEach(async (to: RouteLocationNormalized, from: RouteLocationNormali
   
   // Verifica se a rota é só para visitantes (login, registro)
   if (to.meta.requiresGuest && userStore.isLoggedIn) {
-    if (userStore.isAdmin) {
+    if (userStore.isAdmin && !(userStore.canToggleView && userStore.currentView === 'cell')) {
       return next({ name: 'admin-dashboard' })
     }
     return next({ name: 'dashboard' })

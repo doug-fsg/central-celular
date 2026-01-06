@@ -38,6 +38,16 @@ const badgeIcon = computed(() => {
 
 // Computed para controlar quais links mostrar
 const navLinks = computed(() => {
+  // Se pode alternar visão e está na visão célula, mostrar links de líder
+  if (userStore.canToggleView && userStore.currentView === 'cell') {
+    return [
+      { name: 'dashboard', label: 'Início' },
+      { name: 'minha-celula', label: 'Minha Célula' },
+      { name: 'attendance', label: 'Frequência' },
+      { name: 'reports', label: 'Relatórios' }
+    ]
+  }
+  
   if (userStore.isAdmin) {
     return [
       { name: 'admin-dashboard', label: 'Dashboard' },
@@ -77,6 +87,17 @@ function navigateToProfile() {
 function toggleDropdown() {
   showDropdown.value = !showDropdown.value
 }
+
+function toggleView() {
+  if (!userStore.canToggleView) return
+  userStore.toggleView()
+  // Navegar para a rota apropriada após alternar
+  if (userStore.currentView === 'cell') {
+    router.push({ name: 'dashboard' })
+  } else {
+    router.push({ name: 'admin-dashboard' })
+  }
+}
 </script>
 
 <template>
@@ -105,7 +126,24 @@ function toggleDropdown() {
           </div>
         </div>
         
-        <div class="ml-6 flex items-center">
+        <div class="ml-6 flex items-center gap-3">
+          <!-- Botão de alternância de visão -->
+          <button
+            v-if="userStore.canToggleView"
+            @click="toggleView"
+            type="button"
+            class="inline-flex items-center px-3 py-2 border-2 border-primary-500 shadow-sm text-sm font-medium rounded-md text-primary-700 bg-white hover:bg-primary-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500 transition-colors"
+            :title="userStore.currentView === 'admin' ? 'Alternar para visão de célula' : 'Alternar para visão admin'"
+          >
+            <svg v-if="userStore.currentView === 'admin'" class="h-5 w-5 mr-2 text-primary-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4" />
+            </svg>
+            <svg v-else class="h-5 w-5 mr-2 text-primary-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
+            </svg>
+            <span class="font-semibold">{{ userStore.currentView === 'admin' ? 'Célula' : 'Admin' }}</span>
+          </button>
+          
           <!-- Menu perfil -->
           <div class="ml-3 relative" ref="dropdownRef">
             <div>

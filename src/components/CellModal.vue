@@ -234,7 +234,7 @@ const availableOnlyLeaders = computed(() => {
                 </div>
               </div>
               <p v-if="errors.lider_id" class="mt-1 text-sm text-red-600">{{ errors.lider_id }}</p>
-              <p class="mt-1 text-xs text-gray-500">Somente líderes e supervisores disponíveis</p>
+              <p class="mt-1 text-xs text-gray-500">Líderes, supervisores, administradores e pastores disponíveis</p>
             </div>
 
             <!-- Supervisor -->

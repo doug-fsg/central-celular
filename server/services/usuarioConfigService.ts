@@ -28,6 +28,9 @@ export const usuarioConfigService = {
     notificacaoAniversarioAtiva?: boolean;
     diasAntecedencia1?: number;
     diasAntecedencia2?: number;
+    notificacaoAniversarioLiderAtiva?: boolean;
+    diasAntecedenciaLider1?: number;
+    diasAntecedenciaLider2?: number;
   }) {
     // Verificar se já existe configuração
     const configExists = await prisma.usuarioConfig.findUnique({

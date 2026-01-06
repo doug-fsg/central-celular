@@ -6,6 +6,9 @@ export interface UsuarioConfig {
   notificacaoAniversarioAtiva: boolean;
   diasAntecedencia1: number;
   diasAntecedencia2: number;
+  notificacaoAniversarioLiderAtiva: boolean;
+  diasAntecedenciaLider1: number;
+  diasAntecedenciaLider2: number;
   createdAt: string;
   updatedAt: string;
 }
@@ -22,6 +25,9 @@ export const usuarioConfigService = {
     notificacaoAniversarioAtiva?: boolean;
     diasAntecedencia1?: number;
     diasAntecedencia2?: number;
+    notificacaoAniversarioLiderAtiva?: boolean;
+    diasAntecedenciaLider1?: number;
+    diasAntecedenciaLider2?: number;
   }): Promise<UsuarioConfig> {
     const response = await api.put('/usuario/config', config);
     return response.data;

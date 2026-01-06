@@ -1,7 +1,8 @@
 import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
 import { useMemberStore } from './memberStore'
-import api, { setTokenGetter } from '../services/api';
+import api, { setTokenGetter } from '../services/api'
+import celulaService from '../services/celulaService'
 
 export interface UserProfile {
   id: number;
@@ -40,6 +41,60 @@ export const useUserStore = defineStore('user', () => {
   const accountId = computed(() => user.value?.accountId);
   const celulaId = computed(() => user.value?.celulaId);
   const isSuperAdmin = computed(() => user.value?.isSuperAdmin);
+  const isUserActive = computed(() => user.value?.ativo !== false);
+
+  // Estado de visão (admin ou cell)
+  const currentView = ref<'admin' | 'cell'>(
+    (localStorage.getItem('currentView') as 'admin' | 'cell') || 'admin'
+  );
+
+  // Computed para verificar se usuário tem célula
+  const hasCell = computed(() => {
+    return !!user.value?.celulaId || userCells.value.length > 0;
+  });
+
+  // Computed para verificar se pode alternar visão
+  const canToggleView = computed(() => {
+    return (user.value?.cargo === 'ADMINISTRADOR' || user.value?.cargo === 'PASTOR' || user.value?.isSuperAdmin) && hasCell.value;
+  });
+
+  // Estado para células do usuário
+  const userCells = ref<any[]>([]);
+
+  // Função para buscar células do usuário
+  async function checkUserCell() {
+    if (!user.value?.id) return;
+    
+    try {
+      const response = await celulaService.listarCelulas({ lider: user.value.id });
+      if (response?.celulas && response.celulas.length > 0) {
+        userCells.value = response.celulas;
+        // Atualizar celulaId no perfil se não estiver definido
+        if (!user.value.celulaId && response.celulas[0]) {
+          updateProfile({ celulaId: response.celulas[0].id });
+        }
+      } else {
+        userCells.value = [];
+      }
+    } catch (error) {
+      console.error('[UserStore] Erro ao buscar células do usuário:', error);
+      userCells.value = [];
+    }
+  }
+
+  // Função para alternar visão
+  function toggleView() {
+    if (!canToggleView.value) return;
+    currentView.value = currentView.value === 'admin' ? 'cell' : 'admin';
+    localStorage.setItem('currentView', currentView.value);
+  }
+
+  // Função para definir visão
+  function setView(view: 'admin' | 'cell') {
+    if (!canToggleView.value) return;
+    currentView.value = view;
+    localStorage.setItem('currentView', currentView.value);
+  }
 
   // Ações
   function setUser(userData: UserProfile | null) {
@@ -96,6 +151,11 @@ export const useUserStore = defineStore('user', () => {
       const memberStore = useMemberStore();
       await memberStore.carregarMembros();
       
+      // Se for admin/pastor, buscar células do usuário
+      if (response.usuario.cargo === 'ADMINISTRADOR' || response.usuario.cargo === 'PASTOR' || response.usuario.isSuperAdmin) {
+        await checkUserCell();
+      }
+      
       console.log('[UserStore] Login concluído com sucesso');
       console.log('[UserStore] Cargo do usuário:', response.usuario.cargo);
       console.log('[UserStore] É líder?:', response.usuario.cargo?.toUpperCase() === 'LIDER');
@@ -125,6 +185,11 @@ export const useUserStore = defineStore('user', () => {
     const memberStore = useMemberStore();
     await memberStore.carregarMembros();
 
+    // Se for admin/pastor, buscar células do usuário
+    if (userProfile.cargo === 'ADMINISTRADOR' || userProfile.cargo === 'PASTOR' || userProfile.isSuperAdmin) {
+      await checkUserCell();
+    }
+
     console.log('Login com SSO concluído com sucesso.');
   }
 
@@ -133,7 +198,7 @@ export const useUserStore = defineStore('user', () => {
     setToken(null);
   }
 
-  function loadUserFromStorage() {
+  async function loadUserFromStorage() {
     const storedUser = localStorage.getItem('usuario');
     const storedToken = localStorage.getItem('token');
     
@@ -146,8 +211,14 @@ export const useUserStore = defineStore('user', () => {
         return;
       }
       
-      setUser(JSON.parse(storedUser));
+      const userData = JSON.parse(storedUser);
+      setUser(userData);
       setToken(storedToken);
+      
+      // Se for admin/pastor, buscar células do usuário
+      if (userData.cargo === 'ADMINISTRADOR' || userData.cargo === 'PASTOR' || userData.isSuperAdmin) {
+        await checkUserCell();
+      }
     }
   }
   
@@ -179,12 +250,20 @@ export const useUserStore = defineStore('user', () => {
     accountId,
     celulaId,
     isSuperAdmin,
+    isUserActive,
+    currentView,
+    hasCell,
+    canToggleView,
+    userCells,
     login,
     loginWithSSO,
     logout,
     loadUserFromStorage,
     updateProfile,
     getToken,
-    getUsuario
+    getUsuario,
+    checkUserCell,
+    toggleView,
+    setView
   };
 }); 

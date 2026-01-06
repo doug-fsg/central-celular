@@ -31,7 +31,8 @@ const availableLeaders = ref<Usuario[]>([])
 
 // Estado para filtros de células
 const cellFilters = ref({
-  searchTerm: ''
+  searchTerm: '',
+  diaSemana: ''
 })
 
 // Status de relatórios por semana do mês (Map<celulaId, boolean[]>)
@@ -164,10 +165,10 @@ const showFeedback = (message: string, type: 'success' | 'error' = 'success') =>
 // Carregar líderes disponíveis
 const loadAvailableLeaders = async () => {
   try {
-    const response = await adminService.listarUsuarios(1, 100, ['LIDER', 'SUPERVISOR'])
+    const response = await adminService.listarUsuarios(1, 100, ['LIDER', 'SUPERVISOR', 'ADMINISTRADOR', 'PASTOR'])
     availableLeaders.value = response.usuarios.filter(u => 
       u.status === 'ativo' && 
-      (u.cargo === 'LIDER' || u.cargo === 'SUPERVISOR')
+      (u.cargo === 'LIDER' || u.cargo === 'SUPERVISOR' || u.cargo === 'ADMINISTRADOR' || u.cargo === 'PASTOR')
     )
   } catch (error) {
     console.error('Erro ao carregar líderes:', error)
@@ -185,7 +186,12 @@ const loadCells = async (page: number = 1) => {
       await loadAvailableLeaders()
     }
     
-    const response = await adminService.listarCelulas(page)
+    const response = await adminService.listarCelulas(
+      page, 
+      10, 
+      undefined, 
+      cellFilters.value.diaSemana || undefined
+    )
     
     if (!response || typeof response !== 'object') {
       showFeedback('Resposta inválida do servidor', 'error')
@@ -381,39 +387,69 @@ onMounted(() => {
 
     <!-- Filtros -->
     <div class="bg-white shadow-sm rounded-xl border border-gray-100 p-4 sm:p-5 mb-4">
-      <!-- Busca -->
-      <div class="relative">
-        <div class="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none">
-          <svg class="h-5 w-5 text-gray-400" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor">
-            <path fill-rule="evenodd" d="M8 4a4 4 0 100 8 4 4 0 000-8zM2 8a6 6 0 1110.89 3.476l4.817 4.817a1 1 0 01-1.414 1.414l-4.816-4.816A6 6 0 012 8z" clip-rule="evenodd" />
-          </svg>
+      <div class="flex flex-row gap-4">
+        <!-- Busca -->
+        <div class="relative flex-1">
+          <div class="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none">
+            <svg class="h-5 w-5 text-gray-400" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor">
+              <path fill-rule="evenodd" d="M8 4a4 4 0 100 8 4 4 0 000-8zM2 8a6 6 0 1110.89 3.476l4.817 4.817a1 1 0 01-1.414 1.414l-4.816-4.816A6 6 0 012 8z" clip-rule="evenodd" />
+            </svg>
+          </div>
+          <input
+            type="text"
+            id="search"
+            v-model="cellFilters.searchTerm"
+            class="block w-full pl-12 pr-11 py-3 text-sm sm:text-base border border-gray-200 rounded-xl bg-gray-50 focus:bg-white focus:ring-2 focus:ring-primary-500 focus:border-primary-500 transition-all duration-200 placeholder:text-gray-400 text-gray-900"
+            placeholder="Busque por lider ou endereço..."
+          >
+          <button
+            v-if="cellFilters.searchTerm"
+            @click="cellFilters.searchTerm = ''"
+            type="button"
+            class="absolute inset-y-0 right-0 pr-4 flex items-center text-gray-400 hover:text-gray-600 active:text-gray-700 transition-colors touch-manipulation"
+            style="-webkit-tap-highlight-color: rgba(0, 0, 0, 0.1);"
+            aria-label="Limpar busca"
+          >
+            <svg class="h-5 w-5" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor">
+              <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clip-rule="evenodd" />
+            </svg>
+          </button>
         </div>
-        <input
-          type="text"
-          id="search"
-          v-model="cellFilters.searchTerm"
-          class="block w-full pl-12 pr-11 py-3 text-sm sm:text-base border border-gray-200 rounded-xl bg-gray-50 focus:bg-white focus:ring-2 focus:ring-primary-500 focus:border-primary-500 transition-all duration-200 placeholder:text-gray-400 text-gray-900"
-          placeholder="Busque por lider ou endereço..."
-        >
-        <button
-          v-if="cellFilters.searchTerm"
-          @click="cellFilters.searchTerm = ''"
-          type="button"
-          class="absolute inset-y-0 right-0 pr-4 flex items-center text-gray-400 hover:text-gray-600 active:text-gray-700 transition-colors touch-manipulation"
-          style="-webkit-tap-highlight-color: rgba(0, 0, 0, 0.1);"
-          aria-label="Limpar busca"
-        >
-          <svg class="h-5 w-5" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor">
-            <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clip-rule="evenodd" />
-          </svg>
-        </button>
+        
+        <!-- Filtro por dia da semana -->
+        <div class="relative sm:w-64 w-40">
+          <select
+            id="diaSemana"
+            v-model="cellFilters.diaSemana"
+            @change="loadCells(1)"
+            class="block w-full pl-3 pr-10 py-3 text-sm sm:text-base border border-gray-200 rounded-xl bg-gray-50 focus:bg-white focus:ring-2 focus:ring-primary-500 focus:border-primary-500 transition-all duration-200 appearance-none text-gray-900"
+          >
+            <option value="">Todos os dias</option>
+            <option value="Segunda-feira">Segunda-feira</option>
+            <option value="Terça-feira">Terça-feira</option>
+            <option value="Quarta-feira">Quarta-feira</option>
+            <option value="Quinta-feira">Quinta-feira</option>
+            <option value="Sexta-feira">Sexta-feira</option>
+            <option value="Sábado">Sábado</option>
+            <option value="Domingo">Domingo</option>
+          </select>
+          <div class="absolute inset-y-0 right-0 flex items-center px-3 pointer-events-none">
+            <svg class="h-5 w-5 text-gray-400" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor">
+              <path fill-rule="evenodd" d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z" clip-rule="evenodd" />
+            </svg>
+          </div>
+        </div>
       </div>
+      
       <!-- Contador de resultados -->
-      <div v-if="cellFilters.searchTerm && filteredCells.length > 0" class="mt-3 text-xs sm:text-sm text-gray-600 flex items-center gap-1.5">
+      <div v-if="(cellFilters.searchTerm || cellFilters.diaSemana) && filteredCells.length > 0" class="mt-3 text-xs sm:text-sm text-gray-600 flex items-center gap-1.5">
         <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
           <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
         </svg>
-        <span>{{ filteredCells.length }} {{ filteredCells.length === 1 ? 'célula encontrada' : 'células encontradas' }}</span>
+        <span>
+          {{ filteredCells.length }} {{ filteredCells.length === 1 ? 'célula encontrada' : 'células encontradas' }}
+          <span v-if="cellFilters.diaSemana"> em {{ cellFilters.diaSemana }}</span>
+        </span>
       </div>
     </div>
 

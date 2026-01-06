@@ -1,4 +1,4 @@
-# Central Celular - Instruções Docker
+# Aprisco - Instruções Docker
 
 ## Comandos para desenvolvimento local
 

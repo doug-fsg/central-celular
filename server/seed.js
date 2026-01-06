@@ -22,7 +22,7 @@ async function main() {
       account = await prisma.account.create({
         data: {
           id: 1,
-          nome: 'Central Celular',
+          nome: 'Aprisco',
           ativo: true
         }
       });

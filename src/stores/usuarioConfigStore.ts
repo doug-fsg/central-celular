@@ -28,6 +28,9 @@ export const useUsuarioConfigStore = defineStore('usuarioConfig', () => {
     notificacaoAniversarioAtiva?: boolean;
     diasAntecedencia1?: number;
     diasAntecedencia2?: number;
+    notificacaoAniversarioLiderAtiva?: boolean;
+    diasAntecedenciaLider1?: number;
+    diasAntecedenciaLider2?: number;
   }) {
     loading.value = true;
     error.value = null;
