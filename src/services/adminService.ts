@@ -46,6 +46,8 @@ export interface Usuario {
   cargo: string;
   ativo: boolean;
   status: string;
+  /** Indica se já definiu senha (login). Ausente em respostas antigas em cache. */
+  possuiSenha?: boolean;
 }
 
 export interface Celula {
@@ -140,8 +142,10 @@ export const adminService = {
     }
   },
 
-  // Criar novo usuário
-  async criarUsuario(dados: Omit<Usuario, 'id' | 'status'> & { enviarConvite?: boolean }): Promise<Usuario> {
+  // Criar novo usuário (conviteEnviado vem do backend quando enviarConvite = true)
+  async criarUsuario(
+    dados: Omit<Usuario, 'id' | 'status'> & { enviarConvite?: boolean }
+  ): Promise<Usuario & { conviteEnviado?: boolean }> {
     try {
       // Garantir que o whatsapp tenha apenas números
       const { whatsapp, nome, cargo, enviarConvite } = dados
@@ -163,6 +167,11 @@ export const adminService = {
     }
   },
 
+  /** Reenvia link de primeiro acesso (WhatsApp). Só para usuário ativo sem senha. */
+  async reenviarConviteUsuario(userId: number): Promise<{ conviteEnviado: boolean }> {
+    return api.post(`/admin/usuarios/${userId}/reenviar-convite`, {});
+  },
+
   // Atualizar usuário
   async atualizarUsuario(id: number, dados: Partial<Omit<Usuario, 'id'>>): Promise<Usuario> {
     try {
@@ -179,6 +188,24 @@ export const adminService = {
       return await api.patch(`/admin/usuarios/${userId}/status`, { ativo });
     } catch (error) {
       console.error('Erro ao alterar status do usuário:', error);
+      throw error;
+    }
+  },
+
+  async alterarStatusUsuariosLote(
+    usuarioIds: number[],
+    ativo: boolean,
+  ): Promise<{
+    success: boolean;
+    total: number;
+    alterados: number;
+    falhas: number;
+    detalhes: { usuarioId: number; ok: boolean; erro?: string }[];
+  }> {
+    try {
+      return await api.patch('/admin/usuarios/lote/status', { usuarioIds, ativo });
+    } catch (error) {
+      console.error('Erro ao alterar status em lote:', error);
       throw error;
     }
   },

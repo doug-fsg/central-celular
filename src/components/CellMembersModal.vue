@@ -140,7 +140,7 @@ watch(() => props.cellId, () => { if (props.isOpen) loadMembers() })
             <div class="text-xs text-green-700">Ativos</div>
             <div class="text-lg sm:text-xl font-semibold text-green-900">{{ ativos }}</div>
           </div>
-          <div class="rounded-lg bg-purple-50 p-2 sm:p-3 text-center">
+          <div class="rounded-lg bg-brand-50 dark:bg-brand-950/40 p-2 sm:p-3 text-center">
             <div class="text-xs text-purple-700">Consol.</div>
             <div class="text-lg sm:text-xl font-semibold text-purple-900">{{ consolidadores }}</div>
           </div>

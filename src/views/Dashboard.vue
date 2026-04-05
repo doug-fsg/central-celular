@@ -3,6 +3,7 @@ import { computed, ref, onMounted } from 'vue'
 import StatsOverview from '../components/StatsOverview.vue'
 import ReportReminder from '../components/ReportReminder.vue'
 import LeadershipBadge from '../components/LeadershipBadge.vue'
+import SkeletonCard from '../components/SkeletonCard.vue'
 import { useMemberStore } from '../stores/memberStore'
 import { useAttendanceStore } from '../stores/attendanceStore'
 import { useLeaderStore } from '../stores/leaderStore'
@@ -22,6 +23,7 @@ const consolidators = computed(() => memberStore.getConsolidators)
 const coLeaders = computed(() => memberStore.getCoLeaders)
 const showLateReportsAlert = ref(true)
 const activeTab = ref('consolidators')
+const isLoading = ref(true)
 
 // Verificar se o relatório do mês atual está pendente e fora do prazo
 const hasLateReports = computed(() => {
@@ -61,13 +63,28 @@ function setActiveTab(tab) {
 // Carregar dados quando o componente for montado
 onMounted(async () => {
   console.log('[Dashboard] Iniciando carregamento de dados')
-  await memberStore.carregarMembros()
+  try {
+    await memberStore.carregarMembros()
+  } finally {
+    isLoading.value = false
+  }
 })
 </script>
 
 <template>
   <div class="min-h-screen bg-neutral-50">
     <main class="container-layout">
+
+      <!-- Skeleton enquanto dados carregam -->
+      <template v-if="isLoading">
+        <div class="space-y-4 mb-6">
+          <SkeletonCard :lines="2" />
+          <SkeletonCard :lines="3" />
+          <SkeletonCard :lines="4" :show-avatar="true" />
+        </div>
+      </template>
+
+      <template v-else>
       <!-- Cabeçalho mais discreto -->
       <div class="flex items-center justify-end mb-4">
         <!-- <LeadershipBadge /> -->
@@ -185,6 +202,7 @@ onMounted(async () => {
           </div>
         </div>
       </div>
+      </template>
     </main>
   </div>
 </template>

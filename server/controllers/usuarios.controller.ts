@@ -18,6 +18,47 @@ function normalizeBrazilPhone(raw: string): string {
   return digits;
 }
 
+type ConvitePrimeiroAcessoKind = 'cadastro' | 'reenvio';
+
+/** Gera token, monta mensagem e envia link /first-access pelo WhatsApp. */
+async function enviarConvitePrimeiroAcessoWhatsApp(params: {
+  nome: string;
+  whatsappNormalizado: string;
+  accountId: number;
+  kind?: ConvitePrimeiroAcessoKind;
+}): Promise<boolean> {
+  const kind = params.kind ?? 'cadastro';
+  const { code: token } = await otpService.createOtp({
+    whatsapp: params.whatsappNormalizado,
+    accountId: params.accountId,
+    isInvite: true
+  });
+
+  const FRONTEND_URL = process.env.FRONTEND_URL || 'https://central-celular.vercel.app';
+  const inviteLink = `${FRONTEND_URL}/first-access/${token}`;
+  const primeiroNome = params.nome.split(' ')[0];
+
+  const mensagem =
+    kind === 'reenvio'
+      ? `Olá ${primeiroNome}!\n\n` +
+        `Segue um *novo link* para criar sua senha no *Aprisco*:\n\n` +
+        `${inviteLink}\n\n` +
+        `Este link expira em 10 minutos.\n\n` +
+        `_Se você não esperava esta mensagem, ignore._`
+      : `Olá ${primeiroNome}!\n\n` +
+        `Você foi cadastrado no sistema *Aprisco*.\n\n` +
+        `Para criar sua senha de acesso, clique no link abaixo:\n\n` +
+        `${inviteLink}\n\n` +
+        `Este link expira em 10 minutos.\n\n` +
+        `_Se você não solicitou este cadastro, ignore esta mensagem._`;
+
+  return otpService.sendCustomMessageWhatsApp(
+    params.whatsappNormalizado,
+    mensagem,
+    params.accountId
+  );
+}
+
 // Schema de validação para criar usuário
 const criarUsuarioSchema = z.object({
   nome: z.string().min(3, 'Nome deve ter pelo menos 3 caracteres'),
@@ -85,7 +126,8 @@ export const listarUsuarios = async (req: Request, res: Response) => {
         ativo: true,
         createdAt: true,
         updatedAt: true,
-        accountId: true
+        accountId: true,
+        senha: true
       },
       orderBy: [
         { cargo: 'asc' },
@@ -111,8 +153,9 @@ export const listarUsuarios = async (req: Request, res: Response) => {
         if (ordemA !== ordemB) return ordemA - ordemB;
         return a.nome.localeCompare(b.nome);
       })
-      .map(u => ({
+      .map(({ senha, ...u }) => ({
         ...u,
+        possuiSenha: senha != null && senha.length > 0,
         status: u.ativo ? 'ativo' : 'inativo'
       }));
 
@@ -189,7 +232,9 @@ export const criarUsuario = async (req: Request, res: Response) => {
       }
     }
 
-    // Criar usuário
+    const comSenhaInicial = Boolean(dados.senha);
+
+    // Criar usuário: só fica ativo após senha definida (admin na criação ou primeiro acesso)
     const novoUsuario = await prisma.usuario.create({
       data: {
         nome: dados.nome,
@@ -197,44 +242,25 @@ export const criarUsuario = async (req: Request, res: Response) => {
         cargo: dados.cargo,
         senha: dados.senha ? await bcrypt.hash(dados.senha, 10) : null,
         accountId: accountId,
-        ativo: true
+        ativo: comSenhaInicial
       }
     });
 
+    /** Quando convite foi solicitado: true = WhatsApp ok, false = falha (usuário ainda criado). */
+    let conviteEnviado: boolean | undefined = undefined;
+
     // Enviar convite via WhatsApp se solicitado
     if (dados.enviarConvite === true && !dados.senha) {
+      conviteEnviado = false;
       try {
         console.log('[UsuariosController] Enviando convite via WhatsApp para:', novoUsuario.nome);
-        
-        // Gerar token de convite usando o WhatsApp exatamente como está salvo no banco
-        const { code: token } = await otpService.createOtp({
-          whatsapp: novoUsuario.whatsapp,
-          accountId: accountId,
-          isInvite: true
+        const enviado = await enviarConvitePrimeiroAcessoWhatsApp({
+          nome: dados.nome,
+          whatsappNormalizado: novoUsuario.whatsapp,
+          accountId,
+          kind: 'cadastro'
         });
-
-        // Criar link de convite
-        const FRONTEND_URL = process.env.FRONTEND_URL || 'https://central-celular.vercel.app';
-        const inviteLink = `${FRONTEND_URL}/first-access/${token}`;
-
-        // Extrair primeiro nome
-        const primeiroNome = dados.nome.split(' ')[0];
-
-        // Montar mensagem de convite
-        const mensagem = `Olá ${primeiroNome}!\n\n` +
-          `Você foi cadastrado no sistema *Aprisco*.\n\n` +
-          `Para criar sua senha de acesso, clique no link abaixo:\n\n` +
-          `${inviteLink}\n\n` +
-          `Este link expira em 10 minutos.\n\n` +
-          `_Se você não solicitou este cadastro, ignore esta mensagem._`;
-
-        // Enviar mensagem via WhatsApp
-        const enviado = await otpService.sendCustomMessageWhatsApp(
-          whatsappNormalizado,
-          mensagem,
-          accountId
-        );
-
+        conviteEnviado = enviado;
         if (enviado) {
           console.log('[UsuariosController] Convite enviado com sucesso via WhatsApp');
         } else {
@@ -242,13 +268,17 @@ export const criarUsuario = async (req: Request, res: Response) => {
         }
       } catch (error) {
         console.error('[UsuariosController] Erro ao enviar convite:', error);
-        // Não falhar a criação do usuário se o envio falhar
+        conviteEnviado = false;
       }
     }
 
     // Retornar dados do usuário (sem a senha)
     const { senha: _, ...usuarioSemSenha } = novoUsuario;
-    res.status(201).json(usuarioSemSenha);
+    const payload =
+      typeof conviteEnviado === 'boolean'
+        ? { ...usuarioSemSenha, conviteEnviado }
+        : usuarioSemSenha;
+    res.status(201).json(payload);
   } catch (error) {
     if (error instanceof z.ZodError) {
       return res.status(400).json({ 
@@ -259,6 +289,61 @@ export const criarUsuario = async (req: Request, res: Response) => {
     
     console.error('Erro ao criar usuário:', error);
     res.status(500).json({ message: 'Erro ao criar usuário' });
+  }
+};
+
+/** Reenvia link de primeiro acesso (sem senha; permanece inativo até concluir o fluxo). */
+export const reenviarConviteUsuario = async (req: Request, res: Response) => {
+  try {
+    const id = Number(req.params.id);
+    if (!Number.isFinite(id)) {
+      return res.status(400).json({ message: 'ID inválido' });
+    }
+
+    const accountId = (req as any).user?.accountId || (req as any).usuario?.accountId;
+    if (!accountId) {
+      return res.status(401).json({ message: 'Conta não identificada' });
+    }
+
+    const usuario = await prisma.usuario.findFirst({
+      where: { id, accountId },
+      select: {
+        id: true,
+        nome: true,
+        whatsapp: true,
+        ativo: true,
+        senha: true
+      }
+    });
+
+    if (!usuario) {
+      return res.status(404).json({ message: 'Usuário não encontrado' });
+    }
+
+    if (usuario.senha != null && usuario.senha.length > 0) {
+      return res.status(400).json({
+        message: 'Este usuário já possui senha cadastrada.'
+      });
+    }
+
+    const conviteEnviado = await enviarConvitePrimeiroAcessoWhatsApp({
+      nome: usuario.nome,
+      whatsappNormalizado: usuario.whatsapp,
+      accountId,
+      kind: 'reenvio'
+    });
+
+    if (!conviteEnviado) {
+      return res.status(502).json({
+        message: 'Não foi possível enviar o WhatsApp. Verifique a conexão do bot e tente novamente.',
+        conviteEnviado: false
+      });
+    }
+
+    return res.json({ conviteEnviado: true });
+  } catch (error) {
+    console.error('[UsuariosController] Erro ao reenviar convite:', error);
+    res.status(500).json({ message: 'Erro ao reenviar convite' });
   }
 };
 
@@ -287,10 +372,11 @@ export const atualizarUsuario = async (req: Request, res: Response) => {
       cargo: dados.cargo
     };
 
-    // Se a senha foi fornecida, hash e atualiza
+    // Se a senha foi fornecida, hash e atualiza (passa a poder logar como ativo)
     if (dados.senha) {
       const salt = await bcrypt.genSalt(10);
       dadosAtualizacao.senha = await bcrypt.hash(dados.senha, salt);
+      dadosAtualizacao.ativo = true;
     }
 
     // Atualizar usuário
@@ -299,9 +385,11 @@ export const atualizarUsuario = async (req: Request, res: Response) => {
       data: dadosAtualizacao
     });
 
-    // Retornar dados do usuário (sem a senha)
-    const { senha: _, ...usuarioSemSenha } = usuarioAtualizado;
-    res.json(usuarioSemSenha);
+    const { senha: senhaHash, ...usuarioSemSenha } = usuarioAtualizado;
+    res.json({
+      ...usuarioSemSenha,
+      possuiSenha: senhaHash != null && senhaHash.length > 0
+    });
   } catch (error) {
     if (error instanceof z.ZodError) {
       return res.status(400).json({ 
@@ -339,6 +427,15 @@ export const ativarDesativarUsuario = async (req: Request, res: Response) => {
       return res.status(400).json({ message: 'Não é possível desativar o próprio usuário' });
     }
 
+    const semSenha =
+      usuarioExistente.senha == null || usuarioExistente.senha.length === 0;
+    if (ativo && semSenha) {
+      return res.status(400).json({
+        message:
+          'Usuários sem senha só ficam ativos após concluírem o primeiro acesso pelo link do Aprisco.'
+      });
+    }
+
     // Verificar se é o último administrador ativo
     if (!ativo && usuarioExistente.cargo === 'ADMINISTRADOR') {
       const adminsAtivos = await prisma.usuario.count({
@@ -364,15 +461,139 @@ export const ativarDesativarUsuario = async (req: Request, res: Response) => {
       data: { ativo }
     });
 
-    // Retornar dados do usuário (sem a senha)
-    const { senha: _, ...usuarioSemSenha } = usuarioAtualizado;
+    const { senha: senhaHash, ...usuarioSemSenha } = usuarioAtualizado;
     res.json({
       ...usuarioSemSenha,
+      possuiSenha: senhaHash != null && senhaHash.length > 0,
       status: usuarioAtualizado.ativo ? 'ativo' : 'inativo'
     });
   } catch (error) {
     console.error('Erro ao atualizar status do usuário:', error);
     res.status(500).json({ message: 'Erro ao atualizar status do usuário' });
+  }
+};
+
+const MAX_USUARIOS_LOTE_STATUS = 200;
+
+/** Ativar ou desativar vários usuários da mesma conta (admin). */
+export const ativarDesativarUsuariosLote = async (req: Request, res: Response) => {
+  try {
+    const accountId = (req as any).user?.accountId;
+    const actorId = (req as any).user?.id;
+
+    if (!accountId || !actorId) {
+      return res.status(401).json({ message: 'Não autenticado' });
+    }
+
+    const { usuarioIds, ativo } = req.body;
+    if (typeof ativo !== 'boolean' || !Array.isArray(usuarioIds) || usuarioIds.length === 0) {
+      return res.status(400).json({
+        message: 'Informe usuarioIds (array não vazio) e ativo (boolean)',
+      });
+    }
+
+    const ids = [
+      ...new Set(
+        usuarioIds
+          .map((x: unknown) => Number(x))
+          .filter((n: number) => Number.isFinite(n) && n > 0),
+      ),
+    ];
+
+    if (ids.length === 0) {
+      return res.status(400).json({ message: 'Nenhum ID de usuário válido' });
+    }
+
+    if (ids.length > MAX_USUARIOS_LOTE_STATUS) {
+      return res.status(400).json({
+        message: `No máximo ${MAX_USUARIOS_LOTE_STATUS} usuários por lote`,
+      });
+    }
+
+    const detalhes: { usuarioId: number; ok: boolean; erro?: string }[] = [];
+
+    for (const id of ids) {
+      if (!ativo && id === actorId) {
+        detalhes.push({
+          usuarioId: id,
+          ok: false,
+          erro: 'Não é possível desativar o próprio usuário',
+        });
+        continue;
+      }
+
+      const usuarioExistente = await prisma.usuario.findFirst({
+        where: { id, accountId },
+      });
+
+      if (!usuarioExistente) {
+        detalhes.push({
+          usuarioId: id,
+          ok: false,
+          erro: 'Usuário não encontrado',
+        });
+        continue;
+      }
+
+      if (!ativo && usuarioExistente.cargo === 'ADMINISTRADOR') {
+        const adminsAtivos = await prisma.usuario.count({
+          where: {
+            cargo: 'ADMINISTRADOR',
+            ativo: true,
+            NOT: { id },
+          },
+        });
+
+        if (adminsAtivos === 0) {
+          detalhes.push({
+            usuarioId: id,
+            ok: false,
+            erro: 'Não é possível desativar o último administrador ativo',
+          });
+          continue;
+        }
+      }
+
+      if (ativo) {
+        const semSenha =
+          usuarioExistente.senha == null || usuarioExistente.senha.length === 0;
+        if (semSenha) {
+          detalhes.push({
+            usuarioId: id,
+            ok: false,
+            erro: 'Sem senha: só ativa após o primeiro acesso',
+          });
+          continue;
+        }
+      }
+
+      try {
+        await prisma.usuario.update({
+          where: { id },
+          data: { ativo },
+        });
+        detalhes.push({ usuarioId: id, ok: true });
+      } catch (e) {
+        detalhes.push({
+          usuarioId: id,
+          ok: false,
+          erro: e instanceof Error ? e.message : 'Erro ao atualizar',
+        });
+      }
+    }
+
+    const alterados = detalhes.filter((d) => d.ok).length;
+
+    return res.json({
+      success: detalhes.every((d) => d.ok),
+      total: detalhes.length,
+      alterados,
+      falhas: detalhes.length - alterados,
+      detalhes,
+    });
+  } catch (error) {
+    console.error('Erro ao atualizar status em lote:', error);
+    res.status(500).json({ message: 'Erro ao atualizar status em lote' });
   }
 };
 

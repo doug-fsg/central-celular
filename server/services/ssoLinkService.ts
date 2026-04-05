@@ -213,9 +213,11 @@ export const ssoLinkService = {
       const usuario = await prisma.usuario.findUnique({
         where: { id: usuarioId },
         select: {
+          accountId: true,
           nome: true,
           whatsapp: true,
           cargo: true,
+          ativo: true,
           celulasLideradas: {
             select: {
               id: true,
@@ -227,6 +229,14 @@ export const ssoLinkService = {
 
       if (!usuario) {
         throw new Error('Usuário não encontrado');
+      }
+
+      if (usuario.accountId !== accountId) {
+        throw new Error('Usuário não pertence a esta conta');
+      }
+
+      if (!usuario.ativo) {
+        throw new Error('Usuário inativo não pode receber link SSO');
       }
 
       // Verificar se é líder
@@ -310,6 +320,34 @@ export const ssoLinkService = {
       console.error('[SsoLinkService] Erro ao enviar link SSO via WhatsApp:', error);
       throw error;
     }
+  },
+
+  /** Envio em sequência (evita sobrecarga na API do WhatsApp). */
+  async enviarLinksSsoWhatsAppEmLote(usuarioIds: number[], accountId: number) {
+    const deduped = [...new Set(usuarioIds)].filter((id) => Number.isFinite(id) && id > 0);
+    const detalhes: { usuarioId: number; ok: boolean; erro?: string }[] = [];
+
+    for (const usuarioId of deduped) {
+      try {
+        await this.enviarLinkSsoWhatsApp(usuarioId, accountId);
+        detalhes.push({ usuarioId, ok: true });
+      } catch (e) {
+        const msg = e instanceof Error ? e.message : 'Erro desconhecido';
+        detalhes.push({ usuarioId, ok: false, erro: msg });
+        console.error(`[SsoLinkService] Falha no lote para usuário ${usuarioId}:`, msg);
+      }
+    }
+
+    const enviados = detalhes.filter((d) => d.ok).length;
+    const falhas = detalhes.length - enviados;
+
+    return {
+      success: falhas === 0,
+      total: detalhes.length,
+      enviados,
+      falhas,
+      detalhes,
+    };
   },
 
   // Executar job de envio automático de links SSO

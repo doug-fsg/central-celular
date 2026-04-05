@@ -274,7 +274,7 @@ onMounted(async () => {
                 </span>
               </label>
               
-              <label class="flex items-center justify-center p-2 border border-gray-300 rounded-lg cursor-pointer hover:bg-gray-50" :class="{ 'bg-purple-50 border-purple-500': novoMembro.ehCoLider }">
+              <label class="flex items-center justify-center p-2 border border-gray-300 rounded-lg cursor-pointer hover:bg-gray-50" :class="{ 'bg-brand-50 dark:bg-brand-950/50 border-brand-500 dark:border-brand-400': novoMembro.ehCoLider }">
                 <input
                   v-model="novoMembro.ehCoLider"
                   type="checkbox"

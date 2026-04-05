@@ -132,7 +132,8 @@ onUnmounted(() => {
     <button
       v-if="userStore.canToggleView"
       @click="toggleView"
-      class="fixed bottom-20 right-4 z-40 bg-white border-2 border-primary-500 rounded-xl px-4 py-2 shadow-lg hover:bg-primary-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500 transition-all flex items-center gap-2"
+      class="fixed right-4 z-40 bg-white border-2 border-primary-500 rounded-xl px-4 py-2 shadow-lg focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500 transition-all flex items-center gap-2 toggle-view-btn"
+      style="bottom: calc(5rem + env(safe-area-inset-bottom, 0px));"
       :title="userStore.currentView === 'admin' ? 'Alternar para visão de célula' : 'Alternar para visão admin'"
     >
       <svg v-if="userStore.currentView === 'admin'" class="h-5 w-5 text-primary-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -171,7 +172,8 @@ onUnmounted(() => {
           v-for="profileItem in profileItems" 
           :key="profileItem.name"
           @click="navigateToProfile(profileItem.name)"
-          class="flex items-center px-4 py-3 text-gray-700 hover:bg-gray-50 cursor-pointer"
+          class="flex items-center px-4 py-3 text-gray-700 cursor-pointer select-none"
+          style="min-height: 44px; touch-action: manipulation;"
         >
           <AppIcon 
             :name="profileItem.icon" 
@@ -187,7 +189,8 @@ onUnmounted(() => {
         <!-- Opção de sair -->
         <div 
           @click="handleLogout"
-          class="flex items-center px-4 py-3 text-red-600 hover:bg-red-50 cursor-pointer"
+          class="flex items-center px-4 py-3 text-red-600 cursor-pointer select-none"
+          style="min-height: 44px; touch-action: manipulation;"
         >
           <AppIcon 
             name="logout" 

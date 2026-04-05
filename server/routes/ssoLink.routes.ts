@@ -20,6 +20,9 @@ adminSsoRouter.put('/config', ssoLinkController.updateConfig);
 // Gerar e enviar link para um líder específico
 adminSsoRouter.post('/gerar/:usuarioId', ssoLinkController.gerarEnviarLink);
 
+// Gerar e enviar link para vários líderes (corpo: { usuarioIds: number[] })
+adminSsoRouter.post('/gerar-lote', ssoLinkController.gerarEnviarLinkLote);
+
 // Executar job manualmente (apenas em ambiente de desenvolvimento)
 adminSsoRouter.post('/executar-job', ssoLinkController.executarJob);
 

@@ -39,6 +39,21 @@ export const ssoLinkService = {
     }
   },
 
+  async gerarEnviarLinkLote(usuarioIds: number[]): Promise<{
+    success: boolean
+    total: number
+    enviados: number
+    falhas: number
+    detalhes: { usuarioId: number; ok: boolean; erro?: string }[]
+  }> {
+    try {
+      return await api.post('/sso/gerar-lote', { usuarioIds });
+    } catch (error) {
+      console.error('Erro ao gerar e enviar links SSO em lote:', error);
+      throw error;
+    }
+  },
+
   // Validar link SSO (usado na página pública)
   async validarLink(token: string): Promise<{ 
     valid: boolean; 

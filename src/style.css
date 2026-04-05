@@ -22,17 +22,26 @@ body {
   min-width: 320px;
   min-height: 100vh;
   overflow-x: hidden;
+  /* Evita pull-to-refresh nativo do browser ao rolar conteúdo da SPA */
+  overscroll-behavior-y: contain;
 }
 
-/* Adiciona espaço para a barra de navegação inferior apenas em dispositivos móveis */
+/* Espaço para barra de navegação inferior + safe area do iPhone (home indicator) */
 @media (max-width: 640px) {
   body {
-    padding-bottom: 70px;
+    padding-bottom: calc(70px + env(safe-area-inset-bottom, 0px));
   }
 }
 
 html {
   scroll-behavior: smooth;
+}
+
+/* Previne seleção de texto acidental em elementos de UI */
+.no-select {
+  -webkit-user-select: none;
+  -webkit-touch-callout: none;
+  user-select: none;
 }
 
 @layer base {
@@ -60,7 +69,10 @@ html {
 @layer components {
   .btn {
     @apply px-4 py-2 rounded-lg font-medium transition-all duration-200 ease-in-out shadow-soft
-    focus:outline-none focus:ring-2 focus:ring-offset-2 disabled:opacity-60 disabled:cursor-not-allowed;
+    focus:outline-none focus:ring-2 focus:ring-offset-2 disabled:opacity-60 disabled:cursor-not-allowed
+    min-h-[44px] min-w-[44px];
+    /* touch-action manipulation: evita double-tap zoom em botões */
+    touch-action: manipulation;
   }
   
   .btn-primary {
@@ -130,18 +142,34 @@ html {
   /* Estilo para a barra de navegação inferior (apenas móvel) */
   .bottom-nav {
     @apply fixed bottom-0 left-0 right-0 bg-white shadow-soft flex justify-around items-center py-2 z-10 border-t border-gray-200;
+    /* Padding extra para o home indicator do iPhone */
+    padding-bottom: calc(0.5rem + env(safe-area-inset-bottom, 0px));
   }
 
   .nav-item {
-    @apply flex flex-col items-center justify-center p-2 transition-colors;
+    @apply flex flex-col items-center justify-center transition-colors;
+    /* Touch target mínimo 44x44px para uso confortável no celular */
+    min-height: 44px;
+    min-width: 44px;
+    padding: 0.375rem 0.5rem;
+    touch-action: manipulation;
+    -webkit-user-select: none;
+    user-select: none;
   }
 
   .nav-item-active {
     @apply text-primary-600;
   }
 
+  /* Separar hover de dispositivos sem pointer fino: não travar estado no toque */
+  @media (hover: hover) {
+    .nav-item-inactive:hover {
+      @apply text-neutral-600;
+    }
+  }
+
   .nav-item-inactive {
-    @apply text-neutral-400 hover:text-neutral-600;
+    @apply text-neutral-400;
   }
 }
 

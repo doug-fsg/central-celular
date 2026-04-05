@@ -4,25 +4,6 @@ import { useUserStore } from '../stores/userStore'
 import { ssoLinkService } from '../services/ssoLinkService'
 import celulaService from '../services/celulaService'
 import api from '../services/api'
-import LandingPage from '../views/LandingPage.vue'
-import GileadeLandingPage from '../views/GileadeLandingPage.vue'
-import LoginPage from '../views/LoginPage.vue'
-import ResetPasswordPage from '../views/ResetPasswordPage.vue'
-import FirstAccessPage from '../views/FirstAccessPage.vue'
-import Dashboard from '../views/Dashboard.vue'
-import MemberList from '../views/MemberList.vue'
-import AttendanceForm from '../views/AttendanceForm.vue'
-import Reports from '../views/Reports.vue'
-import Profile from '../views/Profile.vue'
-import AdminDashboard from '../views/AdminDashboard.vue'
-import AdminDashboardPage from '../views/admin/AdminDashboardPage.vue'
-import AdminUsersPage from '../views/admin/AdminUsersPage.vue'
-import AdminCellsPage from '../views/admin/AdminCellsPage.vue'
-import AdminMembersPage from '../views/admin/AdminMembersPage.vue'
-import SupervisorDashboard from '../views/SupervisorDashboard.vue'
-import WhatsAppConnections from '../components/WhatsAppConnections.vue'
-import ConfiguracoesView from '../views/ConfiguracoesView.vue'
-import OnboardingWizard from '../views/OnboardingWizard.vue'
 
 const router = createRouter({
   history: createWebHistory(),
@@ -30,117 +11,117 @@ const router = createRouter({
     {
       path: '/',
       name: 'home',
-      component: LandingPage
+      component: () => import('../views/LandingPage.vue'),
     },
     {
       path: '/gileade',
       name: 'gileade',
-      component: GileadeLandingPage,
-      meta: { requiresGuest: true }
+      component: () => import('../views/GileadeLandingPage.vue'),
+      meta: { requiresGuest: true },
     },
     {
       path: '/login',
       name: 'login',
-      component: LoginPage,
-      meta: { requiresGuest: true }
+      component: () => import('../views/LoginPage.vue'),
+      meta: { requiresGuest: true },
     },
     {
       path: '/reset-password/:token',
       name: 'reset-password',
-      component: ResetPasswordPage,
-      meta: { requiresGuest: true }
+      component: () => import('../views/ResetPasswordPage.vue'),
+      meta: { requiresGuest: true },
     },
     {
       path: '/first-access/:token',
       name: 'first-access',
-      component: FirstAccessPage,
-      meta: { requiresGuest: true }
+      component: () => import('../views/FirstAccessPage.vue'),
+      meta: { requiresGuest: true },
     },
     {
       path: '/dashboard',
       name: 'dashboard',
-      component: Dashboard,
-      meta: { requiresAuth: true, requiresLeader: true, requiresOnboarding: true }
+      component: () => import('../views/Dashboard.vue'),
+      meta: { requiresAuth: true, requiresLeader: true, requiresOnboarding: true },
     },
     {
       path: '/onboarding',
       name: 'onboarding',
-      component: OnboardingWizard,
-      meta: { requiresAuth: true, requiresLeader: true }
+      component: () => import('../views/OnboardingWizard.vue'),
+      meta: { requiresAuth: true, requiresLeader: true },
     },
     {
       path: '/admin',
       name: 'admin-dashboard',
-      component: AdminDashboardPage,
-      meta: { requiresAuth: true, requiresAdmin: true }
+      component: () => import('../views/admin/AdminDashboardPage.vue'),
+      meta: { requiresAuth: true, requiresAdmin: true },
     },
     {
       path: '/admin/dashboard',
       name: 'admin-dashboard-page',
-      component: AdminDashboardPage,
-      meta: { requiresAuth: true, requiresAdmin: true }
+      component: () => import('../views/admin/AdminDashboardPage.vue'),
+      meta: { requiresAuth: true, requiresAdmin: true },
     },
     {
       path: '/admin/usuarios',
       name: 'admin-users',
-      component: AdminUsersPage,
-      meta: { requiresAuth: true, requiresAdmin: true }
+      component: () => import('../views/admin/AdminUsersPage.vue'),
+      meta: { requiresAuth: true, requiresAdmin: true },
     },
     {
       path: '/admin/celulas',
       name: 'admin-cells',
-      component: AdminCellsPage,
-      meta: { requiresAuth: true, requiresAdmin: true }
+      component: () => import('../views/admin/AdminCellsPage.vue'),
+      meta: { requiresAuth: true, requiresAdmin: true },
     },
     {
       path: '/admin/membros',
       name: 'admin-members',
-      component: AdminMembersPage,
-      meta: { requiresAuth: true, requiresAdmin: true }
+      component: () => import('../views/admin/AdminMembersPage.vue'),
+      meta: { requiresAuth: true, requiresAdmin: true },
     },
     {
       path: '/supervisor',
       name: 'supervisor-dashboard',
-      component: SupervisorDashboard,
-      meta: { requiresAuth: true, requiresSupervisor: true }
+      component: () => import('../views/SupervisorDashboard.vue'),
+      meta: { requiresAuth: true, requiresSupervisor: true },
     },
     {
       path: '/minha-celula',
       name: 'minha-celula',
-      component: MemberList,
-      meta: { requiresAuth: true, requiresLeader: true, requiresOnboarding: true }
+      component: () => import('../views/MemberList.vue'),
+      meta: { requiresAuth: true, requiresLeader: true, requiresOnboarding: true },
     },
     {
       path: '/attendance',
       name: 'attendance',
-      component: AttendanceForm,
-      meta: { requiresAuth: true, requiresLeader: true, requiresOnboarding: true }
+      component: () => import('../views/AttendanceForm.vue'),
+      meta: { requiresAuth: true, requiresLeader: true, requiresOnboarding: true },
     },
     {
       path: '/reports',
       name: 'reports',
-      component: Reports,
-      meta: { requiresAuth: true, requiresLeader: true, requiresOnboarding: true }
+      component: () => import('../views/Reports.vue'),
+      meta: { requiresAuth: true, requiresLeader: true, requiresOnboarding: true },
     },
     {
       path: '/profile',
       name: 'profile',
-      component: Profile,
-      meta: { requiresAuth: true }
+      component: () => import('../views/Profile.vue'),
+      meta: { requiresAuth: true },
     },
     {
       path: '/configuracoes',
       name: 'configuracoes',
-      component: ConfiguracoesView,
-      meta: { requiresAuth: true }
+      component: () => import('../views/ConfiguracoesView.vue'),
+      meta: { requiresAuth: true },
     },
     {
       path: '/sso/:token',
       name: 'sso-link',
-      component: AttendanceForm,
-      meta: { requiresSSO: true }
-    }
-  ]
+      component: () => import('../views/AttendanceForm.vue'),
+      meta: { requiresSSO: true },
+    },
+  ],
 })
 
 // Navegação Guards

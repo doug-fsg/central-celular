@@ -8,6 +8,8 @@ import {
   criarUsuario,
   atualizarUsuario,
   ativarDesativarUsuario,
+  ativarDesativarUsuariosLote,
+  reenviarConviteUsuario,
 } from '../controllers/usuarios.controller';
 import {
   listarCelulas,
@@ -27,6 +29,8 @@ adminRouter.use(verificarAdmin);
 
 // Rotas de usuários
 adminRouter.get('/usuarios', listarUsuarios);
+adminRouter.patch('/usuarios/lote/status', ativarDesativarUsuariosLote);
+adminRouter.post('/usuarios/:id/reenviar-convite', reenviarConviteUsuario);
 adminRouter.get('/usuarios/:id', obterUsuario);
 adminRouter.post('/usuarios', criarUsuario);
 adminRouter.put('/usuarios/:id', atualizarUsuario);

@@ -15,7 +15,8 @@
     "prisma:studio": "prisma studio",
     "seed": "tsx server/seed.js",
     "start:dev": "concurrently \"yarn dev:server\" \"yarn dev\"",
-    "start": "tsx server/index.ts"
+    "start": "tsx server/index.ts",
+    "generate:icons": "pwa-assets-generator --config pwa-assets.config.ts"
   },
   "dependencies": {
     "@headlessui/vue": "^1.7.19",
@@ -51,6 +52,7 @@
     "@types/morgan": "^1.9.9",
     "@types/node": "^22.15.17",
     "@vitejs/plugin-vue": "^5.1.3",
+    "@vite-pwa/assets-generator": "^0.2.6",
     "autoprefixer": "^10.4.16",
     "concurrently": "^9.1.2",
     "postcss": "^8.4.31",
@@ -59,7 +61,12 @@
     "tsx": "^4.7.0",
     "typescript": "^5.5.3",
     "vite": "^5.4.2",
+    "vite-plugin-pwa": "^0.21.1",
     "vue-tsc": "^2.1.4"
+  },
+  "pwa-assets": {
+    "preset": "minimal-2023",
+    "images": ["public/favicon.svg"]
   },
   "prisma": {
     "seed": "node server/seed.js"

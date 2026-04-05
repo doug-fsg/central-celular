@@ -1,6 +1,8 @@
 import { Request, Response } from 'express';
 import { ssoLinkService } from '../services/ssoLinkService';
 
+const MAX_USUARIOS_LOTE_SSO = 200;
+
 // Estender a interface Request para incluir o user
 declare global {
   namespace Express {
@@ -76,6 +78,44 @@ export const ssoLinkController = {
       return res.status(500).json({ 
         message: 'Erro ao gerar e enviar link SSO', 
         error: error instanceof Error ? error.message : 'Erro desconhecido' 
+      });
+    }
+  },
+
+  // Gerar e enviar link SSO para vários líderes
+  async gerarEnviarLinkLote(req: Request, res: Response) {
+    try {
+      const accountId = req.user?.accountId;
+      if (!accountId) {
+        return res.status(401).json({ message: 'Conta não identificada' });
+      }
+
+      const raw = req.body?.usuarioIds;
+      if (!Array.isArray(raw) || raw.length === 0) {
+        return res.status(400).json({ message: 'Informe um array não vazio em usuarioIds' });
+      }
+
+      const usuarioIds = raw
+        .map((id: unknown) => Number(id))
+        .filter((n: number) => Number.isFinite(n) && n > 0);
+
+      if (usuarioIds.length === 0) {
+        return res.status(400).json({ message: 'Nenhum ID de usuário válido' });
+      }
+
+      if (usuarioIds.length > MAX_USUARIOS_LOTE_SSO) {
+        return res.status(400).json({
+          message: `No máximo ${MAX_USUARIOS_LOTE_SSO} usuários por lote`,
+        });
+      }
+
+      const resultado = await ssoLinkService.enviarLinksSsoWhatsAppEmLote(usuarioIds, accountId);
+      return res.json(resultado);
+    } catch (error) {
+      console.error('Erro ao gerar e enviar links SSO em lote:', error);
+      return res.status(500).json({
+        message: 'Erro ao enviar links SSO em lote',
+        error: error instanceof Error ? error.message : 'Erro desconhecido',
       });
     }
   },

@@ -7,7 +7,8 @@ import BottomNavbar from './components/BottomNavbar.vue';
 const route = useRoute();
 
 // Lista de rotas onde não queremos mostrar a navegação (landing page, login, etc.)
-const publicRoutes = ['home', 'login', 'gileade'];
+/** Rotas sem Navbar / barra inferior (telas públicas de foco único). */
+const publicRoutes = ['home', 'login', 'gileade', 'first-access', 'reset-password'];
 
 // Verificamos se estamos em uma rota autenticada onde devemos mostrar o menu
 const showNavigation = computed(() => {

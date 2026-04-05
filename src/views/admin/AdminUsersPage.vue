@@ -5,6 +5,32 @@ import { adminService } from '../../services/adminService'
 import type { Usuario } from '../../services/adminService'
 import { ssoLinkService } from '../../services/ssoLinkService'
 import AppIcon from '../../components/AppIcon.vue'
+import AdminUsersBulkBar from '../../components/admin/AdminUsersBulkBar.vue'
+
+/** Mesmas regras do menu "Enviar link": só líder ativo (célula validada no backend). */
+function podeReceberLinkSso(user: Usuario): boolean {
+  return user.cargo.toUpperCase() === 'LIDER' && user.status === 'ativo'
+}
+
+/** Sem senha ainda: pode reenviar link (no sistema aparece como pendente / inativo até o primeiro acesso). */
+function podeReenviarConvitePrimeiroAcesso(user: Usuario): boolean {
+  return user.possuiSenha === false
+}
+
+/** Ativar ou desativar manualmente só após o usuário ter senha (pendentes são ativados ao criar a senha). */
+function podeAlternarAtivacaoManual(user: Usuario): boolean {
+  return user.possuiSenha !== false
+}
+
+function badgeStatusUsuario(user: Usuario): { label: string; rowClass: string } {
+  if (user.possuiSenha === false) {
+    return { label: 'pendente', rowClass: 'bg-amber-100 text-amber-900' }
+  }
+  if (user.status === 'ativo') {
+    return { label: 'ativo', rowClass: 'bg-green-100 text-green-800' }
+  }
+  return { label: 'inativo', rowClass: 'bg-red-100 text-red-800' }
+}
 
 // Estado para os dados
 const loading = ref(false)
@@ -37,6 +63,58 @@ const filteredUsers = computed(() => {
   })
 })
 
+const selectedUserIds = ref<number[]>([])
+
+const userById = computed(() => {
+  const m = new Map<number, Usuario>()
+  for (const u of users.value) m.set(u.id, u)
+  for (const u of usersAll.value) m.set(u.id, u)
+  return m
+})
+
+const selectedUsersSnapshot = computed((): Usuario[] =>
+  selectedUserIds.value
+    .map((id) => userById.value.get(id))
+    .filter((u): u is Usuario => u != null),
+)
+
+const isSelected = (id: number) => selectedUserIds.value.includes(id)
+
+function toggleSelectUser(userId: number, checked: boolean) {
+  if (checked) {
+    if (!selectedUserIds.value.includes(userId)) {
+      selectedUserIds.value = [...selectedUserIds.value, userId]
+    }
+  } else {
+    selectedUserIds.value = selectedUserIds.value.filter((id) => id !== userId)
+  }
+}
+
+/** Marca / desmarca todos os usuários visíveis na lista (filtro + página). */
+function toggleSelectAllVisiveis(checked: boolean) {
+  const ids = filteredUsers.value.map((u) => u.id)
+  if (checked) {
+    selectedUserIds.value = [...new Set([...selectedUserIds.value, ...ids])]
+  } else {
+    const remove = new Set(ids)
+    selectedUserIds.value = selectedUserIds.value.filter((id) => !remove.has(id))
+  }
+}
+
+const todosVisiveisMarcados = computed(() => {
+  const vis = filteredUsers.value
+  if (vis.length === 0) return false
+  return vis.every((u) => selectedUserIds.value.includes(u.id))
+})
+
+const algumVisivelMarcado = computed(() =>
+  filteredUsers.value.some((u) => selectedUserIds.value.includes(u.id)),
+)
+
+const qtdSelecionados = computed(() => selectedUserIds.value.length)
+
+const bulkSheetOpen = ref(false)
+
 // Carregar todas as páginas de usuários quando filtrar
 const loadAllUsers = async () => {
   try {
@@ -57,12 +135,32 @@ const loadAllUsers = async () => {
 }
 
 watch([userSearchTerm, userRoleFilter], async ([term, role]) => {
+  selectedUserIds.value = []
   if ((term && term.trim() !== '') || (role && role.trim() !== '')) {
     if (usersAll.value.length === 0 && !loadingAllUsers.value) {
       await loadAllUsers()
     }
   }
 })
+
+const selectAllInputRef = ref<HTMLInputElement | null>(null)
+
+watch([todosVisiveisMarcados, algumVisivelMarcado, filteredUsers], () => {
+  const el = selectAllInputRef.value
+  if (el) {
+    el.indeterminate = algumVisivelMarcado.value && !todosVisiveisMarcados.value
+  }
+})
+
+function onSelectAllHeaderChange(e: Event) {
+  const checked = (e.target as HTMLInputElement).checked
+  toggleSelectAllVisiveis(checked)
+}
+
+function limparSelecao() {
+  selectedUserIds.value = []
+  bulkSheetOpen.value = false
+}
 
 // Estado do modal
 const showUserModal = ref(false)
@@ -86,6 +184,16 @@ const sendingLink = ref(false)
 const userSendingLink = ref<number | null>(null)
 const showConfirmSendLink = ref(false)
 const userIdToSendLink = ref<number | null>(null)
+
+const showConfirmBulkSendLink = ref(false)
+const sendingBulkLink = ref(false)
+const showConfirmBulkAtivar = ref(false)
+const showConfirmBulkDesativar = ref(false)
+const sendingBulkStatus = ref(false)
+const sendingBulkInvite = ref(false)
+
+const sendingInvite = ref(false)
+const userSendingInvite = ref<number | null>(null)
 
 // Estado para menu de ações mobile
 const openActionMenu = ref<number | null>(null)
@@ -168,9 +276,18 @@ const handleDeleteUser = async () => {
 const handleSaveUser = async (userData: Partial<Usuario> & { criarCelulaApos?: boolean; enviarConvite?: boolean }) => {
   try {
     if (modalMode.value === 'create') {
-      await adminService.criarUsuario(userData as any)
+      const criado = await adminService.criarUsuario(userData as any)
       if (userData.enviarConvite) {
-        showFeedback('Usuário criado com sucesso. Um link de convite foi enviado via WhatsApp para criar a senha.')
+        if (criado.conviteEnviado === false) {
+          showFeedback(
+            'Usuário criado, mas o convite não foi enviado pelo WhatsApp. Verifique a conexão do bot e tente enviar o link novamente (ex.: ação em lote ou novo convite).',
+            'error'
+          )
+        } else {
+          showFeedback(
+            'Usuário criado com sucesso. Um link de convite foi enviado via WhatsApp para criar a senha no Aprisco.'
+          )
+        }
       } else {
         showFeedback('Usuário criado com sucesso.')
       }
@@ -204,10 +321,62 @@ const toggleUserStatus = async (userId: number, novoStatus: boolean) => {
     const usuarioAtualizado = await adminService.toggleStatusUsuario(userId, novoStatus)
     const index = users.value.findIndex(u => u.id === userId)
     if (index !== -1) {
-      users.value[index] = usuarioAtualizado
+      users.value[index] = usuarioAtualizado as Usuario
+    }
+    const idxAll = usersAll.value.findIndex(u => u.id === userId)
+    if (idxAll !== -1) {
+      usersAll.value[idxAll] = usuarioAtualizado as Usuario
     }
   } catch (error) {
     console.error('Erro ao alterar status do usuário:', error)
+  }
+}
+
+async function handleReenviarConvitePrimeiroAcesso(user: Usuario) {
+  try {
+    sendingInvite.value = true
+    userSendingInvite.value = user.id
+    const r = await adminService.reenviarConviteUsuario(user.id)
+    if (r.conviteEnviado) {
+      showFeedback(`Link de primeiro acesso reenviado para ${user.nome} via WhatsApp.`)
+    } else {
+      showFeedback('Não foi possível enviar o WhatsApp.', 'error')
+    }
+  } catch (err: any) {
+    showFeedback(err?.message || 'Não foi possível reenviar o convite.', 'error')
+  } finally {
+    sendingInvite.value = false
+    userSendingInvite.value = null
+    openActionMenu.value = null
+  }
+}
+
+async function handleReenviarConvitesEmLote() {
+  const alvo = selectedUsersSnapshot.value.filter((u) => u.possuiSenha === false)
+  if (alvo.length === 0) {
+    showFeedback('Nenhum usuário pendente (sem senha) na seleção.', 'error')
+    return
+  }
+  sendingBulkInvite.value = true
+  let ok = 0
+  let fail = 0
+  for (const u of alvo) {
+    try {
+      const r = await adminService.reenviarConviteUsuario(u.id)
+      if (r.conviteEnviado) ok++
+      else fail++
+    } catch {
+      fail++
+    }
+  }
+  sendingBulkInvite.value = false
+  limparSelecao()
+  if (fail === 0) {
+    showFeedback(`Convite reenviado para ${ok} usuário(s).`)
+  } else if (ok === 0) {
+    showFeedback('Nenhum convite foi enviado. Verifique o WhatsApp do bot.', 'error')
+  } else {
+    showFeedback(`Enviados: ${ok}. Falhas: ${fail}.`, 'error')
   }
 }
 
@@ -242,6 +411,132 @@ const handleSendSsoLink = async () => {
     sendingLink.value = false
     showConfirmSendLink.value = false
     userSendingLink.value = null
+  }
+}
+
+const idsParaEnvioEmLote = computed(() => {
+  const map = userById.value
+  return [...new Set(selectedUserIds.value)].filter((id) => {
+    const u = map.get(id)
+    return u != null && podeReceberLinkSso(u)
+  })
+})
+
+function abrirConfirmacaoEnvioEmLote() {
+  if (idsParaEnvioEmLote.value.length === 0) {
+    showFeedback('Inclua ao menos um líder ativo na seleção para enviar o link.', 'error')
+    return
+  }
+  showConfirmBulkSendLink.value = true
+}
+
+function aplicarStatusLocal(usuarioIds: number[], ativo: boolean) {
+  const status = ativo ? 'ativo' : 'inativo'
+  const patch = (list: typeof users.value) => {
+    for (const u of list) {
+      if (usuarioIds.includes(u.id)) {
+        u.ativo = ativo
+        u.status = status
+      }
+    }
+  }
+  patch(users.value)
+  patch(usersAll.value)
+}
+
+async function executarBulkAtivar() {
+  const ids = [...new Set(selectedUserIds.value)]
+  if (ids.length === 0) {
+    showConfirmBulkAtivar.value = false
+    return
+  }
+  try {
+    sendingBulkStatus.value = true
+    const r = await adminService.alterarStatusUsuariosLote(ids, true)
+    aplicarStatusLocal(
+      r.detalhes.filter((d) => d.ok).map((d) => d.usuarioId),
+      true,
+    )
+    if (r.falhas === 0) {
+      showFeedback(`${r.alterados} usuário(s) ativado(s)`)
+      selectedUserIds.value = []
+      bulkSheetOpen.value = false
+    } else {
+      showFeedback(`Ativados: ${r.alterados}. Falhas: ${r.falhas}.`, 'error')
+    }
+    await handlePageChange(pagination.value.currentPage)
+    if (isFilteringUsers.value) await loadAllUsers()
+  } catch (e) {
+    console.error(e)
+    showFeedback('Erro ao ativar em lote', 'error')
+  } finally {
+    sendingBulkStatus.value = false
+    showConfirmBulkAtivar.value = false
+  }
+}
+
+async function executarBulkDesativar() {
+  const ids = [...new Set(selectedUserIds.value)]
+  if (ids.length === 0) {
+    showConfirmBulkDesativar.value = false
+    return
+  }
+  try {
+    sendingBulkStatus.value = true
+    const r = await adminService.alterarStatusUsuariosLote(ids, false)
+    aplicarStatusLocal(
+      r.detalhes.filter((d) => d.ok).map((d) => d.usuarioId),
+      false,
+    )
+    if (r.falhas === 0) {
+      showFeedback(`${r.alterados} usuário(s) desativado(s)`)
+      selectedUserIds.value = []
+      bulkSheetOpen.value = false
+    } else {
+      showFeedback(`Desativados: ${r.alterados}. Falhas: ${r.falhas}.`, 'error')
+    }
+    await handlePageChange(pagination.value.currentPage)
+    if (isFilteringUsers.value) await loadAllUsers()
+  } catch (e) {
+    console.error(e)
+    showFeedback('Erro ao desativar em lote', 'error')
+  } finally {
+    sendingBulkStatus.value = false
+    showConfirmBulkDesativar.value = false
+  }
+}
+
+const handleSendBulkSsoLink = async () => {
+  const ids = idsParaEnvioEmLote.value
+  if (ids.length === 0) {
+    showConfirmBulkSendLink.value = false
+    return
+  }
+
+  try {
+    sendingBulkLink.value = true
+    const result = await ssoLinkService.gerarEnviarLinkLote(ids)
+
+    if (result.falhas === 0) {
+      showFeedback(`Links enviados com sucesso para ${result.enviados} líder(es)`)
+      selectedUserIds.value = []
+    } else if (result.enviados > 0) {
+      showFeedback(
+        `Enviados: ${result.enviados}. Falhas: ${result.falhas}. Verifique líderes sem célula ou WhatsApp.`,
+        'error',
+      )
+    } else {
+      showFeedback(
+        result.detalhes[0]?.erro || 'Nenhum link foi enviado. Verifique WhatsApp e dados dos líderes.',
+        'error',
+      )
+    }
+  } catch (error) {
+    console.error('Erro ao enviar links SSO em lote:', error)
+    showFeedback('Erro ao enviar links em lote', 'error')
+  } finally {
+    sendingBulkLink.value = false
+    showConfirmBulkSendLink.value = false
   }
 }
 
@@ -289,7 +584,10 @@ const formatWhatsApp = (whatsapp: string | null | undefined): string => {
 </script>
 
 <template>
-  <main class="max-w-7xl mx-auto py-6 px-4 sm:px-6 lg:px-8">
+  <main
+    class="max-w-7xl mx-auto py-6 px-4 sm:px-6 lg:px-8 transition-[padding-bottom]"
+    :class="qtdSelecionados > 0 ? 'pb-[5.75rem] sm:pb-6' : ''"
+  >
     <div class="flex justify-between items-center mb-6">
       <div>
         <h1 class="text-xl sm:text-2xl font-bold text-neutral-800">Usuários</h1>
@@ -326,7 +624,20 @@ const formatWhatsApp = (whatsapp: string | null | undefined): string => {
           </select>
         </div>
       </div>
-      
+
+      <AdminUsersBulkBar
+        v-model:sheet-open="bulkSheetOpen"
+        :selected-users="selectedUsersSnapshot"
+        :busy="sendingBulkStatus || sendingBulkLink || sendingBulkInvite"
+        :busy-links="sendingBulkLink"
+        :busy-convites="sendingBulkInvite"
+        @clear="limparSelecao"
+        @ativar="showConfirmBulkAtivar = true"
+        @desativar="showConfirmBulkDesativar = true"
+        @enviar-links="abrirConfirmacaoEnvioEmLote"
+        @reenviar-convites="handleReenviarConvitesEmLote"
+      />
+
       <!-- Loading -->
       <div v-if="loading" class="p-8 text-center">
         <div class="inline-block animate-spin rounded-full h-8 w-8 border-b-2 border-primary-600"></div>
@@ -344,19 +655,28 @@ const formatWhatsApp = (whatsapp: string | null | undefined): string => {
             :key="user.id"
             class="border border-gray-200 rounded-lg p-4 shadow-sm relative"
           >
-          <div class="flex items-start justify-between mb-2">
-            <div class="flex-1">
+          <div class="flex items-start justify-between mb-2 gap-2">
+            <div class="pt-0.5 flex-shrink-0">
+              <input
+                type="checkbox"
+                class="h-5 w-5 sm:h-4 sm:w-4 rounded border-gray-300 text-primary-600 focus:ring-primary-500 touch-manipulation"
+                :checked="isSelected(user.id)"
+                @change="toggleSelectUser(user.id, ($event.target as HTMLInputElement).checked)"
+                :aria-label="`Selecionar ${user.nome}`"
+              />
+            </div>
+            <div class="flex-1 min-w-0">
               <p class="text-sm font-semibold text-gray-900">{{ user.nome }}</p>
               <p class="text-xs text-gray-500">{{ user.cargo }}</p>
             </div>
             <div class="flex items-center gap-2">
               <span 
                 :class="[
-                  user.status === 'ativo' ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800',
+                  badgeStatusUsuario(user).rowClass,
                   'px-2 inline-flex text-xs leading-5 font-semibold rounded-full'
                 ]"
               >
-                {{ user.status }}
+                {{ badgeStatusUsuario(user).label }}
               </span>
               <div class="relative action-menu-container">
                 <button
@@ -375,7 +695,7 @@ const formatWhatsApp = (whatsapp: string | null | undefined): string => {
                   <div
                     v-if="openActionMenu === user.id"
                     :style="{ top: `${menuPosition.top}px`, right: `${menuPosition.right}px` }"
-                    class="fixed w-48 bg-white rounded-lg shadow-lg border border-gray-200 z-[9999] py-1"
+                    class="fixed w-56 bg-white rounded-lg shadow-lg border border-gray-200 z-[9999] py-1"
                     @click.stop
                   >
                   <button
@@ -386,6 +706,18 @@ const formatWhatsApp = (whatsapp: string | null | undefined): string => {
                     Editar
                   </button>
                   <button
+                    v-if="podeReenviarConvitePrimeiroAcesso(user)"
+                    type="button"
+                    class="w-full text-left px-4 py-2 text-sm text-sky-700 hover:bg-sky-50 flex items-center gap-2 transition-colors disabled:opacity-50"
+                    :disabled="sendingInvite && userSendingInvite === user.id"
+                    @click="handleReenviarConvitePrimeiroAcesso(user)"
+                  >
+                    <AppIcon name="email" size="xs" />
+                    <span v-if="sendingInvite && userSendingInvite === user.id">Enviando convite…</span>
+                    <span v-else>Reenviar link primeiro acesso</span>
+                  </button>
+                  <button
+                    v-if="podeAlternarAtivacaoManual(user)"
                     @click="toggleUserStatus(user.id, user.status === 'ativo' ? false : true); openActionMenu = null"
                     :class="[
                       'w-full text-left px-4 py-2 text-sm hover:bg-gray-50 flex items-center gap-2 transition-colors',
@@ -436,6 +768,18 @@ const formatWhatsApp = (whatsapp: string | null | undefined): string => {
           <table v-else class="min-w-full divide-y divide-gray-200">
           <thead class="bg-gray-50">
             <tr>
+              <th scope="col" class="pl-4 pr-2 py-3 text-left w-10">
+                <span class="sr-only">Selecionar todos nesta lista</span>
+                <input
+                  v-if="filteredUsers.length > 0"
+                  ref="selectAllInputRef"
+                  type="checkbox"
+                  class="h-4 w-4 rounded border-gray-300 text-primary-600 focus:ring-primary-500"
+                  :checked="todosVisiveisMarcados"
+                  @change="onSelectAllHeaderChange"
+                  aria-label="Selecionar todos os usuários visíveis na lista"
+                />
+              </th>
               <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                 Nome
               </th>
@@ -455,6 +799,15 @@ const formatWhatsApp = (whatsapp: string | null | undefined): string => {
           </thead>
           <tbody class="bg-white divide-y divide-gray-200">
             <tr v-for="user in filteredUsers" :key="user.id" class="hover:bg-gray-50">
+              <td class="pl-4 pr-2 py-4 whitespace-nowrap w-10">
+                <input
+                  type="checkbox"
+                  class="h-4 w-4 rounded border-gray-300 text-primary-600 focus:ring-primary-500"
+                  :checked="isSelected(user.id)"
+                  @change="toggleSelectUser(user.id, ($event.target as HTMLInputElement).checked)"
+                  :aria-label="`Selecionar ${user.nome}`"
+                />
+              </td>
               <td class="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
                 {{ user.nome }}
               </td>
@@ -467,11 +820,11 @@ const formatWhatsApp = (whatsapp: string | null | undefined): string => {
               <td class="px-6 py-4 whitespace-nowrap">
                 <span 
                   :class="[
-                    user.status === 'ativo' ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800',
+                    badgeStatusUsuario(user).rowClass,
                     'px-2 inline-flex text-xs leading-5 font-semibold rounded-full'
                   ]"
                 >
-                  {{ user.status }}
+                  {{ badgeStatusUsuario(user).label }}
                 </span>
               </td>
               <td class="px-6 py-4 whitespace-nowrap text-sm font-medium">
@@ -492,9 +845,9 @@ const formatWhatsApp = (whatsapp: string | null | undefined): string => {
                     <div
                       v-if="openActionMenu === user.id"
                       :style="{ top: `${menuPosition.top}px`, right: `${menuPosition.right}px` }"
-                      class="fixed w-48 bg-white rounded-lg shadow-lg border border-gray-200 z-[9999] py-1"
-                      @click.stop
-                    >
+                    class="fixed w-56 bg-white rounded-lg shadow-lg border border-gray-200 z-[9999] py-1"
+                    @click.stop
+                  >
                     <button
                       @click="handleEditarUsuario(user); openActionMenu = null"
                       class="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-50 flex items-center gap-2 transition-colors"
@@ -503,6 +856,18 @@ const formatWhatsApp = (whatsapp: string | null | undefined): string => {
                       Editar
                     </button>
                     <button
+                      v-if="podeReenviarConvitePrimeiroAcesso(user)"
+                      type="button"
+                      class="w-full text-left px-4 py-2 text-sm text-sky-700 hover:bg-sky-50 flex items-center gap-2 transition-colors disabled:opacity-50"
+                      :disabled="sendingInvite && userSendingInvite === user.id"
+                      @click="handleReenviarConvitePrimeiroAcesso(user)"
+                    >
+                      <AppIcon name="email" size="xs" />
+                      <span v-if="sendingInvite && userSendingInvite === user.id">Enviando convite…</span>
+                      <span v-else>Reenviar link primeiro acesso</span>
+                    </button>
+                    <button
+                      v-if="podeAlternarAtivacaoManual(user)"
                       @click="toggleUserStatus(user.id, user.status === 'ativo' ? false : true); openActionMenu = null"
                       :class="[
                         'w-full text-left px-4 py-2 text-sm hover:bg-gray-50 flex items-center gap-2 transition-colors',
@@ -531,10 +896,10 @@ const formatWhatsApp = (whatsapp: string | null | undefined): string => {
                       @click="handleConfirmDelete(user); openActionMenu = null"
                       class="w-full text-left px-4 py-2 text-sm text-red-600 hover:bg-red-50 flex items-center gap-2 transition-colors"
                     >
-                    <AppIcon name="delete" size="xs" />
-                    Excluir
-                  </button>
-                    </div>
+                      <AppIcon name="delete" size="xs" />
+                      Excluir
+                    </button>
+                  </div>
                   </Teleport>
                 </div>
               </td>
@@ -616,7 +981,7 @@ const formatWhatsApp = (whatsapp: string | null | undefined): string => {
     </div>
 
     <!-- Confirmar envio de link SSO -->
-    <div v-if="showConfirmSendLink" class="fixed inset-0 bg-gray-500 bg-opacity-75 flex items-center justify-center z-50">
+    <div v-if="showConfirmSendLink" class="fixed inset-0 bg-gray-500 bg-opacity-75 flex items-center justify-center z-[110] p-4">
       <div class="bg-white rounded-lg px-4 pt-5 pb-4 overflow-hidden shadow-xl transform transition-all sm:max-w-md sm:w-full sm:p-6">
         <h3 class="text-lg leading-6 font-medium text-gray-900 mb-2">Confirmar envio</h3>
         <p class="text-sm text-gray-700 mb-4">Deseja enviar o link do relatório semanal para este líder agora?</p>
@@ -627,11 +992,99 @@ const formatWhatsApp = (whatsapp: string | null | undefined): string => {
       </div>
     </div>
 
+    <!-- Confirmar envio em lote -->
+    <div v-if="showConfirmBulkSendLink" class="fixed inset-0 bg-gray-500 bg-opacity-75 flex items-center justify-center z-[110] p-4">
+      <div class="bg-white rounded-xl px-4 pt-5 pb-4 overflow-hidden shadow-xl transform transition-all max-w-md w-full sm:p-6">
+        <h3 class="text-lg leading-6 font-medium text-gray-900 mb-2">Enviar link a vários líderes</h3>
+        <p class="text-sm text-gray-700 mb-4">
+          Será enviada uma mensagem no WhatsApp com o link do relatório para
+          <span class="font-semibold">{{ idsParaEnvioEmLote.length }}</span>
+          líder(es). Líderes sem célula ou com falha no envio aparecerão no resultado.
+        </p>
+        <div class="flex flex-col-reverse sm:flex-row sm:flex-row-reverse gap-2 sm:gap-3">
+          <button
+            type="button"
+            :disabled="sendingBulkLink"
+            class="inline-flex justify-center items-center min-h-[48px] px-4 py-2 rounded-xl text-white bg-primary-600 hover:bg-primary-700 disabled:opacity-50 touch-manipulation font-medium"
+            @click="handleSendBulkSsoLink"
+          >
+            {{ sendingBulkLink ? 'Enviando…' : 'Enviar a todos' }}
+          </button>
+          <button
+            type="button"
+            :disabled="sendingBulkLink"
+            class="inline-flex justify-center items-center min-h-[48px] px-4 py-2 rounded-xl border border-gray-300 bg-white text-gray-700 hover:bg-gray-50 touch-manipulation font-medium"
+            @click="showConfirmBulkSendLink = false"
+          >
+            Cancelar
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Confirmar ativar em lote -->
+    <div v-if="showConfirmBulkAtivar" class="fixed inset-0 bg-neutral-900/40 backdrop-blur-[1px] flex items-center justify-center z-[110] p-4">
+      <div class="bg-white rounded-xl px-4 pt-5 pb-4 shadow-xl max-w-md w-full sm:p-6 border border-neutral-100">
+        <h3 class="text-lg font-semibold text-neutral-900 mb-2">Ativar usuários</h3>
+        <p class="text-sm text-neutral-600 mb-4">
+          Confirma ativar <span class="font-semibold tabular-nums">{{ qtdSelecionados }}</span> usuário(s)
+          selecionado(s)? Eles poderão acessar o sistema conforme a regra de cada cargo.
+        </p>
+        <div class="flex flex-col-reverse sm:flex-row sm:justify-end gap-2">
+          <button
+            type="button"
+            class="min-h-[48px] px-4 rounded-xl border border-neutral-300 text-sm font-medium text-neutral-700 hover:bg-neutral-50 touch-manipulation"
+            :disabled="sendingBulkStatus"
+            @click="showConfirmBulkAtivar = false"
+          >
+            Cancelar
+          </button>
+          <button
+            type="button"
+            class="min-h-[48px] px-4 rounded-xl bg-emerald-600 text-white text-sm font-semibold hover:bg-emerald-700 disabled:opacity-50 touch-manipulation"
+            :disabled="sendingBulkStatus"
+            @click="executarBulkAtivar"
+          >
+            {{ sendingBulkStatus ? 'Aplicando…' : 'Ativar' }}
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Confirmar desativar em lote -->
+    <div v-if="showConfirmBulkDesativar" class="fixed inset-0 bg-neutral-900/40 backdrop-blur-[1px] flex items-center justify-center z-[110] p-4">
+      <div class="bg-white rounded-xl px-4 pt-5 pb-4 shadow-xl max-w-md w-full sm:p-6 border border-neutral-100">
+        <h3 class="text-lg font-semibold text-red-900 mb-2">Desativar usuários</h3>
+        <p class="text-sm text-neutral-600 mb-4">
+          <span class="font-semibold tabular-nums">{{ qtdSelecionados }}</span> usuário(s) perderão o acesso até serem
+          reativados. O último administrador ativo não pode ser desativado (validação no servidor).
+        </p>
+        <div class="flex flex-col-reverse sm:flex-row sm:justify-end gap-2">
+          <button
+            type="button"
+            class="min-h-[48px] px-4 rounded-xl border border-neutral-300 text-sm font-medium text-neutral-700 hover:bg-neutral-50 touch-manipulation"
+            :disabled="sendingBulkStatus"
+            @click="showConfirmBulkDesativar = false"
+          >
+            Cancelar
+          </button>
+          <button
+            type="button"
+            class="min-h-[48px] px-4 rounded-xl bg-red-600 text-white text-sm font-semibold hover:bg-red-700 disabled:opacity-50 touch-manipulation"
+            :disabled="sendingBulkStatus"
+            @click="executarBulkDesativar"
+          >
+            {{ sendingBulkStatus ? 'Aplicando…' : 'Desativar' }}
+          </button>
+        </div>
+      </div>
+    </div>
+
     <!-- Mensagem de feedback -->
     <div
       v-if="feedbackMessage"
       :class="[
-        'fixed top-4 right-4 px-4 py-2 rounded-md z-50',
+        'fixed top-4 right-4 px-4 py-2 rounded-md z-[200] max-w-[min(90vw,320px)] shadow-lg',
         feedbackType === 'success' ? 'bg-green-500' : 'bg-red-500',
         'text-white'
       ]"
@@ -649,7 +1102,7 @@ const formatWhatsApp = (whatsapp: string | null | undefined): string => {
     />
 
     <!-- Modal de confirmação de exclusão -->
-    <div v-if="showDeleteConfirm" class="fixed inset-0 bg-gray-500 bg-opacity-75 flex items-center justify-center z-50">
+    <div v-if="showDeleteConfirm" class="fixed inset-0 bg-gray-500 bg-opacity-75 flex items-center justify-center z-[110] p-4">
       <div class="bg-white rounded-lg px-4 pt-5 pb-4 overflow-hidden shadow-xl transform transition-all sm:max-w-lg sm:w-full sm:p-6">
         <div class="sm:flex sm:items-start">
           <div class="mt-3 text-center sm:mt-0 sm:text-left w-full">

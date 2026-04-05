@@ -512,12 +512,11 @@ export const authController = {
       console.log('[AuthController] WhatsApp normalizado:', whatsappNormalizado);
       console.log('[AuthController] Buscando usuário na account:', defaultAccount.id);
 
-      // Buscar usuário pelo WhatsApp normalizado
+      // Buscar usuário pelo WhatsApp (pode estar inativo até concluir primeiro acesso)
       const usuario = await prisma.usuario.findFirst({
         where: {
           whatsapp: whatsappNormalizado,
-          accountId: defaultAccount.id,
-          ativo: true
+          accountId: defaultAccount.id
         },
         select: {
           id: true,
@@ -532,8 +531,8 @@ export const authController = {
         console.log('[AuthController] Usuário não encontrado para o token');
         // Debug: listar alguns usuários para ver o formato
         const usuariosDebug = await prisma.usuario.findMany({
-          where: { accountId: defaultAccount.id, ativo: true },
-          select: { id: true, nome: true, whatsapp: true },
+          where: { accountId: defaultAccount.id },
+          select: { id: true, nome: true, whatsapp: true, ativo: true },
           take: 5
         });
         console.log('[AuthController] Usuários na account (primeiros 5):', usuariosDebug);

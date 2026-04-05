@@ -334,14 +334,16 @@ export const authService = {
       // Hash da senha
       const hashedPassword = await bcrypt.hash(senha, 10);
       
-      // Preparar dados para atualização
+      // Preparar dados para atualização (ativo após senha definida)
       const updateData: {
         senha: string;
         nome: string;
+        ativo: boolean;
         dataNascimento?: Date;
       } = {
         senha: hashedPassword,
-        nome: nome // Atualizar também o nome do usuário
+        nome: nome,
+        ativo: true
       };
       
       // Adicionar data de nascimento se fornecida

@@ -178,27 +178,45 @@ const handleSubmit = () => {
               </div>
             </div>
 
-            <!-- Opção: enviar convite via WhatsApp (apenas em modo create) -->
-            <div v-if="mode === 'create'" class="flex items-start">
-              <div class="flex items-center h-5">
-                <input id="enviar-convite" type="checkbox" v-model="enviarConvite" class="h-4 w-4 text-primary-600 border-gray-300 rounded" />
+            <!-- Opção: enviar convite via WhatsApp (apenas em modo create) — área de toque ampla -->
+            <label
+              v-if="mode === 'create'"
+              for="enviar-convite"
+              class="flex items-start gap-3 rounded-lg border border-gray-200 bg-gray-50/80 px-3 py-3 sm:min-h-[52px] cursor-pointer hover:bg-gray-50 has-[:focus-visible]:ring-2 has-[:focus-visible]:ring-primary-500 has-[:focus-visible]:ring-offset-2"
+            >
+              <div class="flex items-center pt-0.5 shrink-0">
+                <input
+                  id="enviar-convite"
+                  v-model="enviarConvite"
+                  type="checkbox"
+                  class="h-5 w-5 rounded border-gray-300 text-primary-600 focus:ring-primary-500"
+                />
               </div>
-              <div class="ml-3 text-sm">
-                <label for="enviar-convite" class="font-medium text-gray-700">Enviar convite via WhatsApp</label>
-                <p class="text-gray-500">O usuário receberá um link direto para criar sua senha de acesso.</p>
-              </div>
-            </div>
+              <span class="text-sm text-left">
+                <span class="font-medium text-gray-800 block">Enviar convite via WhatsApp</span>
+                <span class="text-gray-600 mt-0.5 block">O usuário recebe um link neste número; até criar a senha o cadastro fica pendente (não ativo).</span>
+              </span>
+            </label>
 
             <!-- Opção: criar célula após salvar (apenas para LIDER em criação) -->
-            <div v-if="mode === 'create' && form.cargo === 'LIDER'" class="flex items-start">
-              <div class="flex items-center h-5">
-                <input id="criar-celula" type="checkbox" v-model="criarCelulaApos" class="h-4 w-4 text-primary-600 border-gray-300 rounded" />
+            <label
+              v-if="mode === 'create' && form.cargo === 'LIDER'"
+              for="criar-celula"
+              class="flex items-start gap-3 rounded-lg border border-gray-200 bg-gray-50/80 px-3 py-3 sm:min-h-[52px] cursor-pointer hover:bg-gray-50 has-[:focus-visible]:ring-2 has-[:focus-visible]:ring-primary-500 has-[:focus-visible]:ring-offset-2"
+            >
+              <div class="flex items-center pt-0.5 shrink-0">
+                <input
+                  id="criar-celula"
+                  v-model="criarCelulaApos"
+                  type="checkbox"
+                  class="h-5 w-5 rounded border-gray-300 text-primary-600 focus:ring-primary-500"
+                />
               </div>
-              <div class="ml-3 text-sm">
-                <label for="criar-celula" class="font-medium text-gray-700">Criar célula para este líder após salvar</label>
-                <p class="text-gray-500">Abrirá o formulário de nova célula já com o líder selecionado.</p>
-              </div>
-            </div>
+              <span class="text-sm text-left">
+                <span class="font-medium text-gray-800 block">Criar célula para este líder após salvar</span>
+                <span class="text-gray-600 mt-0.5 block">Abre o formulário de nova célula com o líder já selecionado.</span>
+              </span>
+            </label>
           </div>
 
           <div class="mt-6 flex justify-end space-x-3">

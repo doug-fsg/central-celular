@@ -101,7 +101,7 @@ function toggleView() {
 </script>
 
 <template>
-  <nav class="bg-white shadow-sm">
+  <nav class="bg-white shadow-sm" style="padding-top: env(safe-area-inset-top, 0px);">
     <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
       <div class="flex justify-between h-16">
         <div class="flex">
