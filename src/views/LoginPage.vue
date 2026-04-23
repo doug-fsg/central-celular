@@ -1,7 +1,8 @@
 <script setup lang="ts">
 import { ref, reactive } from 'vue'
-import { useRouter } from 'vue-router'
+import { useRouter, RouterLink } from 'vue-router'
 import { useUserStore } from '../stores/userStore'
+import BrandLogo from '../components/BrandLogo.vue'
 import FirstAccessForm from '../components/FirstAccessForm.vue'
 import PasswordResetRequestForm from '../components/PasswordResetRequestForm.vue'
 
@@ -155,25 +156,35 @@ const handleRequestCode = async () => {
 </script>
 
 <template>
-  <div class="min-h-screen bg-gray-50 flex flex-col justify-center py-12 px-6 sm:px-10 lg:px-16">
-    <div class="sm:mx-auto sm:w-full sm:max-w-md">
-      <!-- Logo -->
-      <div class="flex justify-center mb-6">
-        <img src="../assets/brand/logo-full.png" alt="Aprisco" class="h-12 w-auto sm:h-14" />
+  <div
+    class="relative min-h-screen flex flex-col justify-center py-12 px-6 sm:px-10 lg:px-16 bg-gradient-to-b from-vibrant-50/40 via-white to-fun-50/25 font-body text-neutral-800 antialiased selection:bg-vibrant-200/60 selection:text-vibrant-900"
+  >
+    <div class="pointer-events-none fixed inset-0 overflow-hidden" aria-hidden="true">
+      <div class="absolute -top-24 right-[-5%] h-56 w-56 rounded-full bg-vibrant-100/25 blur-3xl" />
+      <div class="absolute bottom-10 left-[-10%] h-48 w-48 rounded-full bg-accent-100/20 blur-3xl" />
+    </div>
+
+    <div class="relative z-10 sm:mx-auto sm:w-full sm:max-w-md">
+      <div class="flex justify-center mb-8">
+        <RouterLink to="/" class="rounded-xl focus:outline-none focus-visible:ring-2 focus-visible:ring-vibrant-400 focus-visible:ring-offset-2">
+          <BrandLogo variant="full" class="h-11 w-auto sm:h-12" />
+        </RouterLink>
       </div>
-      <h2 class="mt-6 text-center text-3xl font-extrabold text-gray-900">
+      <h2 class="text-center font-display text-2xl sm:text-3xl font-bold text-neutral-800 tracking-tight">
         Bem-vindo(a)
       </h2>
     </div>
-    <div class="mt-8 sm:mx-auto sm:w-full sm:max-w-md">
-      <div class="bg-white py-8 px-6 shadow sm:rounded-lg sm:px-12">
-        <form @submit.prevent="handleLogin" class="space-y-6">
-          <!-- WhatsApp/Email -->
+
+    <div class="relative z-10 mt-8 sm:mx-auto sm:w-full sm:max-w-md">
+      <div
+        class="bg-white/95 backdrop-blur-sm rounded-2xl border border-vibrant-100/80 shadow-soft px-6 py-9 sm:px-10 sm:py-10"
+      >
+        <form @submit.prevent="handleLogin" class="space-y-5">
           <div>
-            <label for="whatsapp" class="block text-sm font-medium text-gray-700">
+            <label for="whatsapp" class="block text-sm font-semibold text-neutral-700">
               WhatsApp
             </label>
-            <div class="mt-1">
+            <div class="mt-1.5">
               <input
                 id="whatsapp"
                 type="text"
@@ -182,89 +193,88 @@ const handleRequestCode = async () => {
                 inputmode="numeric"
                 autocomplete="tel"
                 required
-                class="appearance-none block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm placeholder-gray-400 focus:outline-none focus:ring-primary-500 focus:border-primary-500 sm:text-sm"
+                class="block w-full rounded-xl border border-vibrant-100 bg-white px-3.5 py-2.5 text-sm text-neutral-900 placeholder-neutral-400 shadow-sm transition-colors focus:border-vibrant-400 focus:outline-none focus:ring-2 focus:ring-vibrant-200/80"
                 placeholder="(11) 99999-9999"
               />
             </div>
           </div>
 
-          <!-- Senha -->
           <div>
-            <label for="senha" class="block text-sm font-medium text-gray-700">
+            <label for="senha" class="block text-sm font-semibold text-neutral-700">
               Senha
             </label>
-            <div class="mt-1">
+            <div class="mt-1.5">
               <input
                 id="senha"
                 type="password"
                 v-model="credentials.senha"
                 required
                 autocomplete="current-password"
-                class="appearance-none block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm placeholder-gray-400 focus:outline-none focus:ring-primary-500 focus:border-primary-500 sm:text-sm"
+                class="block w-full rounded-xl border border-vibrant-100 bg-white px-3.5 py-2.5 text-sm text-neutral-900 shadow-sm transition-colors focus:border-vibrant-400 focus:outline-none focus:ring-2 focus:ring-vibrant-200/80"
               />
             </div>
           </div>
 
-          <!-- Mensagem de erro -->
-          <div v-if="errorMessage" class="text-sm text-red-600">
+          <div
+            v-if="errorMessage"
+            role="alert"
+            class="rounded-xl border border-red-100 bg-red-50/90 px-3 py-2.5 text-sm text-red-700"
+          >
             {{ errorMessage }}
           </div>
 
-          <!-- Botão de login -->
-          <div>
+          <div class="pt-1">
             <button
               type="submit"
               :disabled="loading"
-              class="w-full flex justify-center py-2 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-primary-600 hover:bg-primary-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500 disabled:opacity-50"
+              class="flex w-full items-center justify-center rounded-xl bg-vibrant-600 px-4 py-3 text-sm font-bold text-white shadow-md shadow-vibrant-500/15 transition-colors hover:bg-vibrant-700 focus:outline-none focus-visible:ring-2 focus-visible:ring-vibrant-500 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-55"
             >
               <svg
                 v-if="loading"
-                class="animate-spin -ml-1 mr-3 h-5 w-5 text-white"
+                class="-ml-1 mr-2 h-5 w-5 shrink-0 animate-spin text-white"
                 xmlns="http://www.w3.org/2000/svg"
                 fill="none"
                 viewBox="0 0 24 24"
+                aria-hidden="true"
               >
-                <circle
-                  class="opacity-25"
-                  cx="12"
-                  cy="12"
-                  r="10"
-                  stroke="currentColor"
-                  stroke-width="4"
-                ></circle>
+                <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4" />
                 <path
                   class="opacity-75"
                   fill="currentColor"
                   d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
-                ></path>
+                />
               </svg>
               {{ loading ? 'Entrando...' : 'Entrar' }}
             </button>
           </div>
 
-          <!-- Links para primeiro acesso e reset de senha -->
-          <div class="text-center space-y-2">
-            <div>
-              <button
-                type="button"
-                @click="showFirstAccessModal = true"
-                class="text-sm text-primary-600 hover:text-primary-500"
-              >
-                Primeiro acesso? Solicite seu código
-              </button>
-            </div>
-            <div>
-              <button
-                type="button"
-                @click="showPasswordResetModal = true"
-                class="text-sm text-primary-600 hover:text-primary-500"
-              >
-                Esqueci minha senha
-              </button>
-            </div>
+          <div class="space-y-2 border-t border-vibrant-50 pt-5 text-center">
+            <button
+              type="button"
+              @click="showFirstAccessModal = true"
+              class="block w-full text-sm font-semibold text-vibrant-700 transition-colors hover:text-vibrant-800"
+            >
+              Primeiro acesso? Solicite seu código
+            </button>
+            <button
+              type="button"
+              @click="showPasswordResetModal = true"
+              class="block w-full text-sm font-semibold text-neutral-600 transition-colors hover:text-vibrant-700"
+            >
+              Esqueci minha senha
+            </button>
           </div>
         </form>
       </div>
+
+      <p class="mt-8 text-center">
+        <RouterLink
+          to="/"
+          class="text-sm font-medium text-neutral-500 transition-colors hover:text-vibrant-700"
+        >
+          ← Voltar ao início
+        </RouterLink>
+      </p>
     </div>
 
     <!-- Modal de primeiro acesso -->
@@ -275,28 +285,24 @@ const handleRequestCode = async () => {
       role="dialog"
       aria-modal="true"
     >
-      <!-- Overlay -->
-      <div class="fixed inset-0 bg-gray-500 bg-opacity-75 transition-opacity"></div>
+      <div class="fixed inset-0 bg-vibrant-900/25 backdrop-blur-[2px] transition-opacity" />
 
-      <!-- Modal container -->
-      <div class="flex min-h-screen items-center justify-center p-4 text-center sm:p-0">
-        <div 
-          class="relative transform overflow-hidden rounded-lg bg-white text-left shadow-xl transition-all sm:my-8 sm:w-full sm:max-w-lg"
+      <div class="flex min-h-full items-center justify-center p-4 sm:p-6">
+        <div
+          class="relative w-full max-w-lg overflow-hidden rounded-2xl border border-vibrant-100/90 bg-white text-left shadow-xl shadow-vibrant-900/5"
         >
-          <!-- Botão de fechar -->
           <button
             type="button"
             @click="showFirstAccessModal = false"
-            class="absolute right-4 top-4 text-gray-400 hover:text-gray-500"
+            class="absolute right-3 top-3 rounded-lg p-2 text-neutral-400 transition-colors hover:bg-vibrant-50 hover:text-neutral-600 focus:outline-none focus-visible:ring-2 focus-visible:ring-vibrant-400"
           >
             <span class="sr-only">Fechar</span>
-            <svg class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <svg class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true">
               <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
             </svg>
           </button>
 
-          <!-- Componente de primeiro acesso -->
-          <FirstAccessForm 
+          <FirstAccessForm
             :onClose="() => showFirstAccessModal = false"
             @success="handleFirstAccessSuccess"
           />
@@ -312,30 +318,24 @@ const handleRequestCode = async () => {
       role="dialog"
       aria-modal="true"
     >
-      <!-- Overlay -->
-      <div class="fixed inset-0 bg-gray-500 bg-opacity-75 transition-opacity"></div>
+      <div class="fixed inset-0 bg-vibrant-900/25 backdrop-blur-[2px] transition-opacity" />
 
-      <!-- Modal container -->
-      <div class="flex min-h-screen items-center justify-center p-4 text-center sm:p-0">
-        <div 
-          class="relative transform overflow-hidden rounded-lg bg-white text-left shadow-xl transition-all sm:my-8 sm:w-full sm:max-w-lg"
+      <div class="flex min-h-full items-center justify-center p-4 sm:p-6">
+        <div
+          class="relative w-full max-w-lg overflow-hidden rounded-2xl border border-vibrant-100/90 bg-white text-left shadow-xl shadow-vibrant-900/5"
         >
-          <!-- Botão de fechar -->
           <button
             type="button"
             @click="showPasswordResetModal = false"
-            class="absolute right-4 top-4 text-gray-400 hover:text-gray-500"
+            class="absolute right-3 top-3 rounded-lg p-2 text-neutral-400 transition-colors hover:bg-vibrant-50 hover:text-neutral-600 focus:outline-none focus-visible:ring-2 focus-visible:ring-vibrant-400"
           >
             <span class="sr-only">Fechar</span>
-            <svg class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <svg class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true">
               <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
             </svg>
           </button>
 
-          <!-- Componente de reset de senha -->
-          <PasswordResetRequestForm 
-            :onClose="() => showPasswordResetModal = false"
-          />
+          <PasswordResetRequestForm :onClose="() => showPasswordResetModal = false" />
         </div>
       </div>
     </div>

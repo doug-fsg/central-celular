@@ -1,6 +1,7 @@
 import type { RouteLocationNormalized, NavigationGuardNext } from 'vue-router'
 import { createRouter, createWebHistory } from 'vue-router'
 import { useUserStore } from '../stores/userStore'
+import { useNavigationLoadingStore } from '../stores/navigationLoadingStore'
 import { ssoLinkService } from '../services/ssoLinkService'
 import celulaService from '../services/celulaService'
 import api from '../services/api'
@@ -122,6 +123,22 @@ const router = createRouter({
       meta: { requiresSSO: true },
     },
   ],
+})
+
+/** Primeira pintura na LP: sem overlay; demais navegações exibem loading global. */
+router.beforeEach((to, from) => {
+  const skipInitialHome = from.matched.length === 0 && to.name === 'home'
+  if (!skipInitialHome) {
+    useNavigationLoadingStore().start()
+  }
+})
+
+router.afterEach(() => {
+  void useNavigationLoadingStore().finish()
+})
+
+router.onError(() => {
+  void useNavigationLoadingStore().finish()
 })
 
 // Navegação Guards

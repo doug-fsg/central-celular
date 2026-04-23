@@ -11,7 +11,7 @@ interface Props {
 const props = withDefaults(defineProps<Props>(), {
   variant: 'icon',
   alt: 'Aprisco',
-  class: 'h-8 w-auto'
+  class: 'inline-block h-8 w-auto'
 })
 
 const src = props.variant === 'full' ? logoFull : logoIcon
@@ -20,11 +20,4 @@ const src = props.variant === 'full' ? logoFull : logoIcon
 <template>
   <img :src="src" :alt="props.alt" :class="props.class" />
 </template>
-
-<style scoped>
-img {
-  display: inline-block;
-}
-</style>
-
 

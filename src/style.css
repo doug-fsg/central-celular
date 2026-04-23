@@ -35,6 +35,14 @@ body {
 
 html {
   scroll-behavior: smooth;
+  /* Alinha âncoras (#sobre, etc.) abaixo do header fixo em qualquer página */
+  scroll-padding-top: 5.5rem;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html {
+    scroll-behavior: auto;
+  }
 }
 
 /* Previne seleção de texto acidental em elementos de UI */

@@ -3,6 +3,7 @@ import { computed } from 'vue';
 import { useRoute } from 'vue-router';
 import Navbar from './components/Navbar.vue';
 import BottomNavbar from './components/BottomNavbar.vue';
+import PageRouteLoader from './components/PageRouteLoader.vue';
 
 const route = useRoute();
 
@@ -17,6 +18,8 @@ const showNavigation = computed(() => {
 </script>
 
 <template>
+  <PageRouteLoader />
+
   <!-- Barra de navegação superior (visível em telas maiores) -->
   <Navbar v-if="showNavigation" class="hidden sm:block" />
 

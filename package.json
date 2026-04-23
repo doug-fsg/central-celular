@@ -16,7 +16,7 @@
     "seed": "tsx server/seed.js",
     "start:dev": "concurrently \"yarn dev:server\" \"yarn dev\"",
     "start": "tsx server/index.ts",
-    "generate:icons": "pwa-assets-generator --config pwa-assets.config.ts"
+    "generate:icons": "node -e \"require('fs').copyFileSync('src/assets/brand/logo-icon.svg','public/favicon.svg')\" && pwa-assets-generator --config pwa-assets.config.ts"
   },
   "dependencies": {
     "@headlessui/vue": "^1.7.19",

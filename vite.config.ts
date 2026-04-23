@@ -8,7 +8,7 @@ export default defineConfig({
     vue(),
     VitePWA({
       registerType: 'autoUpdate',
-      includeAssets: ['favicon.svg', 'apple-touch-icon-180x180.png', 'maskable-icon-512x512.png'],
+      includeAssets: ['favicon.png', 'favicon.svg', 'apple-touch-icon-180x180.png', 'maskable-icon-512x512.png'],
       manifest: {
         name: 'Aprisco',
         short_name: 'Aprisco',
@@ -18,7 +18,8 @@ export default defineConfig({
         display: 'standalone',
         orientation: 'portrait-primary',
         scope: '/',
-        start_url: '/',
+        // Abre o app (login → dashboard se já autenticado), não a landing pública em "/".
+        start_url: '/login',
         icons: [
           {
             src: 'pwa-64x64.png',
