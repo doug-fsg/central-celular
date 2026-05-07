@@ -8,6 +8,11 @@ interface CreateOtpParams {
   isInvite?: boolean;
 }
 
+/** Código numérico de login — curto, expira rápido. */
+const OTP_CODE_TTL_MS = 10 * 60 * 1000;
+/** Token do link /first-access — mais longo; convites costumam ser abertos com atraso (ex.: WhatsApp). */
+const INVITE_TOKEN_TTL_MS = 48 * 60 * 60 * 1000;
+
 export const otpService = {
   // Função para padronizar o formato do número
   formatWhatsApp(whatsapp: string): string {
@@ -39,8 +44,8 @@ export const otpService = {
     // Gerar código OTP de 4 dígitos ou token único para convite
     const code = isInvite ? this.generateInviteToken() : this.generateOtpCode();
     
-    // Definir validade para 10 minutos a partir de agora
-    const expiresAt = new Date(Date.now() + 10 * 60 * 1000);
+    const ttlMs = isInvite ? INVITE_TOKEN_TTL_MS : OTP_CODE_TTL_MS;
+    const expiresAt = new Date(Date.now() + ttlMs);
     
     try {
       // Verificar se já existe um código válido

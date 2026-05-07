@@ -21,3 +21,27 @@ app.use(VueApexCharts)
 app.component('AppIcon', AppIcon)
 app.directive('fade-in', vFadeIn)
 app.mount('#app')
+
+function hideMobilePwaSplash(): void {
+  const el = document.getElementById('app-splash')
+  if (!el) return
+  const style = window.getComputedStyle(el)
+  if (style.display === 'none') {
+    el.remove()
+    return
+  }
+  el.classList.add('app-splash--out')
+  const done = () => {
+    el.removeEventListener('transitionend', onEnd)
+    el.remove()
+  }
+  const onEnd = (e: TransitionEvent) => {
+    if (e.propertyName === 'opacity') done()
+  }
+  el.addEventListener('transitionend', onEnd)
+  window.setTimeout(done, 500)
+}
+
+void router.isReady().then(() => {
+  requestAnimationFrame(() => hideMobilePwaSplash())
+})

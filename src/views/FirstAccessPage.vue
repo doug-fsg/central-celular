@@ -40,7 +40,7 @@ const tokenLoadErrorHelp = computed(() => {
   if (m.includes('não fornecid') || m.includes('token não')) return 'Abra o link do WhatsApp.'
   if (m.includes('já possui senha') || m.includes('já foi utilizad')) return 'Use “Já tenho senha”.'
   if (m.includes('não encontrado')) return 'Fale com o admin.'
-  return 'Novo link: 10 min.'
+  return 'Novo link: válido por 48 h.'
 })
 
 function isLikelyNetworkError(err: { message?: string }): boolean {

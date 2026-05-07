@@ -43,13 +43,13 @@ async function enviarConvitePrimeiroAcessoWhatsApp(params: {
       ? `Olá ${primeiroNome}!\n\n` +
         `Segue um *novo link* para criar sua senha no *Aprisco*:\n\n` +
         `${inviteLink}\n\n` +
-        `Este link expira em 10 minutos.\n\n` +
+        `Este link expira em 48 horas.\n\n` +
         `_Se você não esperava esta mensagem, ignore._`
       : `Olá ${primeiroNome}!\n\n` +
         `Você foi cadastrado no sistema *Aprisco*.\n\n` +
         `Para criar sua senha de acesso, clique no link abaixo:\n\n` +
         `${inviteLink}\n\n` +
-        `Este link expira em 10 minutos.\n\n` +
+        `Este link expira em 48 horas.\n\n` +
         `_Se você não solicitou este cadastro, ignore esta mensagem._`;
 
   return otpService.sendCustomMessageWhatsApp(

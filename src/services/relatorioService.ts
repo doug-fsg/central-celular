@@ -56,6 +56,19 @@ export interface RelatorioEstatisticas {
   presencaCulto: number;
   presencaCelula: number;
   taxaPresenca: number;
+  /** Indicadores por semana (modal admin / membros da célula). */
+  celula?: {
+    ultimaSemana: number;
+    penultimaSemana: number;
+    media: number;
+  };
+  culto?: {
+    ultimaSemana: number;
+    penultimaSemana: number;
+    media: number;
+  };
+  /** Série histórica % frequência célula por semana (ordem cronológica). */
+  series?: number[];
 }
 
 // Serviço de relatórios

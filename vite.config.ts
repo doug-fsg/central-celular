@@ -20,19 +20,17 @@ export default defineConfig({
         scope: '/',
         // Abre o app (login → dashboard se já autenticado), não a landing pública em "/".
         start_url: '/login',
+        // Use apenas arquivos que existem em /public. Referências quebradas a pwa-*.png fazem
+        // Android/iOS mostrarem só o theme_color (ícone roxo sem arte).
         icons: [
           {
-            src: 'pwa-64x64.png',
-            sizes: '64x64',
-            type: 'image/png',
-          },
-          {
-            src: 'pwa-192x192.png',
+            src: 'maskable-icon-512x512.png',
             sizes: '192x192',
             type: 'image/png',
+            purpose: 'any',
           },
           {
-            src: 'pwa-512x512.png',
+            src: 'maskable-icon-512x512.png',
             sizes: '512x512',
             type: 'image/png',
             purpose: 'any',
@@ -42,6 +40,24 @@ export default defineConfig({
             sizes: '512x512',
             type: 'image/png',
             purpose: 'maskable',
+          },
+          {
+            src: 'apple-touch-icon-180x180.png',
+            sizes: '180x180',
+            type: 'image/png',
+            purpose: 'any',
+          },
+          {
+            src: 'favicon.png',
+            sizes: '48x48',
+            type: 'image/png',
+            purpose: 'any',
+          },
+          {
+            src: 'favicon.svg',
+            sizes: '64x64',
+            type: 'image/svg+xml',
+            purpose: 'any',
           },
         ],
       },

@@ -2,8 +2,9 @@
 <html lang="pt-br">
   <head>
     <meta charset="UTF-8" />
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <link rel="icon" type="image/png" href="/favicon.png" />
-    <link rel="apple-touch-icon" href="/apple-touch-icon-180x180.png" />
+    <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon-180x180.png" />
 
     <!-- Viewport com safe-area para iPhone com notch/home-bar -->
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
@@ -16,11 +17,127 @@
     <meta name="apple-mobile-web-app-title" content="Aprisco" />
 
     <title>Aprisco</title>
+    <style>
+      /* Splash inicial: html.is-pwa-shell = celular + app na área de trabalho (script no head) */
+      #app-splash {
+        display: none;
+        box-sizing: border-box;
+      }
+      @media (max-width: 767px) {
+        html.is-pwa-shell #app-splash {
+          display: flex;
+          position: fixed;
+          inset: 0;
+          z-index: 2147483000;
+          margin: 0;
+          padding: max(1.5rem, env(safe-area-inset-top, 0px)) max(1.25rem, env(safe-area-inset-right, 0px))
+            max(1.5rem, env(safe-area-inset-bottom, 0px)) max(1.25rem, env(safe-area-inset-left, 0px));
+          flex-direction: column;
+          align-items: center;
+          justify-content: center;
+          gap: 1.25rem;
+          font-family: 'Outfit', 'Nunito', system-ui, sans-serif;
+          background: linear-gradient(165deg, #faf5ff 0%, #fff7ed 45%, #f9fafb 100%);
+          color: #4b5563;
+          -webkit-font-smoothing: antialiased;
+          transition: opacity 0.45s ease, visibility 0.45s ease;
+        }
+        html.is-pwa-shell #app-splash.app-splash--out {
+          opacity: 0;
+          visibility: hidden;
+          pointer-events: none;
+        }
+      }
+      .app-splash__mark {
+        width: 4.5rem;
+        height: 4.5rem;
+        border-radius: 1.1rem;
+        background: linear-gradient(135deg, #7928fa 0%, #e6a706 100%);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        box-shadow: 0 10px 30px rgba(121, 40, 250, 0.25);
+        animation: app-splash-mark 2.2s ease-in-out infinite;
+      }
+      @media (prefers-reduced-motion: reduce) {
+        .app-splash__mark {
+          animation: none;
+        }
+        .app-splash__dots span {
+          animation: none !important;
+          opacity: 0.7;
+        }
+      }
+      @keyframes app-splash-mark {
+        0%, 100% { transform: scale(1); }
+        50% { transform: scale(1.04); }
+      }
+      .app-splash__title {
+        margin: 0;
+        font-size: 1.5rem;
+        font-weight: 800;
+        letter-spacing: -0.02em;
+        color: #431879;
+      }
+      .app-splash__hint {
+        margin: -0.25rem 0 0;
+        font-size: 0.9rem;
+        font-weight: 500;
+        color: #6b7280;
+      }
+      .app-splash__dots {
+        display: flex;
+        gap: 0.45rem;
+        margin-top: 0.25rem;
+      }
+      .app-splash__dots span {
+        width: 0.45rem;
+        height: 0.45rem;
+        border-radius: 50%;
+        background: linear-gradient(90deg, #7928fa, #e6a706);
+        opacity: 0.35;
+        animation: app-splash-dot 1.05s ease-in-out infinite;
+      }
+      .app-splash__dots span:nth-child(2) { animation-delay: 0.15s; }
+      .app-splash__dots span:nth-child(3) { animation-delay: 0.3s; }
+      @keyframes app-splash-dot {
+        0%, 100% { opacity: 0.35; transform: scale(1); }
+        50% { opacity: 1; transform: scale(1.15); }
+      }
+    </style>
+    <script>
+      (function () {
+        try {
+          var narrow = window.matchMedia('(max-width: 767px)').matches
+          var installed =
+            (window.matchMedia && window.matchMedia('(display-mode: standalone)').matches) ||
+            (window.matchMedia && window.matchMedia('(display-mode: fullscreen)').matches) ||
+            (window.matchMedia && window.matchMedia('(display-mode: minimal-ui)').matches) ||
+            (typeof navigator !== 'undefined' && navigator.standalone === true)
+          if (narrow && installed) document.documentElement.classList.add('is-pwa-shell')
+        } catch (e) {}
+      })()
+    </script>
+
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Outfit:wght@400;600;700;800;900&family=Nunito:wght@400;500;600;700&display=swap" rel="stylesheet">
   </head>
   <body>
+    <!-- Splash só em celular + PWA instalado (ver CSS); removido após router.isReady() -->
+    <div id="app-splash" role="status" aria-live="polite" aria-busy="true">
+      <div class="app-splash__mark" aria-hidden="true">
+        <svg xmlns="http://www.w3.org/2000/svg" width="34" height="34" viewBox="0 0 64 64" fill="none" aria-hidden="true">
+          <path d="M18 38c6-10 10-14 14-14s8 4 14 14" stroke="#fff" stroke-width="5" stroke-linecap="round"/>
+          <circle cx="32" cy="44" r="4" fill="#fff"/>
+        </svg>
+      </div>
+      <p class="app-splash__title">Aprisco</p>
+      <p class="app-splash__hint">Carregando…</p>
+      <div class="app-splash__dots" aria-hidden="true">
+        <span></span><span></span><span></span>
+      </div>
+    </div>
     <div id="app"></div>
     <script type="module" src="/src/main.ts"></script>
   </body>

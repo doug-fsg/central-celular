@@ -1,7 +1,54 @@
 import { Request, Response } from 'express';
 import { PrismaClient } from '@prisma/client';
+import { startOfWeek } from 'date-fns';
 
 const prisma = new PrismaClient();
+
+type RelatorioComPresencas = {
+  dataInicio: Date;
+  evento: number;
+  presencas: { tipo: number; status: number }[];
+};
+
+function pctPresencasPorTipo(rels: RelatorioComPresencas[], tipo: 0 | 1): number {
+  let presentes = 0;
+  let total = 0;
+  for (const r of rels) {
+    for (const p of r.presencas) {
+      if (p.tipo !== tipo) continue;
+      total += 1;
+      if (p.status === 1) presentes += 1;
+    }
+  }
+  return total > 0 ? Math.round((presentes / total) * 100) : 0;
+}
+
+/** Agrupa relatórios enviados por semana (segunda como início) e monta indicadores do modal admin. */
+function resumoSemanalPorEvento(relatorios: RelatorioComPresencas[], evento: 0 | 1): {
+  ultimaSemana: number;
+  penultimaSemana: number;
+  media: number;
+  series: number[];
+} {
+  const tipo = (evento === 0 ? 0 : 1) as 0 | 1;
+  const filtrados = relatorios.filter((r) => r.evento === evento);
+  const porSemana = new Map<number, RelatorioComPresencas[]>();
+  for (const r of filtrados) {
+    const chave = startOfWeek(r.dataInicio, { weekStartsOn: 1 }).getTime();
+    const lista = porSemana.get(chave) ?? [];
+    lista.push(r);
+    porSemana.set(chave, lista);
+  }
+  const semanasAsc = [...porSemana.keys()].sort((a, b) => a - b);
+  const series = semanasAsc.map((k) => pctPresencasPorTipo(porSemana.get(k)!, tipo));
+  const n = series.length;
+  return {
+    ultimaSemana: n > 0 ? series[n - 1] : 0,
+    penultimaSemana: n > 1 ? series[n - 2] : 0,
+    media: n > 0 ? Math.round(series.reduce((s, v) => s + v, 0) / n) : 0,
+    series,
+  };
+}
 
 // Estendendo o tipo Request para incluir o usuário autenticado
 interface AuthRequest extends Request {
@@ -420,8 +467,21 @@ export const obterEstatisticas = async (req: Request, res: Response) => {
     }
 
     const totalMembros = celula._count.membros;
+    const vazioSemanal = {
+      ultimaSemana: 0,
+      penultimaSemana: 0,
+      media: 0,
+    };
     if (totalMembros === 0) {
-      return res.json({ totalMembros: 0, presencaCelula: 0, presencaCulto: 0, taxaPresenca: 0 });
+      return res.json({
+        totalMembros: 0,
+        presencaCelula: 0,
+        presencaCulto: 0,
+        taxaPresenca: 0,
+        celula: { ...vazioSemanal },
+        culto: { ...vazioSemanal },
+        series: [] as number[],
+      });
     }
 
     const tresMesesAtras = new Date();
@@ -434,40 +494,63 @@ export const obterEstatisticas = async (req: Request, res: Response) => {
         dataInicio: { gte: tresMesesAtras },
       },
       include: {
-        _count: {
-          select: {
-            presencas: { where: { status: 1 } },
-          },
-        },
+        presencas: true,
       },
+      orderBy: { dataInicio: 'asc' },
     });
-    
-    const relatoriosCelula = relatorios.filter(r => r.evento === 0);
-    const relatoriosCulto = relatorios.filter(r => r.evento === 1);
-    
+
+    const relatoriosCelula = relatorios.filter((r) => r.evento === 0);
+    const relatoriosCulto = relatorios.filter((r) => r.evento === 1);
+
     let presencaCelula = 0;
     if (relatoriosCelula.length > 0) {
-      const totalPresencasCelula = relatoriosCelula.reduce((acc, rel) => acc + rel._count.presencas, 0);
+      const totalPresencasCelula = relatoriosCelula.reduce(
+        (acc, rel) => acc + rel.presencas.filter((p) => p.tipo === 0 && p.status === 1).length,
+        0
+      );
       const totalPossivelPresencas = relatoriosCelula.length * totalMembros;
-      presencaCelula = totalPossivelPresencas > 0 ? Math.round((totalPresencasCelula / totalPossivelPresencas) * 100) : 0;
+      presencaCelula =
+        totalPossivelPresencas > 0 ? Math.round((totalPresencasCelula / totalPossivelPresencas) * 100) : 0;
     }
-    
+
     let presencaCulto = 0;
     if (relatoriosCulto.length > 0) {
-      const totalPresencasCulto = relatoriosCulto.reduce((acc, rel) => acc + rel._count.presencas, 0);
+      const totalPresencasCulto = relatoriosCulto.reduce(
+        (acc, rel) => acc + rel.presencas.filter((p) => p.tipo === 1 && p.status === 1).length,
+        0
+      );
       const totalPossivelPresencas = relatoriosCulto.length * totalMembros;
-      presencaCulto = totalPossivelPresencas > 0 ? Math.round((totalPresencasCulto / totalPossivelPresencas) * 100) : 0;
+      presencaCulto =
+        totalPossivelPresencas > 0 ? Math.round((totalPresencasCulto / totalPossivelPresencas) * 100) : 0;
     }
-    
-    const taxaPresenca = relatorios.length > 0 
-      ? Math.round((presencaCelula * relatoriosCelula.length + presencaCulto * relatoriosCulto.length) / relatorios.length) 
-      : 0;
+
+    const taxaPresenca =
+      relatorios.length > 0
+        ? Math.round(
+            (presencaCelula * relatoriosCelula.length + presencaCulto * relatoriosCulto.length) /
+              relatorios.length
+          )
+        : 0;
+
+    const statsCelula = resumoSemanalPorEvento(relatorios, 0);
+    const statsCulto = resumoSemanalPorEvento(relatorios, 1);
 
     res.json({
       totalMembros,
       presencaCelula,
       presencaCulto,
       taxaPresenca,
+      celula: {
+        ultimaSemana: statsCelula.ultimaSemana,
+        penultimaSemana: statsCelula.penultimaSemana,
+        media: statsCelula.media,
+      },
+      culto: {
+        ultimaSemana: statsCulto.ultimaSemana,
+        penultimaSemana: statsCulto.penultimaSemana,
+        media: statsCulto.media,
+      },
+      series: statsCelula.series,
     });
   } catch (error) {
     console.error('Erro ao obter estatísticas:', error);
