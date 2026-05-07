@@ -67,8 +67,8 @@ export interface RelatorioEstatisticas {
     penultimaSemana: number;
     media: number;
   };
-  /** Série histórica % frequência célula por semana (ordem cronológica). */
-  series?: number[];
+  /** Rótulos yyyy-MM-dd (segunda) na mesma ordem que `series` (frequência célula). */
+  seriesSemanas?: string[];
 }
 
 // Serviço de relatórios

@@ -1,6 +1,6 @@
 import { Request, Response } from 'express';
 import { PrismaClient } from '@prisma/client';
-import { startOfWeek } from 'date-fns';
+import { startOfWeek, format } from 'date-fns';
 
 const prisma = new PrismaClient();
 
@@ -29,6 +29,7 @@ function resumoSemanalPorEvento(relatorios: RelatorioComPresencas[], evento: 0 |
   penultimaSemana: number;
   media: number;
   series: number[];
+  semanasInicioISO: string[];
 } {
   const tipo = (evento === 0 ? 0 : 1) as 0 | 1;
   const filtrados = relatorios.filter((r) => r.evento === evento);
@@ -41,12 +42,14 @@ function resumoSemanalPorEvento(relatorios: RelatorioComPresencas[], evento: 0 |
   }
   const semanasAsc = [...porSemana.keys()].sort((a, b) => a - b);
   const series = semanasAsc.map((k) => pctPresencasPorTipo(porSemana.get(k)!, tipo));
+  const semanasInicioISO = semanasAsc.map((k) => format(new Date(k), 'yyyy-MM-dd'));
   const n = series.length;
   return {
     ultimaSemana: n > 0 ? series[n - 1] : 0,
     penultimaSemana: n > 1 ? series[n - 2] : 0,
     media: n > 0 ? Math.round(series.reduce((s, v) => s + v, 0) / n) : 0,
     series,
+    semanasInicioISO,
   };
 }
 
@@ -481,6 +484,7 @@ export const obterEstatisticas = async (req: Request, res: Response) => {
         celula: { ...vazioSemanal },
         culto: { ...vazioSemanal },
         series: [] as number[],
+        seriesSemanas: [] as string[],
       });
     }
 
@@ -551,6 +555,7 @@ export const obterEstatisticas = async (req: Request, res: Response) => {
         media: statsCulto.media,
       },
       series: statsCelula.series,
+      seriesSemanas: statsCelula.semanasInicioISO,
     });
   } catch (error) {
     console.error('Erro ao obter estatísticas:', error);

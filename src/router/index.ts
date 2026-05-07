@@ -5,6 +5,7 @@ import { useNavigationLoadingStore } from '../stores/navigationLoadingStore'
 import { ssoLinkService } from '../services/ssoLinkService'
 import celulaService from '../services/celulaService'
 import api from '../services/api'
+import { isInstalledPwaDisplayMode } from '../utils/pwa'
 
 const router = createRouter({
   history: createWebHistory(),
@@ -13,6 +14,29 @@ const router = createRouter({
       path: '/',
       name: 'home',
       component: () => import('../views/LandingPage.vue'),
+      beforeEnter: (to, from, next) => {
+        if (!isInstalledPwaDisplayMode()) {
+          next()
+          return
+        }
+        const userStore = useUserStore()
+        if (!userStore.isLoggedIn) {
+          next({ name: 'login', replace: true })
+          return
+        }
+        if (
+          userStore.isAdmin &&
+          !(userStore.canToggleView && userStore.currentView === 'cell')
+        ) {
+          next({ name: 'admin-dashboard', replace: true })
+          return
+        }
+        if (userStore.isSupervisor) {
+          next({ name: 'supervisor-dashboard', replace: true })
+          return
+        }
+        next({ name: 'dashboard', replace: true })
+      },
     },
     {
       path: '/gileade',

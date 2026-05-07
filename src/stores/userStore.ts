@@ -233,9 +233,6 @@ export const useUserStore = defineStore('user', () => {
   
   // Registrar getter do token no api.ts
   setTokenGetter(() => token.value);
-  
-  // Inicialização
-  loadUserFromStorage();
 
   return {
     user,

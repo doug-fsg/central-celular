@@ -1,8 +1,9 @@
 <script setup lang="ts">
-import { ref, onMounted, watch, computed } from 'vue'
+import { ref, watch, computed } from 'vue'
 import { Teleport } from 'vue'
 import { adminService } from '../services/adminService'
 import MemberFrequencyModal from './MemberFrequencyModal.vue'
+import CellWeekReportsModal from './CellWeekReportsModal.vue'
 
 interface Membro {
   id: number
@@ -44,7 +45,17 @@ const anfitrioes = computed(() => membros.value.filter(m => m.ehAnfitriao).lengt
 // Dashboard de frequência
 const frequenciaCulto = ref({ ultimaSemana: 0, penultimaSemana: 0, media: 0 })
 const frequenciaCelula = ref({ ultimaSemana: 0, penultimaSemana: 0, media: 0 })
-const ultimasSemanas = ref<number[]>([]) // percentuais da série (0..100)
+/** Barras do gráfico: % + segunda-feira da semana (yyyy-MM-dd) para abrir relatórios. */
+const chartBars = ref<Array<{ pct: number; weekStart: string }>>([])
+
+const showWeekReportsModal = ref(false)
+const selectedWeekStart = ref<string | null>(null)
+
+function openWeekReports(weekStart: string) {
+  if (!weekStart || !props.cellId) return
+  selectedWeekStart.value = weekStart
+  showWeekReportsModal.value = true
+}
 
 async function loadFrequencia() {
   if (!props.cellId) return
@@ -52,11 +63,17 @@ async function loadFrequencia() {
     const data = await adminService.obterEstatisticasFrequencia(props.cellId)
     if (data.culto) frequenciaCulto.value = data.culto
     if (data.celula) frequenciaCelula.value = data.celula
-    if (Array.isArray(data.series)) {
-      ultimasSemanas.value = data.series.slice(-8)
-    }
+    const s = Array.isArray(data.series) ? data.series : []
+    const w = Array.isArray(data.seriesSemanas) ? data.seriesSemanas : []
+    const maxBarras = 8
+    const sliceStart = Math.max(0, s.length - maxBarras)
+    chartBars.value = s.slice(sliceStart).map((pct, idx) => ({
+      pct,
+      weekStart: w[sliceStart + idx] || '',
+    }))
   } catch (error) {
     console.error('Erro ao carregar estatísticas de frequência:', error)
+    chartBars.value = []
   }
 }
 
@@ -194,15 +211,27 @@ watch(() => props.cellId, () => { if (props.isOpen) loadMembers() })
             </div>
           </div>
 
-          <!-- Mini gráfico de barras das últimas semanas -->
-          <div v-if="ultimasSemanas.length" class="mt-2">
-            <div class="h-24 flex items-end gap-1">
-              <div v-for="(v, i) in ultimasSemanas" :key="i" class="flex-1 bg-primary-200 rounded-sm"
-                :style="{ height: Math.max(4, Math.min(100, v)) + '%' }"
-                :title="`Semana ${i+1}: ${v}%`"
-              ></div>
+          <!-- Gráfico: barras clicáveis (mobile: área de toque ampla) -->
+          <div v-if="chartBars.length" class="mt-2">
+            <p class="text-xs text-gray-500 mb-2 sm:hidden">Toque numa barra para ver os relatórios da semana.</p>
+            <p class="text-xs text-gray-500 mb-2 hidden sm:block">Clique numa barra para ver os relatórios da semana.</p>
+            <div class="h-24 sm:h-28 flex items-stretch gap-1.5 sm:gap-2">
+              <button
+                v-for="(bar, i) in chartBars"
+                :key="`${bar.weekStart}-${i}`"
+                type="button"
+                class="flex-1 flex flex-col justify-end min-w-0 min-h-[52px] rounded-md touch-manipulation transition-opacity active:opacity-90 disabled:opacity-40 disabled:pointer-events-none focus-visible:outline focus-visible:ring-2 focus-visible:ring-violet-400 focus-visible:ring-offset-2"
+                :disabled="!bar.weekStart"
+                :aria-label="bar.weekStart ? `Semana, ${bar.pct} por cento. Abrir relatórios` : `Semana ${i + 1}, sem dados de data`"
+                @click="openWeekReports(bar.weekStart)"
+              >
+                <div
+                  class="w-full mx-auto max-w-[2.75rem] rounded-md bg-violet-200/95 ring-1 ring-violet-300/70 border border-violet-100/90 shadow-sm"
+                  :style="{ height: Math.max(8, Math.min(100, bar.pct)) + '%' }"
+                />
+              </button>
             </div>
-            <div class="mt-1 text-xs text-gray-500">Últimas {{ ultimasSemanas.length }} semanas</div>
+            <div class="mt-1.5 text-xs text-gray-500">Últimas {{ chartBars.length }} semanas (freq. célula)</div>
           </div>
         </div>
 
@@ -299,6 +328,14 @@ watch(() => props.cellId, () => { if (props.isOpen) loadMembers() })
     :membro-nome="selectedMembro?.nome || ''"
     :celula-id="cellId"
     @close="showFrequencyModal = false"
+  />
+
+  <CellWeekReportsModal
+    :is-open="showWeekReportsModal"
+    :celula-id="cellId"
+    :week-start="selectedWeekStart"
+    :cell-name="cellName"
+    @close="showWeekReportsModal = false"
   />
 </template>
 

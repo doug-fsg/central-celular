@@ -7,6 +7,7 @@ import api from './services/api'
 import AppIcon from './components/AppIcon.vue'
 import vFadeIn from './directives/fadeInDirective'
 import VueApexCharts from 'vue3-apexcharts'
+import { useUserStore } from './stores/userStore'
 
 // Verificar se o servidor backend está respondendo (rota correta no backend: /api/health)
 api.get('/health')
@@ -15,7 +16,9 @@ api.get('/health')
 
 // Iniciar a aplicação
 const app = createApp(App)
-app.use(createPinia())
+const pinia = createPinia()
+app.use(pinia)
+await useUserStore().loadUserFromStorage()
 app.use(router)
 app.use(VueApexCharts)
 app.component('AppIcon', AppIcon)

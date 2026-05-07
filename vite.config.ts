@@ -18,8 +18,8 @@ export default defineConfig({
         display: 'standalone',
         orientation: 'portrait-primary',
         scope: '/',
-        // Abre o app (login → dashboard se já autenticado), não a landing pública em "/".
-        start_url: '/login',
+        // Preferência ao abrir pelo ícone; iOS às vezes ignora e usa "/" — o router redireciona em modo instalado.
+        start_url: '/login?pwa=1',
         // Use apenas arquivos que existem em /public. Referências quebradas a pwa-*.png fazem
         // Android/iOS mostrarem só o theme_color (ícone roxo sem arte).
         icons: [
