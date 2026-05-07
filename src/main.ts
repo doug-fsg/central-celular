@@ -14,17 +14,6 @@ api.get('/health')
   .then(() => console.log('✅ API conectada com sucesso'))
   .catch(err => console.warn('⚠️ API offline ou inacessível', err))
 
-// Iniciar a aplicação
-const app = createApp(App)
-const pinia = createPinia()
-app.use(pinia)
-await useUserStore().loadUserFromStorage()
-app.use(router)
-app.use(VueApexCharts)
-app.component('AppIcon', AppIcon)
-app.directive('fade-in', vFadeIn)
-app.mount('#app')
-
 function hideMobilePwaSplash(): void {
   const el = document.getElementById('app-splash')
   if (!el) return
@@ -45,6 +34,22 @@ function hideMobilePwaSplash(): void {
   window.setTimeout(done, 500)
 }
 
-void router.isReady().then(() => {
-  requestAnimationFrame(() => hideMobilePwaSplash())
+async function bootstrap(): Promise<void> {
+  const app = createApp(App)
+  const pinia = createPinia()
+  app.use(pinia)
+  await useUserStore().loadUserFromStorage()
+  app.use(router)
+  app.use(VueApexCharts)
+  app.component('AppIcon', AppIcon)
+  app.directive('fade-in', vFadeIn)
+  app.mount('#app')
+
+  void router.isReady().then(() => {
+    requestAnimationFrame(() => hideMobilePwaSplash())
+  })
+}
+
+void bootstrap().catch((err) => {
+  console.error('[bootstrap] Falha ao iniciar app:', err)
 })
