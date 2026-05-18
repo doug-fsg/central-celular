@@ -1,13 +1,17 @@
 <script setup lang="ts">
 import { ref, onMounted, computed } from 'vue'
+import { useRouter } from 'vue-router'
 import { useMemberStore, type Member } from '../stores/memberStore'
 import { useUserStore } from '../stores/userStore'
+import { useRedeCuidadoStore } from '../stores/redeCuidadoStore'
 import AppIcon from '../components/AppIcon.vue'
 import MemberNotesModal from '../components/MemberNotesModal.vue'
 import { Dialog, DialogPanel, DialogTitle, TransitionRoot, TransitionChild } from '@headlessui/vue'
 
+const router = useRouter()
 const memberStore = useMemberStore()
 const userStore = useUserStore()
+const redeCuidadoStore = useRedeCuidadoStore()
 const showAddForm = ref(false)
 const activeTab = ref('all')
 
@@ -33,6 +37,9 @@ const stats = computed(() => {
 // Carregar membros quando o componente for montado
 onMounted(async () => {
   await memberStore.carregarMembros()
+  if (memberStore.celulaId) {
+    redeCuidadoStore.carregarRede(memberStore.celulaId)
+  }
   
   // Registrar informações para depuração
   console.log('Usuário logado:', userStore.isLoggedIn)
@@ -320,6 +327,21 @@ async function handleSubmit() {
             <AppIcon name="refresh" size="sm" class="mr-1.5" />
             Atualizar
           </button>
+          <button
+            @click="router.push({ name: 'rede-cuidado' })"
+            class="inline-flex items-center px-3 py-1.5 text-sm font-medium rounded-md text-primary-700 bg-primary-50 hover:bg-primary-100 border border-primary-200 transition-colors flex-shrink-0"
+            title="Rede de cuidado"
+          >
+            <AppIcon name="heart" size="sm" class="mr-1.5" />
+            <span class="hidden sm:inline">Rede de Cuidado</span>
+            <span class="sm:hidden">Rede</span>
+            <span
+              v-if="redeCuidadoStore.rede && redeCuidadoStore.rede.stats.totalSemCuidador > 0"
+              class="ml-1.5 inline-flex items-center justify-center w-4 h-4 text-xs font-bold text-white bg-amber-500 rounded-full"
+            >
+              {{ redeCuidadoStore.rede.stats.totalSemCuidador }}
+            </span>
+          </button>
           <button 
             @click="toggleAddForm"
             class="px-4 py-2 bg-green-500 hover:bg-green-600 text-white rounded-lg shadow-md hover:shadow-lg flex items-center gap-2 transform hover:scale-105 active:scale-95 transition-all duration-200 flex-shrink-0"
@@ -542,8 +564,11 @@ async function handleSubmit() {
                     <span v-if="member.isConsolidator" class="inline-flex items-center px-1.5 py-0.5 rounded-full text-xs font-medium bg-primary-100 text-primary-700">Consolidador</span>
                     <span v-if="member.isCoLeader" class="inline-flex items-center px-1.5 py-0.5 rounded-full text-xs font-medium bg-vibrant-100 text-vibrant-700">Co-líder</span>
                     <span v-if="member.isHost" class="inline-flex items-center px-1.5 py-0.5 rounded-full text-xs font-medium bg-fun-100 text-fun-700">Anfitrião</span>
-        </div>
-      </div>
+                    <span v-if="redeCuidadoStore.mapaCuidadores.get(Number(member.id))" class="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-full text-xs font-medium bg-rose-50 text-rose-600">
+                      <AppIcon name="heart" size="xs" />{{ redeCuidadoStore.mapaCuidadores.get(Number(member.id)) }}
+                    </span>
+                  </div>
+                </div>
                 <div class="flex items-center gap-2">
                   <button @click="startEditing(member)" class="p-1.5 rounded-full bg-neutral-100 hover:bg-neutral-200 transition-colors" title="Editar">
                     <AppIcon name="edit" size="xs" class="text-neutral-600" />
@@ -556,10 +581,10 @@ async function handleSubmit() {
                   </button>
                   <button @click="confirmDelete(member)" class="p-1.5 rounded-full bg-red-100 hover:bg-red-200 transition-colors text-red-600" title="Excluir">
                     <AppIcon name="delete" size="xs" />
-          </button>
-        </div>
-      </div>
-      
+                  </button>
+                </div>
+              </div>
+
               <!-- Card de Membro Padrão -->
               <div v-else class="flex items-center justify-between" :class="{'opacity-60': !member.isActive}">
                 <div class="flex-1">
@@ -584,6 +609,9 @@ async function handleSubmit() {
                     <span v-if="member.isConsolidator" class="inline-flex items-center px-1.5 py-0.5 rounded-full text-xs font-medium bg-primary-100 text-primary-700">Consolidador</span>
                     <span v-if="member.isCoLeader" class="inline-flex items-center px-1.5 py-0.5 rounded-full text-xs font-medium bg-vibrant-100 text-vibrant-700">Co-líder</span>
                     <span v-if="member.isHost" class="inline-flex items-center px-1.5 py-0.5 rounded-full text-xs font-medium bg-fun-100 text-fun-700">Anfitrião</span>
+                    <span v-if="redeCuidadoStore.mapaCuidadores.get(Number(member.id))" class="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-full text-xs font-medium bg-rose-50 text-rose-600">
+                      <AppIcon name="heart" size="xs" />{{ redeCuidadoStore.mapaCuidadores.get(Number(member.id)) }}
+                    </span>
                   </div>
                 </div>
                 

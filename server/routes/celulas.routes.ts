@@ -15,6 +15,12 @@ import {
   atualizarMembro,
   listarMembros
 } from '../controllers/celulas.controller';
+import {
+  obterRedeCuidado,
+  criarAtribuicao,
+  removerAtribuicao,
+  salvarRedeLote,
+} from '../controllers/redeCuidado.controller';
 
 const router = Router();
 
@@ -35,5 +41,11 @@ router.patch('/:id/membros/:membroId/ativo', toggleAtivoMembro);
 router.patch('/:id/membros/:membroId/consolidador', marcarComoConsolidador);
 router.patch('/:id/membros/:membroId/colider', marcarComoCoLider);
 router.patch('/:id/membros/:membroId/anfitriao', marcarComoAnfitriao);
+
+// Rotas para rede de cuidado
+router.get('/:id/rede-cuidado', obterRedeCuidado);
+router.post('/:id/rede-cuidado', criarAtribuicao);
+router.put('/:id/rede-cuidado', salvarRedeLote);
+router.delete('/:id/rede-cuidado/:membroId', removerAtribuicao);
 
 export default router; 

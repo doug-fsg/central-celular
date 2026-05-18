@@ -49,7 +49,8 @@ const fetchApi = async (
   endpoint: string,
   method: string = 'GET',
   data?: any,
-  includeToken: boolean = true
+  includeToken: boolean = true,
+  reqExtras?: Pick<RequestInit, 'signal'>,
 ): Promise<any> => {
   try {
     const headers: Record<string, string> = {
@@ -67,6 +68,9 @@ const fetchApi = async (
       headers,
       body: data ? JSON.stringify(data) : undefined,
     };
+    if (reqExtras?.signal) {
+      options.signal = reqExtras.signal;
+    }
 
     const response = await fetch(`${API_URL}${endpoint}`, options);
     
@@ -123,6 +127,9 @@ const fetchApi = async (
       };
     }
   } catch (error: any) {
+    if (error?.name === 'AbortError') {
+      throw error;
+    }
     // Se o erro já estiver formatado, apenas repassa
     if (error.status) {
       throw error;
@@ -243,8 +250,8 @@ const api = {
   },
 
   // CRUD Genérico
-  async get(endpoint: string) {
-    return fetchApi(endpoint);
+  async get(endpoint: string, reqExtras?: Pick<RequestInit, 'signal'>) {
+    return fetchApi(endpoint, 'GET', undefined, true, reqExtras);
   },
 
   async post(endpoint: string, data: any) {

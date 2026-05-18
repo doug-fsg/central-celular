@@ -30,12 +30,12 @@ const navItems = computed<NavItem[]>(() => {
   }
   
   if (userStore.isAdmin) {
-    // Menu para admin/pastor
     return [
       { name: 'admin-dashboard', label: 'Dashboard', icon: 'home' },
       { name: 'admin-users', label: 'Usuários', icon: 'users' },
       { name: 'admin-cells', label: 'Células', icon: 'grid' },
       { name: 'admin-members', label: 'Membros', icon: 'users' },
+      { name: 'admin-rede-cuidado', label: 'Rede', icon: 'heart' },
     ];
   } else {
     // Menu para membros/líderes

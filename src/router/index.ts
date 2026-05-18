@@ -105,6 +105,12 @@ const router = createRouter({
       meta: { requiresAuth: true, requiresAdmin: true },
     },
     {
+      path: '/admin/rede-cuidado',
+      name: 'admin-rede-cuidado',
+      component: () => import('../views/admin/AdminRedeCuidadoPage.vue'),
+      meta: { requiresAuth: true, requiresAdmin: true },
+    },
+    {
       path: '/supervisor',
       name: 'supervisor-dashboard',
       component: () => import('../views/SupervisorDashboard.vue'),
@@ -139,6 +145,12 @@ const router = createRouter({
       name: 'configuracoes',
       component: () => import('../views/ConfiguracoesView.vue'),
       meta: { requiresAuth: true },
+    },
+    {
+      path: '/rede-cuidado',
+      name: 'rede-cuidado',
+      component: () => import('../views/RedeCuidadoView.vue'),
+      meta: { requiresAuth: true, requiresLeader: true, requiresOnboarding: true },
     },
     {
       path: '/sso/:token',

@@ -78,7 +78,10 @@ export const useMemberStore = defineStore('members', () => {
 
     // Verificar se o usuário é líder (verificando em maiúsculo e minúsculo)
     const cargoUpperCase = userStore.user.cargo?.toUpperCase() || '';
-    const isLider = cargoUpperCase === 'LIDER' || cargoUpperCase === 'LÍDER';
+    const isLider =
+      cargoUpperCase === 'LIDER' ||
+      cargoUpperCase === 'LÍDER' ||
+      cargoUpperCase === 'LIDER_EM_TREINAMENTO';
     
     if (!isLider) {
       error.value = `Usuário não é líder (cargo atual: ${userStore.user.cargo})`;

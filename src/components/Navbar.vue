@@ -53,7 +53,8 @@ const navLinks = computed(() => {
       { name: 'admin-dashboard', label: 'Dashboard' },
       { name: 'admin-users', label: 'Usuários' },
       { name: 'admin-cells', label: 'Células' },
-      { name: 'admin-members', label: 'Membros' }
+      { name: 'admin-members', label: 'Membros' },
+      { name: 'admin-rede-cuidado', label: 'Rede de cuidado' },
     ]
   } else if (userStore.isSupervisor) {
     return [

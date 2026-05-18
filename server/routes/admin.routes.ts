@@ -11,6 +11,7 @@ import {
   ativarDesativarUsuariosLote,
   reenviarConviteUsuario,
 } from '../controllers/usuarios.controller';
+import { obterDashboardCuidadoHandler } from '../controllers/dashboardCuidado.controller';
 import {
   listarCelulas,
   obterCelula,
@@ -104,9 +105,17 @@ adminRouter.delete('/usuarios/:id', async (req, res) => {
   }
 });
 
+// Dashboard agregado de rede de cuidado (pastoral)
+adminRouter.get('/dashboard-cuidado', obterDashboardCuidadoHandler);
+
 // Rota para obter estatísticas
 adminRouter.get('/estatisticas', async (req, res) => {
   try {
+    const accountId = (req as any).user?.accountId ?? (req as any).usuario?.accountId;
+    if (!accountId) {
+      return res.status(401).json({ message: 'Não autenticado' });
+    }
+
     const periodo = req.query.periodo as string || 'mes';
     const liderId = req.query.liderId ? Number(req.query.liderId) : undefined;
     console.log(`[DEBUG] Obtendo estatísticas para período: ${periodo}, líder: ${liderId || 'todos'}`);
@@ -184,7 +193,7 @@ adminRouter.get('/estatisticas', async (req, res) => {
       prisma.celula.count({
         where: { 
           ativo: true,
-          accountId: (req as any).user?.accountId
+          accountId
         }
       }),
       
@@ -192,7 +201,8 @@ adminRouter.get('/estatisticas', async (req, res) => {
       prisma.usuario.count({
         where: { 
           cargo: 'SUPERVISOR',
-          ativo: true
+          ativo: true,
+          accountId,
         }
       }),
       
@@ -200,13 +210,17 @@ adminRouter.get('/estatisticas', async (req, res) => {
       prisma.usuario.count({
         where: { 
           cargo: 'LIDER',
-          ativo: true
+          ativo: true,
+          accountId,
         }
       }),
       
       // Total de membros ativos
       prisma.membro.count({
-        where: { ativo: true }
+        where: {
+          ativo: true,
+          celula: { accountId },
+        },
       }),
       
       // Presença total período atual (filtrar por líder se fornecido)
@@ -217,13 +231,13 @@ adminRouter.get('/estatisticas', async (req, res) => {
               gte: dataInicio,
               lte: hoje
             },
-            ...(liderId ? {
-              celula: {
-                liderId: liderId
-              }
-            } : {})
+            celula: {
+              accountId,
+              ...(liderId != null ? { liderId } : {}),
+            },
           }
-        }
+        },
+        select: { tipo: true, status: true },
       }),
       
       // Novos membros no período atual (filtrar por líder se fornecido)
@@ -233,12 +247,11 @@ adminRouter.get('/estatisticas', async (req, res) => {
             gte: dataInicio,
             lte: hoje
           },
-          ...(liderId ? {
-            celula: {
-              liderId: liderId
-            }
-          } : {})
-        }
+          celula: {
+            accountId,
+            ...(liderId != null ? { liderId } : {}),
+          },
+        },
       }),
 
       // Total de membros período anterior
@@ -247,8 +260,9 @@ adminRouter.get('/estatisticas', async (req, res) => {
           dataCadastro: {
             lt: dataInicio
           },
-          ativo: true
-        }
+          ativo: true,
+          celula: { accountId },
+        },
       }),
 
       // Presenças período anterior (filtrar por líder se fornecido)
@@ -259,20 +273,20 @@ adminRouter.get('/estatisticas', async (req, res) => {
               gte: periodoAnteriorInicio,
               lte: periodoAnteriorFim
             },
-            ...(liderId ? {
-              celula: {
-                liderId: liderId
-              }
-            } : {})
+            celula: {
+              accountId,
+              ...(liderId != null ? { liderId } : {}),
+            },
           }
-        }
+        },
+        select: { tipo: true, status: true },
       }),
 
       // Células por região
       prisma.regiao.findMany({
         where: { 
           ativo: true,
-          accountId: (req as any).user?.accountId
+          accountId
         },
         select: {
           id: true,
@@ -282,7 +296,7 @@ adminRouter.get('/estatisticas', async (req, res) => {
               celulas: {
                 where: { 
                   ativo: true,
-                  accountId: (req as any).user?.accountId
+                  accountId
                 }
               }
             }
@@ -294,15 +308,15 @@ adminRouter.get('/estatisticas', async (req, res) => {
       prisma.regiao.findMany({
         where: { 
           ativo: true,
-          accountId: (req as any).user?.accountId
+          accountId
         },
         select: {
           id: true,
           nome: true,
-          celulas: {
+            celulas: {
             where: { 
               ativo: true,
-              accountId: (req as any).user?.accountId
+              accountId
             },
             select: {
               _count: {
@@ -324,12 +338,11 @@ adminRouter.get('/estatisticas', async (req, res) => {
             gte: dataInicio,
             lte: hoje
           },
-          ...(liderId ? {
-            celula: {
-              liderId: liderId
-            }
-          } : {})
-        }
+          celula: {
+            accountId,
+            ...(liderId != null ? { liderId } : {}),
+          },
+        },
       }),
 
       // Consolidadores ativos (filtrar por accountId via células)
@@ -338,7 +351,7 @@ adminRouter.get('/estatisticas', async (req, res) => {
           ehConsolidador: true,
           ativo: true,
           celula: {
-            accountId: (req as any).user?.accountId
+            accountId
           }
         }
       }),
@@ -349,27 +362,33 @@ adminRouter.get('/estatisticas', async (req, res) => {
           ehCoLider: true,
           ativo: true,
           celula: {
-            accountId: (req as any).user?.accountId
+            accountId
           }
         }
       })
     ]);
 
-    // Calcular estatísticas do período atual
-    const totalPresencas = presencas.length;
-    const presencasCelula = presencas.filter(p => p.presencaCelula).length;
-    const presencasCulto = presencas.filter(p => p.presencaCulto).length;
-    const mediaFrequencia = totalPresencas > 0 
-      ? ((presencasCelula + presencasCulto) / (totalPresencas * 2)) * 100 
-      : 0;
+    // Calcular estatísticas do período atual (% presenças por tipo, Prisma modelo Presenca)
+    const totCel = presencas.filter((p: { tipo: number }) => p.tipo === 0).length;
+    const presCel = presencas.filter((p: { tipo: number; status: number }) => p.tipo === 0 && p.status === 1).length;
+    const totCult = presencas.filter((p: { tipo: number }) => p.tipo === 1).length;
+    const presCult = presencas.filter((p: { tipo: number; status: number }) => p.tipo === 1 && p.status === 1).length;
 
-    // Calcular estatísticas do período anterior
-    const totalPresencasAnteriores = presencasAnteriores.length;
-    const presencasCelulaAnteriores = presencasAnteriores.filter(p => p.presencaCelula).length;
-    const presencasCultoAnteriores = presencasAnteriores.filter(p => p.presencaCulto).length;
-    const mediaFrequenciaAnterior = totalPresencasAnteriores > 0 
-      ? ((presencasCelulaAnteriores + presencasCultoAnteriores) / (totalPresencasAnteriores * 2)) * 100 
-      : 0;
+    const pctCel = totCel > 0 ? Math.round((presCel / totCel) * 100) : 0;
+    const pctCult = totCult > 0 ? Math.round((presCult / totCult) * 100) : 0;
+    const denomAtual = totCel + totCult;
+    const mediaFrequencia = denomAtual > 0 ? Math.round(((presCel + presCult) / denomAtual) * 100) : 0;
+
+    // Período anterior
+    const totCelAnt = presencasAnteriores.filter((p: { tipo: number }) => p.tipo === 0).length;
+    const presCelAnt = presencasAnteriores.filter((p: { tipo: number; status: number }) => p.tipo === 0 && p.status === 1).length;
+    const totCultAnt = presencasAnteriores.filter((p: { tipo: number }) => p.tipo === 1).length;
+    const presCultAnt = presencasAnteriores.filter((p: { tipo: number; status: number }) => p.tipo === 1 && p.status === 1).length;
+
+    const pctCelAnt = totCelAnt > 0 ? Math.round((presCelAnt / totCelAnt) * 100) : 0;
+    const pctCultAnt = totCultAnt > 0 ? Math.round((presCultAnt / totCultAnt) * 100) : 0;
+    const denomAnt = totCelAnt + totCultAnt;
+    const mediaFrequenciaAnterior = denomAnt > 0 ? Math.round(((presCelAnt + presCultAnt) / denomAnt) * 100) : 0;
 
     // Calcular variações
     const variacaoFrequencia = mediaFrequenciaAnterior > 0 
@@ -416,15 +435,15 @@ adminRouter.get('/estatisticas', async (req, res) => {
       },
       frequencia: {
         atual: {
-          celula: presencasCelula,
-          culto: presencasCulto,
-          media: Math.round(mediaFrequencia)
+          celula: pctCel,
+          culto: pctCult,
+          media: Math.round(mediaFrequencia),
         },
         anterior: {
-          celula: presencasCelulaAnteriores,
-          culto: presencasCultoAnteriores,
-          media: Math.round(mediaFrequenciaAnterior)
-        }
+          celula: pctCelAnt,
+          culto: pctCultAnt,
+          media: Math.round(mediaFrequenciaAnterior),
+        },
       },
       regioes: dadosPorRegiao
     };

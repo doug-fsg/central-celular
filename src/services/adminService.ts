@@ -20,8 +20,11 @@ export interface AdminStats {
   };
   frequencia: {
     atual: {
+      /** Percentual médio de presenças (tipo célula) no período */
       celula: number;
+      /** Percentual médio de presenças (tipo culto) no período */
       culto: number;
+      /** Média geral ponderada (célula + culto) */
       media: number;
     };
     anterior: {
@@ -37,6 +40,55 @@ export interface AdminStats {
     totalMembros: number;
     mediaMembros: number;
   }>;
+}
+
+export type StatusSemafaro = 'ok' | 'atencao' | 'critico';
+
+/** Resposta GET /admin/dashboard-cuidado */
+export interface DashboardCuidadoResponse {
+  resumo: {
+    totalCelulas: number;
+    totalMembros: number;
+    comCuidador: number;
+    semCuidador: number;
+    percentualCobertura: number;
+    statusSemafaro: StatusSemafaro;
+    consolidadoresSobrecarregados: number;
+  };
+  celulas: Array<{
+    celulaId: number;
+    nome: string;
+    liderNome: string;
+    totalMembros: number;
+    comCuidador: number;
+    semCuidador: number;
+    percentualCobertura: number;
+    qtdConsolidadores: number;
+  }>;
+  alertas: {
+    membrosSemCuidador: Array<{
+      membroId: number;
+      nome: string;
+      celulaId: number;
+      celulaNome: string;
+    }>;
+    celulasBaixaCobertura: Array<{
+      celulaId: number;
+      nome: string;
+      percentualCobertura: number;
+      semCuidador: number;
+    }>;
+    consolidadoresSobrecarregados: Array<{
+      consolidadorId: number;
+      nome: string;
+      celulaId: number;
+      celulaNome: string;
+      qtdCuidados: number;
+    }>;
+  };
+  filtros: {
+    liderId: number | null;
+  };
 }
 
 export interface Usuario {
@@ -116,6 +168,17 @@ export const adminService = {
       console.error('Erro ao obter estatísticas:', error);
       throw error;
     }
+  },
+
+  async obterDashboardCuidado(
+    liderId?: number,
+    opts?: { signal?: AbortSignal },
+  ): Promise<DashboardCuidadoResponse> {
+    let url = '/admin/dashboard-cuidado';
+    if (liderId != null && !Number.isNaN(liderId)) {
+      url += `?liderId=${liderId}`;
+    }
+    return await api.get(url, opts?.signal ? { signal: opts.signal } : undefined);
   },
 
   // Listar usuários com paginação

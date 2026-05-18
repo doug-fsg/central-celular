@@ -47,6 +47,8 @@ model Usuario {
   conquistas         Conquista[]
   config             UsuarioConfig?
   ssoLinks           SsoLink[]
+  atribuicoesComoLider  AtribuicaoCuidado[] @relation("lider_rede")
+  atribuicoesCriadas    AtribuicaoCuidado[] @relation("criador_rede")
 
   @@unique([email, accountId])
   @@unique([whatsapp, accountId])
@@ -74,6 +76,7 @@ model Celula {
   updatedAt       DateTime      @updatedAt @map("updated_at")
   membros         Membro[]
   relatorios      Relatorio[]
+  atribuicoesCuidado AtribuicaoCuidado[]
 
   @@map("celulas")
 }
@@ -92,6 +95,8 @@ model Membro {
   ativo           Boolean       @default(true)
   observacoes     String?
   presencas       Presenca[]
+  cuidadoPor      AtribuicaoCuidado?  @relation("cuidado")
+  cuidaDeAlguem   AtribuicaoCuidado[] @relation("consolidador")
 
   @@map("membros")
 }
@@ -233,4 +238,23 @@ model SsoLink {
   updatedAt       DateTime  @updatedAt @map("updated_at")
 
   @@map("sso_links")
-} 
+}
+
+model AtribuicaoCuidado {
+  id              Int      @id @default(autoincrement())
+  celulaId        Int      @map("celula_id")
+  membroId        Int      @unique @map("membro_id")
+  consolidadorId  Int?     @map("consolidador_id")
+  liderId         Int?     @map("lider_id")
+  criadoPorId     Int?     @map("criado_por_id")
+  createdAt       DateTime @default(now()) @map("created_at")
+  updatedAt       DateTime @updatedAt @map("updated_at")
+
+  celula       Celula   @relation(fields: [celulaId], references: [id])
+  membro       Membro   @relation("cuidado", fields: [membroId], references: [id])
+  consolidador Membro?  @relation("consolidador", fields: [consolidadorId], references: [id])
+  lider        Usuario? @relation("lider_rede", fields: [liderId], references: [id])
+  criadoPor    Usuario? @relation("criador_rede", fields: [criadoPorId], references: [id])
+
+  @@map("atribuicoes_cuidado")
+}
