@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, computed, onMounted, watch } from 'vue'
+import { ref, computed, watch } from 'vue'
 import { startOfWeek, endOfWeek, subWeeks } from 'date-fns'
 import { Line } from 'vue-chartjs'
 import {
@@ -292,12 +292,6 @@ watch([() => props.periodo, () => props.celulaId], () => {
     loadFrequencyData()
   }
 }, { immediate: true })
-
-onMounted(() => {
-  if (props.periodo) {
-    loadFrequencyData()
-  }
-})
 </script>
 
 <template>

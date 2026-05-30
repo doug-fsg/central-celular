@@ -93,17 +93,21 @@ const fetchApi = async (
       }
 
       // Interceptor para erros 401 (Token inválido/expirado)
-      if (response.status === 401) {
-        console.log('[API] Token inválido ou expirado, notificando userStore');
-        
-        // Notificar userStore para limpar sessão
-        if (typeof window !== 'undefined') {
-          window.dispatchEvent(new CustomEvent('auth:token-invalid'));
-        }
-        
-        // Redirecionar para login se não estiver já na página de login
-        if (typeof window !== 'undefined' && !window.location.pathname.includes('/login')) {
-          window.location.href = '/login';
+      if (response.status === 401 && includeToken) {
+        const hadToken = !!(getTokenFn && getTokenFn());
+        if (!hadToken) {
+          // Requisição autenticada sem token (race no bootstrap) — não derrubar sessão
+          console.warn('[API] 401 sem token no cliente:', endpoint);
+        } else {
+          console.log('[API] Token inválido ou expirado, notificando userStore');
+
+          if (typeof window !== 'undefined') {
+            window.dispatchEvent(new CustomEvent('auth:token-invalid'));
+          }
+
+          if (typeof window !== 'undefined' && !window.location.pathname.includes('/login')) {
+            window.location.href = '/login';
+          }
         }
       }
 

@@ -23,7 +23,9 @@ export const accountMiddleware: RequestHandler = async (req: Request, res: Respo
 
   try {
     const [, token] = authHeader.split(' ');
-    const decoded = jwt.verify(token, process.env.JWT_SECRET as string) as {
+    // Mesmo fallback que auth.middleware e authService (evita 401 só em rotas com accountMiddleware)
+    const jwtSecret = process.env.JWT_SECRET || 'central-celular-secret';
+    const decoded = jwt.verify(token, jwtSecret) as {
       userId: number;
       accountId: number;
       isSuperAdmin: boolean;

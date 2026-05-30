@@ -10,13 +10,9 @@ import {
   obterFrequenciaPorData,
   obterFrequenciaMembro
 } from '../controllers/relatorios.controller';
-import { Request, Response, NextFunction } from 'express';
-import { accountMiddleware } from '../middlewares/accountMiddleware';
-
 const router = Router();
 
-// Aplicar middleware de account em todas as rotas
-router.use(accountMiddleware);
+// Autenticação: router global em routes/index.ts já aplica autenticacao em /api/*
 
 // Rotas para estatísticas
 router.get('/estatisticas/lideres/:mes/:ano', obterEstatisticas);
