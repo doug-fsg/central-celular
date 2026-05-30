@@ -1,14 +1,21 @@
 <script setup lang="ts">
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, watch, onMounted, onUnmounted } from 'vue'
 import { startOfWeek, endOfWeek, startOfMonth, endOfMonth, addWeeks } from 'date-fns'
 import CellModal from '../../components/CellModal.vue'
 import CellMembersModal from '../../components/CellMembersModal.vue'
+import AppIcon from '../../components/AppIcon.vue'
 import { adminService } from '../../services/adminService'
 import type { Celula, Usuario } from '../../services/adminService'
-import relatorioService from '../../services/relatorioService'
+import {
+  PUBLICO_CELULA_OPTIONS,
+  PUBLICO_CELULA_BADGE_CLASS,
+  formatPublicoCelula,
+  type PublicoCelula,
+} from '../../constants/publicoCelula'
 
 // Estado para os dados
-const loading = ref(false)
+const loadingCells = ref(false)
+const loadingStatus = ref(false)
 
 // Lista de células
 const cells = ref<Celula[]>([])
@@ -18,6 +25,8 @@ const cellPagination = ref({
   currentPage: 1,
   perPage: 10
 })
+
+const totais = ref({ celulas: 0, membros: 0, semPublico: 0 })
 
 // Estado do modal de célula
 const showCellModal = ref(false)
@@ -32,7 +41,8 @@ const availableLeaders = ref<Usuario[]>([])
 // Estado para filtros de células
 const cellFilters = ref({
   searchTerm: '',
-  diaSemana: ''
+  diaSemana: '',
+  publico: '',
 })
 
 // Status de relatórios por semana do mês (Map<celulaId, boolean[]>)
@@ -82,42 +92,35 @@ const semanasPassadas = computed(() => {
   return Math.max(1, count) // Sempre mostrar pelo menos 1 bolinha
 })
 
-// Verificar status de relatórios das semanas do mês
-const verificarStatusSemanas = async () => {
+// Carregar status de relatórios das semanas do mês (bulk)
+const loadStatusSemanas = async () => {
+  if (cells.value.length === 0) {
+    statusSemanas.value.clear()
+    return
+  }
+
   const hoje = new Date()
   const mes = hoje.getMonth()
   const ano = hoje.getFullYear()
-  
-  // Reiniciar se mudou o mês
+
   if (mes !== mesAtual.value || ano !== anoAtual.value) {
     statusSemanas.value.clear()
     mesAtual.value = mes
     anoAtual.value = ano
   }
-  
-  if (cells.value.length === 0) return
-  
-  const semanas = calcularSemanasDoMes()
-  
-  // Verificar cada célula
-  await Promise.all(cells.value.map(async (celula) => {
-    const status: boolean[] = []
-    
-    for (const semana of semanas) {
-      try {
-        const relatorios = await relatorioService.listarRelatorios({
-          celulaId: celula.id,
-          dataInicio: semana.inicio,
-          dataFim: semana.fim
-        })
-        status.push(relatorios.some(r => r.status === 1))
-      } catch {
-        status.push(false)
-      }
-    }
-    
-    statusSemanas.value.set(celula.id, status)
-  }))
+
+  loadingStatus.value = true
+  try {
+    const ids = cells.value.map((c) => c.id)
+    const { porCelula } = await adminService.statusRelatoriosCelulas(ids, mes + 1, ano)
+    statusSemanas.value = new Map(
+      Object.entries(porCelula).map(([id, arr]) => [Number(id), arr])
+    )
+  } catch (error) {
+    console.error('Erro ao carregar status das semanas:', error)
+  } finally {
+    loadingStatus.value = false
+  }
 }
 
 // Obter status das semanas de uma célula
@@ -125,22 +128,161 @@ const getStatusSemanas = (celulaId: number) => {
   return statusSemanas.value.get(celulaId) || []
 }
 
-// Células filtradas
-const filteredCells = computed(() => {
-  let filtered = [...cells.value]
-  
-  if (cellFilters.value.searchTerm) {
-    const searchTerm = cellFilters.value.searchTerm.toLowerCase()
-    filtered = filtered.filter(cell => 
-      cell.nome.toLowerCase().includes(searchTerm) ||
-      (cell.endereco || '').toLowerCase().includes(searchTerm) ||
-      (cell.lider?.nome || '').toLowerCase().includes(searchTerm) ||
-      (cell.supervisor?.nome || '').toLowerCase().includes(searchTerm)
-    )
+const isFiltering = computed(
+  () =>
+    cellFilters.value.searchTerm.trim() !== '' ||
+    cellFilters.value.diaSemana !== '' ||
+    cellFilters.value.publico !== ''
+)
+
+let searchDebounceTimer: ReturnType<typeof setTimeout> | null = null
+
+watch(
+  () => cellFilters.value.searchTerm,
+  () => {
+    if (searchDebounceTimer) clearTimeout(searchDebounceTimer)
+    searchDebounceTimer = setTimeout(() => {
+      searchDebounceTimer = null
+      loadCells(1)
+    }, 300)
   }
-  
-  return filtered
+)
+
+const clearFilters = () => {
+  cellFilters.value.searchTerm = ''
+  cellFilters.value.diaSemana = ''
+  cellFilters.value.publico = ''
+  loadCells(1)
+}
+
+const filterSelectClass =
+  'h-9 min-w-[8.5rem] cursor-pointer appearance-none rounded-lg border border-neutral-200 bg-neutral-50/80 pl-3 pr-8 text-sm text-neutral-700 transition-colors duration-200 hover:border-neutral-300 hover:bg-white focus:border-primary-500 focus:outline-none focus:ring-2 focus:ring-primary-500/20'
+
+type ColumnKey =
+  | 'publico'
+  | 'membros'
+  | 'supervisor'
+  | 'colider'
+  | 'dia'
+  | 'horario'
+  | 'endereco'
+  | 'relatorios'
+  | 'status'
+
+const TOGGLEABLE_COLUMNS: { key: ColumnKey; label: string }[] = [
+  { key: 'publico', label: 'Público' },
+  { key: 'membros', label: 'Membros' },
+  { key: 'supervisor', label: 'Supervisor' },
+  { key: 'colider', label: 'Co-líder' },
+  { key: 'dia', label: 'Dia' },
+  { key: 'horario', label: 'Horário' },
+  { key: 'endereco', label: 'Endereço' },
+  { key: 'relatorios', label: 'Relatórios (semana)' },
+  { key: 'status', label: 'Status' },
+]
+
+const DEFAULT_COLUMN_VISIBILITY: Record<ColumnKey, boolean> = {
+  publico: false,
+  membros: true,
+  supervisor: false,
+  colider: false,
+  dia: true,
+  horario: true,
+  endereco: false,
+  relatorios: false,
+  status: false,
+}
+
+const COLUMN_VISIBILITY_STORAGE_KEY = 'admin-cells-column-visibility-v2'
+
+function loadColumnVisibility(): Record<ColumnKey, boolean> {
+  try {
+    const saved = localStorage.getItem(COLUMN_VISIBILITY_STORAGE_KEY)
+    if (saved) {
+      return { ...DEFAULT_COLUMN_VISIBILITY, ...JSON.parse(saved) }
+    }
+  } catch {
+    /* ignore */
+  }
+  return { ...DEFAULT_COLUMN_VISIBILITY }
+}
+
+const columnVisibility = ref(loadColumnVisibility())
+const showColumnPicker = ref(false)
+const columnPickerRef = ref<HTMLElement | null>(null)
+
+const isColumnVisible = (key: ColumnKey) => columnVisibility.value[key]
+
+const optionalLabel = (value?: string | null) => value?.trim() || '—'
+
+const formatDiaSemana = (dia?: string) => {
+  if (!dia) return '—'
+  return dia.replace('-feira', '').trim()
+}
+
+const activeFilterChips = computed(() => {
+  const chips: { key: 'search' | 'diaSemana' | 'publico'; label: string }[] = []
+  const term = cellFilters.value.searchTerm.trim()
+  if (term) chips.push({ key: 'search', label: term })
+  if (cellFilters.value.diaSemana) {
+    chips.push({ key: 'diaSemana', label: formatDiaSemana(cellFilters.value.diaSemana) })
+  }
+  if (cellFilters.value.publico) {
+    chips.push({ key: 'publico', label: formatPublicoCelula(cellFilters.value.publico) })
+  }
+  return chips
 })
+
+function removeFilterChip(key: 'search' | 'diaSemana' | 'publico') {
+  if (key === 'search') cellFilters.value.searchTerm = ''
+  if (key === 'diaSemana') cellFilters.value.diaSemana = ''
+  if (key === 'publico') cellFilters.value.publico = ''
+  loadCells(1)
+}
+
+const toggleColumn = (key: ColumnKey) => {
+  columnVisibility.value = {
+    ...columnVisibility.value,
+    [key]: !columnVisibility.value[key],
+  }
+  localStorage.setItem(COLUMN_VISIBILITY_STORAGE_KEY, JSON.stringify(columnVisibility.value))
+}
+
+const resetColumns = () => {
+  columnVisibility.value = { ...DEFAULT_COLUMN_VISIBILITY }
+  localStorage.removeItem(COLUMN_VISIBILITY_STORAGE_KEY)
+}
+
+const publicoBadgeClass = (publico?: string) => {
+  const key = (publico || 'nao_informado') as PublicoCelula
+  return PUBLICO_CELULA_BADGE_CLASS[key] ?? PUBLICO_CELULA_BADGE_CLASS.nao_informado
+}
+
+const exportingCsv = ref(false)
+
+const exportarCsv = async () => {
+  try {
+    exportingCsv.value = true
+    await adminService.exportarCelulasCsv({
+      publico: cellFilters.value.publico || undefined,
+      diaSemana: cellFilters.value.diaSemana || undefined,
+      search: cellFilters.value.searchTerm.trim() || undefined,
+    })
+    showFeedback('Exportação concluída')
+  } catch (error) {
+    console.error('Erro ao exportar CSV:', error)
+    showFeedback('Erro ao exportar CSV', 'error')
+  } finally {
+    exportingCsv.value = false
+  }
+}
+
+const onDocumentClick = (event: MouseEvent) => {
+  if (!showColumnPicker.value || !columnPickerRef.value) return
+  if (!columnPickerRef.value.contains(event.target as Node)) {
+    showColumnPicker.value = false
+  }
+}
 
 // Mensagens de feedback
 const feedbackMessage = ref('')
@@ -180,19 +322,17 @@ const loadAvailableLeaders = async () => {
 // Carregar células
 const loadCells = async (page: number = 1) => {
   try {
-    loading.value = true
-    
-    if (availableLeaders.value.length === 0) {
-      await loadAvailableLeaders()
-    }
-    
+    loadingCells.value = true
+
     const response = await adminService.listarCelulas(
-      page, 
-      10, 
-      undefined, 
-      cellFilters.value.diaSemana || undefined
+      page,
+      10,
+      undefined,
+      cellFilters.value.diaSemana || undefined,
+      cellFilters.value.searchTerm.trim() || undefined,
+      cellFilters.value.publico || undefined
     )
-    
+
     if (!response || typeof response !== 'object') {
       showFeedback('Resposta inválida do servidor', 'error')
       return
@@ -203,26 +343,26 @@ const loadCells = async (page: number = 1) => {
       return
     }
 
-    cells.value = response.celulas.map((celula: any) => {
-      if (!celula.supervisor && (celula.supervisorId || celula.supervisor_id) && availableLeaders.value.length > 0) {
-        const supervisorId = celula.supervisor_id || celula.supervisorId
-        const supervisor = availableLeaders.value.find(l => l.id === supervisorId)
-        if (supervisor) {
-          celula.supervisor = supervisor
-        }
-      }
-      return celula
-    })
-
+    cells.value = response.celulas
     cellPagination.value = response.pagination
-    
-    // Verificar status das semanas do mês
-    await verificarStatusSemanas()
+    if (response.totais) {
+      totais.value = response.totais
+    } else {
+      totais.value = {
+        celulas: response.pagination?.total ?? 0,
+        membros: response.celulas.reduce(
+          (sum: number, c: Celula & { _count?: { membros?: number } }) =>
+            sum + (c._count?.membros ?? 0),
+          0
+        ),
+      }
+    }
   } catch (error) {
     console.error('Erro ao carregar células:', error)
     showFeedback('Erro ao carregar células', 'error')
   } finally {
-    loading.value = false
+    loadingCells.value = false
+    void loadStatusSemanas()
   }
 }
 
@@ -294,6 +434,7 @@ const handleSaveCell = async (cellData: Partial<Celula>) => {
 
     const dadosParaSalvar: any = {
       nome: cellData.nome,
+      publico: cellData.publico,
       endereco: cellData.endereco,
       diaSemana: cellData.diaSemana,
       horario: cellData.horario,
@@ -362,6 +503,12 @@ const handleCellPageChange = (page: number) => {
 // Carregar dados ao montar
 onMounted(() => {
   loadCells()
+  document.addEventListener('click', onDocumentClick)
+})
+
+onUnmounted(() => {
+  if (searchDebounceTimer) clearTimeout(searchDebounceTimer)
+  document.removeEventListener('click', onDocumentClick)
 })
 </script>
 
@@ -372,92 +519,222 @@ onMounted(() => {
         <h1 class="text-xl sm:text-2xl font-bold text-neutral-800">Células</h1>
         <p class="mt-1 text-xs sm:text-sm text-neutral-500">Gerencie células do sistema</p>
       </div>
-      <button 
-        @click="handleNovaCelula"
-        :disabled="isLoadingCell"
-        class="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-primary-600 hover:bg-primary-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500 disabled:opacity-50 disabled:cursor-not-allowed"
-      >
+      <div class="flex flex-wrap items-center gap-2">
+        <button
+          type="button"
+          @click="exportarCsv"
+          :disabled="exportingCsv || loadingCells"
+          class="inline-flex items-center px-4 py-2 border border-neutral-300 text-sm font-medium rounded-md shadow-sm text-neutral-700 bg-white hover:bg-neutral-50 disabled:opacity-50 disabled:cursor-not-allowed"
+        >
+          {{ exportingCsv ? 'Exportando…' : 'Exportar CSV' }}
+        </button>
+        <button 
+          @click="handleNovaCelula"
+          :disabled="isLoadingCell"
+          class="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-primary-600 hover:bg-primary-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500 disabled:opacity-50 disabled:cursor-not-allowed"
+        >
         <svg v-if="isLoadingCell" class="animate-spin -ml-1 mr-2 h-4 w-4 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
           <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
           <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
         </svg>
         Nova Célula
-      </button>
+        </button>
+      </div>
     </div>
 
     <!-- Filtros -->
-    <div class="bg-white shadow-sm rounded-xl border border-gray-100 p-4 sm:p-5 mb-4">
-      <div class="flex flex-row gap-4">
+    <section
+      aria-label="Filtros da lista de células"
+      class="mb-4 overflow-hidden rounded-xl border border-neutral-200/90 bg-white shadow-sm"
+    >
+      <div class="flex flex-col lg:flex-row lg:items-stretch">
         <!-- Busca -->
-        <div class="relative flex-1">
-          <div class="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none">
-            <svg class="h-5 w-5 text-gray-400" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor">
-              <path fill-rule="evenodd" d="M8 4a4 4 0 100 8 4 4 0 000-8zM2 8a6 6 0 1110.89 3.476l4.817 4.817a1 1 0 01-1.414 1.414l-4.816-4.816A6 6 0 012 8z" clip-rule="evenodd" />
-            </svg>
-          </div>
+        <div
+          class="relative flex min-w-0 flex-1 items-center border-b border-neutral-100 lg:border-b-0 lg:border-r lg:border-neutral-100"
+          :aria-busy="loadingCells && !!cellFilters.searchTerm.trim()"
+        >
+          <AppIcon
+            name="search"
+            size="sm"
+            class="pointer-events-none absolute left-3.5 text-neutral-400"
+            aria-hidden="true"
+          />
           <input
-            type="text"
-            id="search"
+            id="cell-search"
             v-model="cellFilters.searchTerm"
-            class="block w-full pl-12 pr-11 py-3 text-sm sm:text-base border border-gray-200 rounded-xl bg-gray-50 focus:bg-white focus:ring-2 focus:ring-primary-500 focus:border-primary-500 transition-all duration-200 placeholder:text-gray-400 text-gray-900"
-            placeholder="Busque por lider ou endereço..."
+            type="search"
+            autocomplete="off"
+            spellcheck="false"
+            enterkeyhint="search"
+            class="h-11 w-full min-w-0 border-0 bg-transparent pl-10 pr-10 text-sm text-neutral-900 placeholder:text-neutral-400 focus:outline-none focus:ring-0"
+            placeholder="Buscar células, líderes ou endereços…"
           >
-          <button
-            v-if="cellFilters.searchTerm"
-            @click="cellFilters.searchTerm = ''"
-            type="button"
-            class="absolute inset-y-0 right-0 pr-4 flex items-center text-gray-400 hover:text-gray-600 active:text-gray-700 transition-colors touch-manipulation"
-            style="-webkit-tap-highlight-color: rgba(0, 0, 0, 0.1);"
-            aria-label="Limpar busca"
-          >
-            <svg class="h-5 w-5" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor">
-              <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clip-rule="evenodd" />
-            </svg>
-          </button>
+          <div class="absolute inset-y-0 right-0 flex items-center pr-3">
+            <span
+              v-if="loadingCells && cellFilters.searchTerm.trim()"
+              class="h-4 w-4 animate-spin rounded-full border-2 border-neutral-200 border-t-primary-600 motion-reduce:animate-none"
+              aria-hidden="true"
+            />
+            <button
+              v-else-if="cellFilters.searchTerm"
+              type="button"
+              class="rounded-md p-1 text-neutral-400 transition-colors hover:bg-neutral-100 hover:text-neutral-600 focus:outline-none focus-visible:ring-2 focus-visible:ring-primary-500"
+              aria-label="Limpar busca"
+              @click="cellFilters.searchTerm = ''"
+            >
+              <AppIcon name="close" size="sm" aria-hidden="true" />
+            </button>
+          </div>
         </div>
-        
-        <!-- Filtro por dia da semana -->
-        <div class="relative sm:w-64 w-40">
-          <select
-            id="diaSemana"
-            v-model="cellFilters.diaSemana"
-            @change="loadCells(1)"
-            class="block w-full pl-3 pr-10 py-3 text-sm sm:text-base border border-gray-200 rounded-xl bg-gray-50 focus:bg-white focus:ring-2 focus:ring-primary-500 focus:border-primary-500 transition-all duration-200 appearance-none text-gray-900"
-          >
-            <option value="">Todos os dias</option>
-            <option value="Segunda-feira">Segunda-feira</option>
-            <option value="Terça-feira">Terça-feira</option>
-            <option value="Quarta-feira">Quarta-feira</option>
-            <option value="Quinta-feira">Quinta-feira</option>
-            <option value="Sexta-feira">Sexta-feira</option>
-            <option value="Sábado">Sábado</option>
-            <option value="Domingo">Domingo</option>
-          </select>
-          <div class="absolute inset-y-0 right-0 flex items-center px-3 pointer-events-none">
-            <svg class="h-5 w-5 text-gray-400" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor">
-              <path fill-rule="evenodd" d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z" clip-rule="evenodd" />
-            </svg>
+
+        <!-- Selects compactos -->
+        <div class="flex flex-wrap items-center gap-2 px-3 py-2.5 lg:shrink-0">
+          <div class="relative">
+            <select
+              id="cell-dia-semana"
+              v-model="cellFilters.diaSemana"
+              :class="filterSelectClass"
+              aria-label="Filtrar por dia da semana"
+              @change="loadCells(1)"
+            >
+              <option value="">Todos os dias</option>
+              <option value="Segunda-feira">Segunda</option>
+              <option value="Terça-feira">Terça</option>
+              <option value="Quarta-feira">Quarta</option>
+              <option value="Quinta-feira">Quinta</option>
+              <option value="Sexta-feira">Sexta</option>
+              <option value="Sábado">Sábado</option>
+              <option value="Domingo">Domingo</option>
+            </select>
+            <div class="pointer-events-none absolute inset-y-0 right-2.5 flex items-center" aria-hidden="true">
+              <svg class="h-4 w-4 text-neutral-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7" />
+              </svg>
+            </div>
+          </div>
+
+          <div class="relative">
+            <select
+              id="cell-publico"
+              v-model="cellFilters.publico"
+              :class="filterSelectClass"
+              aria-label="Filtrar por público"
+              @change="loadCells(1)"
+            >
+              <option value="">Todos os públicos</option>
+              <option v-for="opt in PUBLICO_CELULA_OPTIONS" :key="opt.value" :value="opt.value">
+                {{ opt.label }}
+              </option>
+            </select>
+            <div class="pointer-events-none absolute inset-y-0 right-2.5 flex items-center" aria-hidden="true">
+              <svg class="h-4 w-4 text-neutral-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7" />
+              </svg>
+            </div>
           </div>
         </div>
       </div>
-      
-      <!-- Contador de resultados -->
-      <div v-if="(cellFilters.searchTerm || cellFilters.diaSemana) && filteredCells.length > 0" class="mt-3 text-xs sm:text-sm text-gray-600 flex items-center gap-1.5">
-        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
-        </svg>
-        <span>
-          {{ filteredCells.length }} {{ filteredCells.length === 1 ? 'célula encontrada' : 'células encontradas' }}
-          <span v-if="cellFilters.diaSemana"> em {{ cellFilters.diaSemana }}</span>
+
+      <!-- Chips de filtros ativos -->
+      <div
+        v-if="isFiltering"
+        class="flex flex-wrap items-center gap-2 border-t border-neutral-100 bg-neutral-50/70 px-3 py-2"
+      >
+        <span class="text-xs font-medium text-neutral-500">Filtros ativos:</span>
+        <button
+          v-for="chip in activeFilterChips"
+          :key="chip.key"
+          type="button"
+          class="inline-flex max-w-[14rem] items-center gap-1 rounded-full border border-neutral-200 bg-white py-1 pl-2.5 pr-1.5 text-xs font-medium text-neutral-700 shadow-sm transition-colors hover:border-neutral-300 hover:bg-neutral-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 cursor-pointer"
+          :aria-label="`Remover filtro ${chip.label}`"
+          @click="removeFilterChip(chip.key)"
+        >
+          <span class="truncate">{{ chip.label }}</span>
+          <AppIcon name="close" size="xs" class="shrink-0 text-neutral-400" aria-hidden="true" />
+        </button>
+        <button
+          type="button"
+          class="ml-auto text-xs font-medium text-primary-600 transition-colors hover:text-primary-700 focus:outline-none focus-visible:underline cursor-pointer"
+          @click="clearFilters"
+        >
+          Limpar tudo
+        </button>
+      </div>
+    </section>
+
+    <!-- Totais + colunas (desktop) -->
+    <div class="mb-3 flex items-center justify-between gap-3">
+      <div
+        class="flex flex-wrap items-center gap-x-4 gap-y-1 text-sm text-neutral-600 tabular-nums transition-opacity duration-200 min-w-0"
+        :class="loadingCells ? 'opacity-40' : 'opacity-100'"
+        aria-label="Resumo de células e membros"
+      >
+        <span class="inline-flex items-center gap-2">
+          <AppIcon name="grid" size="sm" class="text-primary-500 shrink-0" aria-hidden="true" />
+          <span class="font-semibold text-neutral-800">{{ totais.celulas.toLocaleString('pt-BR') }}</span>
+          <span>{{ totais.celulas === 1 ? 'célula' : 'células' }}</span>
         </span>
+        <span class="inline-flex items-center gap-2">
+          <AppIcon name="users" size="sm" class="text-primary-500 shrink-0" aria-hidden="true" />
+          <span class="font-semibold text-neutral-800">{{ totais.membros.toLocaleString('pt-BR') }}</span>
+          <span>{{ totais.membros === 1 ? 'membro' : 'membros' }}</span>
+        </span>
+      </div>
+
+      <div ref="columnPickerRef" class="relative hidden sm:block shrink-0">
+        <button
+          type="button"
+          class="inline-flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-medium text-neutral-600 hover:text-neutral-800 hover:bg-neutral-100 rounded-lg border border-transparent hover:border-neutral-200 focus:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 touch-manipulation"
+          :aria-expanded="showColumnPicker"
+          aria-haspopup="true"
+          aria-controls="column-picker-panel"
+          @click.stop="showColumnPicker = !showColumnPicker"
+        >
+          <AppIcon name="grid" size="sm" aria-hidden="true" />
+          Colunas
+        </button>
+        <div
+          v-if="showColumnPicker"
+          id="column-picker-panel"
+          role="group"
+          aria-label="Visibilidade das colunas"
+          class="absolute right-0 z-20 mt-1 w-52 max-h-72 overflow-y-auto overscroll-contain rounded-xl border border-neutral-200 bg-white py-2 shadow-lg"
+          @click.stop
+        >
+          <p class="px-3 pb-1.5 text-[10px] font-semibold uppercase tracking-wide text-neutral-400">
+            Exibir colunas
+          </p>
+          <label
+            v-for="col in TOGGLEABLE_COLUMNS"
+            :key="col.key"
+            class="flex items-center gap-2.5 px-3 py-1.5 text-sm text-neutral-700 hover:bg-neutral-50 cursor-pointer"
+          >
+            <input
+              type="checkbox"
+              class="rounded border-neutral-300 text-primary-600 focus:ring-primary-500"
+              :checked="isColumnVisible(col.key)"
+              @change="toggleColumn(col.key)"
+            >
+            {{ col.label }}
+          </label>
+          <div class="mt-1 border-t border-neutral-100 pt-1 px-2">
+            <button
+              type="button"
+              class="w-full px-2 py-1.5 text-xs text-neutral-500 hover:text-neutral-800 hover:bg-neutral-50 rounded-md text-left focus:outline-none focus-visible:ring-2 focus-visible:ring-primary-500"
+              @click="resetColumns"
+            >
+              Restaurar padrão
+            </button>
+          </div>
+        </div>
       </div>
     </div>
 
-    <div v-if="loading" class="flex justify-center items-center py-12">
+    <div v-if="loadingCells" class="flex justify-center items-center py-12">
       <div class="animate-spin rounded-full h-8 w-8 border-b-2 border-primary-600"></div>
     </div>
 
-    <div v-else-if="filteredCells.length === 0" class="bg-white shadow-sm rounded-xl border border-gray-100 overflow-hidden p-8 sm:p-12">
+    <div v-else-if="cells.length === 0" class="bg-white shadow-sm rounded-xl border border-gray-100 overflow-hidden p-8 sm:p-12">
       <div class="text-center">
         <div class="mx-auto flex items-center justify-center h-16 w-16 rounded-full bg-gray-100 mb-4">
           <svg class="h-8 w-8 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -465,22 +742,23 @@ onMounted(() => {
           </svg>
         </div>
         <h3 class="text-base sm:text-lg font-semibold text-gray-900 mb-2">
-          {{ cellFilters.searchTerm ? 'Nenhuma célula encontrada' : 'Nenhuma célula cadastrada' }}
+          {{ isFiltering ? 'Nenhuma célula encontrada' : 'Nenhuma célula cadastrada' }}
         </h3>
         <p class="text-sm sm:text-base text-gray-500 max-w-sm mx-auto">
-          {{ cellFilters.searchTerm 
-            ? `Não encontramos células que correspondam a "${cellFilters.searchTerm}". Tente buscar com outros termos.` 
+          {{ isFiltering
+            ? `Não encontramos células com os filtros aplicados${cellFilters.searchTerm ? ` para "${cellFilters.searchTerm}"` : ''}.`
             : 'Comece criando sua primeira célula usando o botão acima.' }}
         </p>
         <button
-          v-if="cellFilters.searchTerm"
-          @click="cellFilters.searchTerm = ''"
-          class="mt-4 inline-flex items-center gap-2 px-4 py-2 text-sm font-medium text-primary-600 hover:text-primary-700 active:text-primary-800 transition-colors"
+          v-if="isFiltering"
+          type="button"
+          class="mt-4 inline-flex items-center gap-2 px-4 py-2 text-sm font-medium text-primary-600 hover:text-primary-700 focus:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 rounded-md touch-manipulation"
+          @click="clearFilters"
         >
           <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
           </svg>
-          Limpar busca
+          Limpar filtros
         </button>
       </div>
     </div>
@@ -489,7 +767,7 @@ onMounted(() => {
       <!-- Lista mobile -->
       <div class="sm:hidden space-y-2.5 p-3">
         <div
-          v-for="cell in filteredCells"
+          v-for="cell in cells"
           :key="cell.id"
           @click="handleVerCelula(cell)"
           class="relative border border-gray-200 rounded-xl px-4 py-3 shadow-md bg-white cursor-pointer transition-all duration-200 active:scale-[0.98] active:shadow-lg active:bg-blue-50 active:border-primary-300 group touch-manipulation"
@@ -507,16 +785,31 @@ onMounted(() => {
               <div class="flex items-center mb-0.5 gap-1.5">
                 <p class="text-sm font-semibold text-gray-900 group-active:text-primary-700 transition-colors truncate">{{ cell.lider?.nome || 'Sem líder' }}</p>
                 <div class="flex items-center gap-1 ml-1">
-                  <span
-                    v-for="(enviado, index) in getStatusSemanas(cell.id).slice(0, semanasPassadas)"
-                    :key="index"
-                    :class="enviado ? 'bg-green-500' : 'bg-red-500'"
-                    class="w-2 h-2 rounded-full flex-shrink-0"
-                    :title="`Semana ${index + 1}: ${enviado ? 'Relatório enviado' : 'Relatório não enviado'}`"
-                  ></span>
+                  <template v-if="loadingStatus">
+                    <span
+                      v-for="index in semanasPassadas"
+                      :key="index"
+                      class="w-2 h-2 rounded-full flex-shrink-0 bg-gray-300 animate-pulse"
+                    ></span>
+                  </template>
+                  <template v-else>
+                    <span
+                      v-for="(enviado, index) in getStatusSemanas(cell.id).slice(0, semanasPassadas)"
+                      :key="index"
+                      :class="enviado ? 'bg-green-500' : 'bg-red-500'"
+                      class="w-2 h-2 rounded-full flex-shrink-0"
+                      :title="`Semana ${index + 1}: ${enviado ? 'Relatório enviado' : 'Relatório não enviado'}`"
+                    ></span>
+                  </template>
                 </div>
               </div>
               <p class="text-xs font-medium text-gray-700 truncate">{{ cell.nome }}</p>
+              <span
+                class="inline-flex mt-1 px-2 py-0.5 rounded-full text-[10px] font-semibold"
+                :class="publicoBadgeClass(cell.publico)"
+              >
+                {{ formatPublicoCelula(cell.publico) }}
+              </span>
             </div>
           </div>
           
@@ -576,14 +869,68 @@ onMounted(() => {
               <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                 Célula
               </th>
-              <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                Total de Membros
+              <th
+                v-if="isColumnVisible('publico')"
+                scope="col"
+                class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider"
+              >
+                Público
               </th>
-              <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                Dia/Horário
+              <th
+                v-if="isColumnVisible('supervisor')"
+                scope="col"
+                class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider"
+              >
+                Supervisor
               </th>
-              <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+              <th
+                v-if="isColumnVisible('colider')"
+                scope="col"
+                class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider"
+              >
+                Co-líder
+              </th>
+              <th
+                v-if="isColumnVisible('membros')"
+                scope="col"
+                class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider"
+              >
+                Membros
+              </th>
+              <th
+                v-if="isColumnVisible('dia')"
+                scope="col"
+                class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider"
+              >
+                Dia
+              </th>
+              <th
+                v-if="isColumnVisible('horario')"
+                scope="col"
+                class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider"
+              >
+                Horário
+              </th>
+              <th
+                v-if="isColumnVisible('endereco')"
+                scope="col"
+                class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider"
+              >
                 Endereço
+              </th>
+              <th
+                v-if="isColumnVisible('relatorios')"
+                scope="col"
+                class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider"
+              >
+                Relatórios
+              </th>
+              <th
+                v-if="isColumnVisible('status')"
+                scope="col"
+                class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider"
+              >
+                Status
               </th>
               <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                 Ações
@@ -592,7 +939,7 @@ onMounted(() => {
           </thead>
           <tbody class="bg-white divide-y divide-gray-200">
             <tr 
-              v-for="cell in filteredCells" 
+              v-for="cell in cells" 
               :key="cell.id"
               @click="handleVerCelula(cell)"
               class="cursor-pointer transition-all duration-200 hover:bg-blue-50 hover:shadow-sm hover:border-l-4 hover:border-l-primary-500 group"
@@ -600,14 +947,23 @@ onMounted(() => {
               <td class="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900 group-hover:text-primary-700 transition-colors">
                 <div class="flex items-center gap-2">
                   <span>{{ cell.lider?.nome || 'Sem líder' }}</span>
-                  <div class="flex items-center gap-1">
-                    <span
-                      v-for="(enviado, index) in getStatusSemanas(cell.id).slice(0, semanasPassadas)"
-                      :key="index"
-                      :class="enviado ? 'bg-green-500' : 'bg-red-500'"
-                      class="w-2 h-2 rounded-full"
-                      :title="`Semana ${index + 1}: ${enviado ? 'Relatório enviado' : 'Relatório não enviado'}`"
-                    ></span>
+                  <div v-if="!isColumnVisible('relatorios')" class="flex items-center gap-1">
+                    <template v-if="loadingStatus">
+                      <span
+                        v-for="index in semanasPassadas"
+                        :key="index"
+                        class="w-2 h-2 rounded-full bg-gray-300 animate-pulse"
+                      ></span>
+                    </template>
+                    <template v-else>
+                      <span
+                        v-for="(enviado, index) in getStatusSemanas(cell.id).slice(0, semanasPassadas)"
+                        :key="index"
+                        :class="enviado ? 'bg-green-500' : 'bg-red-500'"
+                        class="w-2 h-2 rounded-full"
+                        :title="`Semana ${index + 1}: ${enviado ? 'Relatório enviado' : 'Relatório não enviado'}`"
+                      ></span>
+                    </template>
                   </div>
                   <span class="ml-2 text-primary-500 opacity-0 group-hover:opacity-100 transition-opacity inline-block">
                     →
@@ -617,16 +973,89 @@ onMounted(() => {
               <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500 group-hover:text-gray-700 transition-colors">
                 {{ cell.nome }}
               </td>
-              <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500 group-hover:text-gray-700 transition-colors">
-                <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800 group-hover:bg-blue-200 transition-colors">
+              <td
+                v-if="isColumnVisible('publico')"
+                class="px-6 py-4 whitespace-nowrap text-sm"
+              >
+                <span
+                  class="inline-flex px-2 py-0.5 rounded-full text-xs font-semibold"
+                  :class="publicoBadgeClass(cell.publico)"
+                >
+                  {{ formatPublicoCelula(cell.publico) }}
+                </span>
+              </td>
+              <td
+                v-if="isColumnVisible('supervisor')"
+                class="px-6 py-4 whitespace-nowrap text-sm text-gray-500 group-hover:text-gray-700 transition-colors"
+              >
+                {{ optionalLabel(cell.supervisor?.nome) }}
+              </td>
+              <td
+                v-if="isColumnVisible('colider')"
+                class="px-6 py-4 whitespace-nowrap text-sm text-gray-500 group-hover:text-gray-700 transition-colors"
+              >
+                {{ optionalLabel(cell.coLider?.nome) }}
+              </td>
+              <td
+                v-if="isColumnVisible('membros')"
+                class="px-6 py-4 whitespace-nowrap text-sm text-gray-500 group-hover:text-gray-700 transition-colors"
+              >
+                <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800 group-hover:bg-blue-200 transition-colors tabular-nums">
                   {{ cell._count?.membros || 0 }}
                 </span>
               </td>
-              <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500 group-hover:text-gray-700 transition-colors">
-                {{ cell.diaSemana }} - {{ cell.horario }}
+              <td
+                v-if="isColumnVisible('dia')"
+                class="px-6 py-4 whitespace-nowrap text-sm text-gray-500 group-hover:text-gray-700 transition-colors"
+              >
+                {{ formatDiaSemana(cell.diaSemana) }}
               </td>
-              <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500 group-hover:text-gray-700 transition-colors">
-                {{ cell.endereco }}
+              <td
+                v-if="isColumnVisible('horario')"
+                class="px-6 py-4 whitespace-nowrap text-sm text-gray-500 tabular-nums group-hover:text-gray-700 transition-colors"
+              >
+                {{ cell.horario }}
+              </td>
+              <td
+                v-if="isColumnVisible('endereco')"
+                class="px-6 py-4 text-sm text-gray-500 group-hover:text-gray-700 transition-colors max-w-xs truncate"
+                :title="cell.endereco || undefined"
+              >
+                {{ optionalLabel(cell.endereco) }}
+              </td>
+              <td
+                v-if="isColumnVisible('relatorios')"
+                class="px-6 py-4 whitespace-nowrap text-sm text-gray-500 group-hover:text-gray-700 transition-colors"
+              >
+                <div class="flex items-center gap-1">
+                  <template v-if="loadingStatus">
+                    <span
+                      v-for="index in semanasPassadas"
+                      :key="index"
+                      class="w-2 h-2 rounded-full bg-gray-300 animate-pulse"
+                    ></span>
+                  </template>
+                  <template v-else>
+                    <span
+                      v-for="(enviado, index) in getStatusSemanas(cell.id).slice(0, semanasPassadas)"
+                      :key="index"
+                      :class="enviado ? 'bg-green-500' : 'bg-red-500'"
+                      class="w-2 h-2 rounded-full"
+                      :title="`Semana ${index + 1}: ${enviado ? 'Relatório enviado' : 'Relatório não enviado'}`"
+                    ></span>
+                  </template>
+                </div>
+              </td>
+              <td
+                v-if="isColumnVisible('status')"
+                class="px-6 py-4 whitespace-nowrap text-sm group-hover:text-gray-700 transition-colors"
+              >
+                <span
+                  class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium"
+                  :class="cell.ativo !== false ? 'bg-green-100 text-green-800' : 'bg-neutral-100 text-neutral-600'"
+                >
+                  {{ cell.ativo !== false ? 'Ativa' : 'Inativa' }}
+                </span>
               </td>
               <td class="px-6 py-4 whitespace-nowrap text-sm font-medium" @click.stop>
                 <button 
@@ -688,8 +1117,8 @@ onMounted(() => {
     />
 
     <!-- Modal de confirmação de exclusão -->
-    <div v-if="showDeleteConfirm" class="fixed inset-0 bg-gray-500 bg-opacity-75 flex items-center justify-center z-50">
-      <div class="bg-white rounded-lg px-4 pt-5 pb-4 overflow-hidden shadow-xl transform transition-all sm:max-w-lg sm:w-full sm:p-6">
+    <div v-if="showDeleteConfirm" class="modal-backdrop" @click.self="showDeleteConfirm = false">
+      <div class="modal-panel modal-panel-md p-6" @click.stop>
         <div class="sm:flex sm:items-start">
           <div class="mt-3 text-center sm:mt-0 sm:text-left w-full">
             <h3 class="text-lg leading-6 font-medium text-gray-900">

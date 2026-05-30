@@ -55,9 +55,17 @@ model Usuario {
   @@map("usuarios")
 }
 
+enum PublicoCelula {
+  homens
+  mulheres
+  misto
+  nao_informado
+}
+
 model Celula {
   id              Int           @id @default(autoincrement())
   nome            String
+  publico         PublicoCelula @default(nao_informado)
   endereco        String?
   diaSemana       String        // "segunda", "terca", "quarta", "quinta", "sexta", "sabado", "domingo"
   horario         String

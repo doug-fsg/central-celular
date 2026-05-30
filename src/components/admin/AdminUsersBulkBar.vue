@@ -126,7 +126,7 @@ function rowButtonClass(variant: 'default' | 'danger' | 'primary') {
             leave-to="opacity-0 translate-y-full sm:translate-y-0 sm:scale-95"
           >
             <DialogPanel
-              class="w-full max-w-lg transform overflow-hidden rounded-t-2xl sm:rounded-2xl bg-white shadow-xl border border-neutral-100"
+              class="modal-dialog-panel modal-panel-lg max-w-lg"
               style="padding-bottom: max(1rem, env(safe-area-inset-bottom, 0px))"
             >
               <div class="px-4 pt-4 pb-2 border-b border-neutral-100">

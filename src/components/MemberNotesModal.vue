@@ -96,10 +96,8 @@ function relativeTimeFromNow(iso: string): string {
 </script>
 
 <template>
-  <div v-if="isOpen && member" class="fixed inset-0 z-50">
-    <div class="absolute inset-0 bg-black/40" @click="close" />
-    <div class="absolute inset-0 p-4 md:p-8 overflow-y-auto">
-      <div class="mx-auto max-w-2xl rounded-2xl bg-white shadow-xl">
+  <div v-if="isOpen && member" class="modal-backdrop" @click.self="close">
+    <div class="modal-panel modal-panel-lg max-w-2xl mx-auto" @click.stop>
         <div class="flex items-center justify-between px-4 py-3 border-b border-neutral-100">
           <div>
             <h3 class="text-base font-semibold text-neutral-800">Observações</h3>
@@ -142,7 +140,6 @@ function relativeTimeFromNow(iso: string): string {
             </div>
           </div>
         </div>
-      </div>
     </div>
   </div>
 </template>

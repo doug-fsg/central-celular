@@ -2,10 +2,33 @@ import { Request, Response } from 'express';
 import { prisma } from '../lib/prisma';
 import { z } from 'zod';
 import bcrypt from 'bcryptjs';
+import { startOfWeek, endOfWeek, startOfMonth, endOfMonth, addWeeks, format } from 'date-fns';
+import { isPublicoCelula, PUBLICO_CELULA_LABELS, PUBLICO_CELULA_VALUES, type PublicoCelula } from '../constants/publicoCelula';
+
+function calcularSemanasDoMes(referencia: Date): Array<{ inicio: Date; fim: Date }> {
+  const inicioMes = startOfMonth(referencia);
+  const fimMes = endOfMonth(referencia);
+  const semanas: Array<{ inicio: Date; fim: Date }> = [];
+  let semanaAtual = startOfWeek(inicioMes, { weekStartsOn: 1 });
+
+  for (let i = 0; i < 4; i++) {
+    const fimSemana = endOfWeek(semanaAtual, { weekStartsOn: 1 });
+    semanas.push({
+      inicio: semanaAtual,
+      fim: fimSemana > fimMes ? fimMes : fimSemana,
+    });
+    semanaAtual = addWeeks(semanaAtual, 1);
+  }
+
+  return semanas;
+}
+
+const publicoCelulaSchema = z.enum(PUBLICO_CELULA_VALUES);
 
 // Schema de validação para células
 const celulaSchema = z.object({
   nome: z.string().min(3, 'Nome deve ter pelo menos 3 caracteres'),
+  publico: publicoCelulaSchema.optional().default('nao_informado'),
   endereco: z.string().optional(),
   diaSemana: z.string(), 
   horario: z.string(), 
@@ -61,7 +84,7 @@ const membroSchema = z.object({
 // Listar células (com filtros e paginação)
 export const listarCelulas = async (req: Request, res: Response) => {
   try {
-    const { page = '1', limit = '10', lider, ativo, diaSemana } = req.query;
+    const { page = '1', limit = '10', lider, ativo, diaSemana, search, publico } = req.query;
     const skip = (Number(page) - 1) * Number(limit);
     
     // Obter o accountId do usuário autenticado
@@ -88,40 +111,70 @@ export const listarCelulas = async (req: Request, res: Response) => {
       where.diaSemana = diaSemana as string;
     }
 
-    // Buscar total de registros com filtros
-    const total = await prisma.celula.count({ where });
+    if (typeof publico === 'string' && isPublicoCelula(publico)) {
+      where.publico = publico;
+    }
 
-    // Buscar células com paginação e filtros
-    const celulas = await prisma.celula.findMany({
-      where,
-      include: {
-        lider: {
-          select: {
-            id: true,
-            nome: true,
-            email: true,
-            cargo: true
+    const searchTerm = typeof search === 'string' ? search.trim() : '';
+    if (searchTerm) {
+      where.OR = [
+        { nome: { contains: searchTerm, mode: 'insensitive' } },
+        { endereco: { contains: searchTerm, mode: 'insensitive' } },
+        { lider: { nome: { contains: searchTerm, mode: 'insensitive' } } },
+        { supervisor: { nome: { contains: searchTerm, mode: 'insensitive' } } },
+      ];
+    }
+
+    // Buscar total de registros, membros e página em paralelo
+    const [total, totalMembros, semPublico, celulas] = await Promise.all([
+      prisma.celula.count({ where }),
+      prisma.membro.count({ where: { celula: where } }),
+      prisma.celula.count({
+        where: {
+          accountId,
+          ...(ativo !== undefined ? { ativo: ativo === 'true' } : {}),
+          publico: 'nao_informado',
+        },
+      }),
+      prisma.celula.findMany({
+        where,
+        include: {
+          lider: {
+            select: {
+              id: true,
+              nome: true,
+              email: true,
+              cargo: true
+            }
+          },
+          coLider: {
+            select: {
+              id: true,
+              nome: true,
+              email: true,
+              cargo: true
+            }
+          },
+          supervisor: {
+            select: {
+              id: true,
+              nome: true,
+              email: true,
+              cargo: true
+            }
+          },
+          regiao: true,
+          _count: {
+            select: { membros: true }
           }
         },
-        coLider: {
-          select: {
-            id: true,
-            nome: true,
-            email: true,
-            cargo: true
-          }
-        },
-        regiao: true,
-        _count: {
-          select: { membros: true }
+        skip,
+        take: Number(limit),
+        orderBy: {
+          nome: 'asc'
         }
-      },
-      skip,
-      take: Number(limit),
-      orderBy: {
-        nome: 'asc'
-      }
-    });
+      }),
+    ]);
 
     // Retornar no formato esperado pelo frontend
     res.json({
@@ -131,7 +184,12 @@ export const listarCelulas = async (req: Request, res: Response) => {
         pages: Math.ceil(total / Number(limit)),
         currentPage: Number(page),
         perPage: Number(limit)
-      }
+      },
+      totais: {
+        celulas: total,
+        membros: totalMembros,
+        semPublico,
+      },
     });
   } catch (error) {
     console.error('Erro ao listar células:', error);
@@ -142,8 +200,89 @@ export const listarCelulas = async (req: Request, res: Response) => {
         pages: 0,
         currentPage: 1,
         perPage: 10
-      }
+      },
+      totais: {
+        celulas: 0,
+        membros: 0,
+        semPublico: 0,
+      },
     });
+  }
+};
+
+// Status de relatórios enviados por célula e semana do mês (bulk)
+export const statusRelatoriosCelulas = async (req: Request, res: Response) => {
+  try {
+    const { ids, mes, ano } = req.query;
+    const accountId = (req as any).user?.accountId || (req as any).usuario?.accountId;
+
+    if (!accountId) {
+      return res.status(401).json({ message: 'Conta não identificada' });
+    }
+
+    if (!ids || typeof ids !== 'string' || !ids.trim()) {
+      return res.status(400).json({ message: 'Parâmetro ids é obrigatório' });
+    }
+
+    const celulaIds = ids
+      .split(',')
+      .map((id) => Number(id.trim()))
+      .filter((id) => !isNaN(id) && id > 0);
+
+    if (celulaIds.length === 0) {
+      return res.status(400).json({ message: 'Nenhum ID de célula válido' });
+    }
+
+    const celulasValidas = await prisma.celula.findMany({
+      where: { id: { in: celulaIds }, accountId },
+      select: { id: true },
+    });
+
+    if (celulasValidas.length !== celulaIds.length) {
+      return res.status(403).json({ message: 'Uma ou mais células não pertencem à sua conta' });
+    }
+
+    const hoje = new Date();
+    const referencia =
+      mes !== undefined && ano !== undefined
+        ? new Date(Number(ano), Number(mes) - 1, 1)
+        : hoje;
+
+    const semanas = calcularSemanasDoMes(referencia);
+    const porCelula: Record<string, boolean[]> = {};
+
+    for (const id of celulaIds) {
+      porCelula[String(id)] = [false, false, false, false];
+    }
+
+    const relatorios = await prisma.relatorio.findMany({
+      where: {
+        celulaId: { in: celulaIds },
+        dataInicio: { gte: semanas[0].inicio },
+        dataFim: { lte: semanas[3].fim },
+      },
+      select: { celulaId: true, dataInicio: true, dataFim: true, status: true },
+    });
+
+    for (const rel of relatorios) {
+      if (rel.status !== 1) continue;
+
+      for (let i = 0; i < semanas.length; i++) {
+        const semana = semanas[i];
+        if (rel.dataInicio >= semana.inicio && rel.dataFim <= semana.fim) {
+          porCelula[String(rel.celulaId)][i] = true;
+          break;
+        }
+      }
+    }
+
+    res.json({
+      semanas: semanas.map((s) => format(s.inicio, 'yyyy-MM-dd')),
+      porCelula,
+    });
+  } catch (error) {
+    console.error('Erro ao obter status de relatórios:', error);
+    res.status(500).json({ message: 'Erro ao obter status de relatórios' });
   }
 };
 
@@ -339,6 +478,13 @@ export const atualizarCelula = async (req: Request, res: Response) => {
       return res.status(400).json({ message: 'Líder não encontrado' });
     }
 
+    const cargo = ((req as any).usuario?.cargo ?? '').toUpperCase();
+    const isAdminUser = ['ADMINISTRADOR', 'ADMIN', 'PASTOR'].includes(cargo);
+    const updateData = { ...data };
+    if (!isAdminUser) {
+      updateData.publico = celulaExistente.publico;
+    }
+
     // Verificar co-líder se fornecido
     if (data.coLiderId) {
       const colider = await prisma.usuario.findUnique({
@@ -352,7 +498,7 @@ export const atualizarCelula = async (req: Request, res: Response) => {
 
     const celulaAtualizada = await prisma.celula.update({
       where: { id: Number(id) },
-      data,
+      data: updateData,
       include: {
         lider: {
           select: {
@@ -896,4 +1042,127 @@ export const listarTodosMembros = async (req: Request, res: Response) => {
     console.error('Erro ao listar todos os membros:', error);
     res.status(500).json({ message: 'Erro ao listar membros' });
   }
-}; 
+};
+
+function csvEscape(value: string | number | null | undefined): string {
+  const str = value == null ? '' : String(value);
+  if (/[",\n\r]/.test(str)) {
+    return `"${str.replace(/"/g, '""')}"`;
+  }
+  return str;
+}
+
+// Exportar células e status de relatórios do mês (CSV)
+export const exportarCelulasCsv = async (req: Request, res: Response) => {
+  try {
+    const accountId = (req as any).user?.accountId || (req as any).usuario?.accountId;
+    if (!accountId) {
+      return res.status(401).json({ message: 'Conta não identificada' });
+    }
+
+    const { publico, mes, ano, diaSemana, search } = req.query;
+    const where: any = { accountId, ativo: true };
+
+    if (typeof publico === 'string' && isPublicoCelula(publico)) {
+      where.publico = publico;
+    }
+    if (typeof diaSemana === 'string' && diaSemana.trim()) {
+      where.diaSemana = diaSemana;
+    }
+    const searchTerm = typeof search === 'string' ? search.trim() : '';
+    if (searchTerm) {
+      where.OR = [
+        { nome: { contains: searchTerm, mode: 'insensitive' } },
+        { endereco: { contains: searchTerm, mode: 'insensitive' } },
+        { lider: { nome: { contains: searchTerm, mode: 'insensitive' } } },
+      ];
+    }
+
+    const hoje = new Date();
+    const referencia =
+      mes !== undefined && ano !== undefined
+        ? new Date(Number(ano), Number(mes) - 1, 1)
+        : hoje;
+    const semanas = calcularSemanasDoMes(referencia);
+
+    const celulas = await prisma.celula.findMany({
+      where,
+      include: {
+        lider: { select: { nome: true } },
+        _count: { select: { membros: true } },
+      },
+      orderBy: { nome: 'asc' },
+    });
+
+    const relatorios = celulas.length
+      ? await prisma.relatorio.findMany({
+          where: {
+            celulaId: { in: celulas.map((c) => c.id) },
+            dataInicio: { gte: semanas[0].inicio },
+            dataFim: { lte: semanas[3].fim },
+            status: 1,
+          },
+          select: { celulaId: true, dataInicio: true, dataFim: true },
+        })
+      : [];
+
+    const statusPorCelula = new Map<number, boolean[]>();
+    for (const celula of celulas) {
+      statusPorCelula.set(celula.id, [false, false, false, false]);
+    }
+    for (const rel of relatorios) {
+      const arr = statusPorCelula.get(rel.celulaId);
+      if (!arr) continue;
+      for (let i = 0; i < semanas.length; i++) {
+        const semana = semanas[i];
+        if (rel.dataInicio >= semana.inicio && rel.dataFim <= semana.fim) {
+          arr[i] = true;
+          break;
+        }
+      }
+    }
+
+    const header = [
+      'Célula',
+      'Público',
+      'Líder',
+      'Dia',
+      'Horário',
+      'Endereço',
+      'Membros',
+      'Semana 1',
+      'Semana 2',
+      'Semana 3',
+      'Semana 4',
+    ];
+
+    const rows = celulas.map((celula) => {
+      const status = statusPorCelula.get(celula.id) || [false, false, false, false];
+      return [
+        celula.nome,
+        PUBLICO_CELULA_LABELS[celula.publico as PublicoCelula] ?? celula.publico,
+        celula.lider?.nome ?? '',
+        celula.diaSemana,
+        celula.horario,
+        celula.endereco ?? '',
+        celula._count.membros,
+        status[0] ? 'Enviado' : 'Pendente',
+        status[1] ? 'Enviado' : 'Pendente',
+        status[2] ? 'Enviado' : 'Pendente',
+        status[3] ? 'Enviado' : 'Pendente',
+      ]
+        .map(csvEscape)
+        .join(',');
+    });
+
+    const csv = '\uFEFF' + [header.join(','), ...rows].join('\n');
+    const filename = `celulas-${format(referencia, 'yyyy-MM')}.csv`;
+
+    res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+    res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+    res.send(csv);
+  } catch (error) {
+    console.error('Erro ao exportar células:', error);
+    res.status(500).json({ message: 'Erro ao exportar células' });
+  }
+};

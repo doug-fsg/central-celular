@@ -40,13 +40,14 @@ COPY --from=builder /app/node_modules ./node_modules
 COPY --from=builder /app/package.json ./
 COPY --from=builder /app/server ./server
 COPY --from=builder /app/prisma ./prisma
+COPY docker/app-entrypoint.sh /app/docker-entrypoint.sh
 
 # Definir variáveis de ambiente
 ENV NODE_ENV=production
 ENV HOST=0.0.0.0
 
-# Expor as portas necessárias
-EXPOSE 5173 3000
+EXPOSE 3000
 
-# Comando para iniciar a aplicação em modo de produção
-CMD ["yarn", "start"] 
+RUN chmod +x /app/docker-entrypoint.sh
+
+ENTRYPOINT ["/app/docker-entrypoint.sh"] 

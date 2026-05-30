@@ -1,0 +1,56 @@
+version: '3.7'
+
+services:
+  # Frontend estático com Nginx servindo / e proxy para /api -> app:3000
+  frontend:
+    build:
+      context: .
+      dockerfile: Dockerfile.frontend
+      args:
+        VITE_API_URL: https://apriscoapp.com/api
+        VITE_QUEPASA_USER_EMAIL: doug.fsg@gmail.com
+    ports:
+      - "8181:80"
+    depends_on:
+      - app
+    networks:
+      - central-network
+
+  # App Node (API + servidor Express)
+  app:
+    build: .
+    image: douglagoncalves/central-celular:latest
+    ports:
+      - "33000:3000"
+    environment:
+      - DATABASE_URL=postgresql://postgres:84476291@db:5432/central_db
+      - NODE_ENV=production
+      - HOST=0.0.0.0
+      - JWT_SECRET=central-celular-secret-key-do-not-share
+      - FRONTEND_URL=https://apriscoapp.com
+      - VITE_QUEPASA_USER_EMAIL=doug.fsg@gmail.com
+    depends_on:
+      - db
+    networks:
+      - central-network
+
+  # Banco de dados
+  db:
+    image: postgres:15-alpine
+    ports:
+      - "5433:5432"
+    environment:
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=84476291
+      - POSTGRES_DB=central_db
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    networks:
+      - central-network
+
+volumes:
+  postgres_data:
+
+networks:
+  central-network:
+    driver: bridge

@@ -2,6 +2,7 @@ import { Router } from 'express';
 import { autenticacao } from '../middlewares/auth.middleware';
 import { verificarAdmin } from '../middlewares/admin.middleware';
 import { prisma } from '../lib/prisma';
+import { isPublicoCelula, type PublicoCelula } from '../constants/publicoCelula';
 import {
   listarUsuarios,
   obterUsuario,
@@ -14,12 +15,14 @@ import {
 import { obterDashboardCuidadoHandler } from '../controllers/dashboardCuidado.controller';
 import {
   listarCelulas,
+  statusRelatoriosCelulas,
   obterCelula,
   criarCelula,
   atualizarCelula,
   desativarCelula,
   deletarCelula,
-  listarTodosMembros
+  listarTodosMembros,
+  exportarCelulasCsv,
 } from '../controllers/celulas.controller';
 
 const adminRouter = Router();
@@ -118,7 +121,19 @@ adminRouter.get('/estatisticas', async (req, res) => {
 
     const periodo = req.query.periodo as string || 'mes';
     const liderId = req.query.liderId ? Number(req.query.liderId) : undefined;
-    console.log(`[DEBUG] Obtendo estatísticas para período: ${periodo}, líder: ${liderId || 'todos'}`);
+    const publicoQuery = req.query.publico as string | undefined;
+    const publicoFilter =
+      publicoQuery && isPublicoCelula(publicoQuery)
+        ? { publico: publicoQuery as PublicoCelula }
+        : {};
+
+    const celulaScope = {
+      accountId,
+      ...(liderId != null ? { liderId } : {}),
+      ...publicoFilter,
+    };
+
+    console.log(`[DEBUG] Obtendo estatísticas para período: ${periodo}, líder: ${liderId || 'todos'}, público: ${publicoQuery || 'todos'}`);
     
     // Calcular datas baseado no período
     const hoje = new Date();
@@ -193,7 +208,7 @@ adminRouter.get('/estatisticas', async (req, res) => {
       prisma.celula.count({
         where: { 
           ativo: true,
-          accountId
+          ...celulaScope,
         }
       }),
       
@@ -219,7 +234,7 @@ adminRouter.get('/estatisticas', async (req, res) => {
       prisma.membro.count({
         where: {
           ativo: true,
-          celula: { accountId },
+          celula: { ativo: true, ...celulaScope },
         },
       }),
       
@@ -231,10 +246,7 @@ adminRouter.get('/estatisticas', async (req, res) => {
               gte: dataInicio,
               lte: hoje
             },
-            celula: {
-              accountId,
-              ...(liderId != null ? { liderId } : {}),
-            },
+            celula: celulaScope,
           }
         },
         select: { tipo: true, status: true },
@@ -247,10 +259,7 @@ adminRouter.get('/estatisticas', async (req, res) => {
             gte: dataInicio,
             lte: hoje
           },
-          celula: {
-            accountId,
-            ...(liderId != null ? { liderId } : {}),
-          },
+          celula: celulaScope,
         },
       }),
 
@@ -261,7 +270,7 @@ adminRouter.get('/estatisticas', async (req, res) => {
             lt: dataInicio
           },
           ativo: true,
-          celula: { accountId },
+          celula: { ativo: true, ...celulaScope },
         },
       }),
 
@@ -273,10 +282,7 @@ adminRouter.get('/estatisticas', async (req, res) => {
               gte: periodoAnteriorInicio,
               lte: periodoAnteriorFim
             },
-            celula: {
-              accountId,
-              ...(liderId != null ? { liderId } : {}),
-            },
+            celula: celulaScope,
           }
         },
         select: { tipo: true, status: true },
@@ -296,7 +302,7 @@ adminRouter.get('/estatisticas', async (req, res) => {
               celulas: {
                 where: { 
                   ativo: true,
-                  accountId
+                  ...celulaScope,
                 }
               }
             }
@@ -316,7 +322,7 @@ adminRouter.get('/estatisticas', async (req, res) => {
             celulas: {
             where: { 
               ativo: true,
-              accountId
+              ...celulaScope,
             },
             select: {
               _count: {
@@ -338,10 +344,7 @@ adminRouter.get('/estatisticas', async (req, res) => {
             gte: dataInicio,
             lte: hoje
           },
-          celula: {
-            accountId,
-            ...(liderId != null ? { liderId } : {}),
-          },
+          celula: celulaScope,
         },
       }),
 
@@ -350,9 +353,7 @@ adminRouter.get('/estatisticas', async (req, res) => {
         where: {
           ehConsolidador: true,
           ativo: true,
-          celula: {
-            accountId
-          }
+          celula: celulaScope,
         }
       }),
       
@@ -361,9 +362,7 @@ adminRouter.get('/estatisticas', async (req, res) => {
         where: {
           ehCoLider: true,
           ativo: true,
-          celula: {
-            accountId
-          }
+          celula: celulaScope,
         }
       })
     ]);
@@ -416,6 +415,34 @@ adminRouter.get('/estatisticas', async (req, res) => {
       };
     });
 
+    const publicos: PublicoCelula[] = ['homens', 'mulheres', 'misto', 'nao_informado'];
+    const porPublico = await Promise.all(
+      publicos.map(async (publico) => {
+        const scope = {
+          accountId,
+          ...(liderId != null ? { liderId } : {}),
+          publico,
+        };
+        const [totalCelulasPublico, totalMembrosPublico, relatoriosPublico] = await Promise.all([
+          prisma.celula.count({ where: { ativo: true, ...scope } }),
+          prisma.membro.count({ where: { ativo: true, celula: { ativo: true, ...scope } } }),
+          prisma.relatorio.count({
+            where: {
+              status: 1,
+              dataEnvio: { gte: dataInicio, lte: hoje },
+              celula: scope,
+            },
+          }),
+        ]);
+        return {
+          publico,
+          totalCelulas: totalCelulasPublico,
+          totalMembros: totalMembrosPublico,
+          relatoriosEnviados: relatoriosPublico,
+        };
+      }),
+    );
+
     const response = {
       resumo: {
         totalCelulas,
@@ -445,7 +472,12 @@ adminRouter.get('/estatisticas', async (req, res) => {
           media: Math.round(mediaFrequenciaAnterior),
         },
       },
-      regioes: dadosPorRegiao
+      regioes: dadosPorRegiao,
+      porPublico,
+      filtros: {
+        liderId: liderId ?? null,
+        publico: publicoQuery && isPublicoCelula(publicoQuery) ? publicoQuery : null,
+      },
     };
 
     console.log('[DEBUG] Resposta final:', response);
@@ -471,6 +503,8 @@ adminRouter.get('/relatorios/exportar', async (req, res) => {
 });
 
 // Rotas para células
+adminRouter.get('/celulas/exportar', exportarCelulasCsv);
+adminRouter.get('/celulas/status-relatorios', statusRelatoriosCelulas);
 adminRouter.get('/celulas', listarCelulas);
 adminRouter.get('/celulas/:id', obterCelula);
 adminRouter.post('/celulas', criarCelula);

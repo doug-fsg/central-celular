@@ -450,13 +450,8 @@ onUnmounted(() => {
         </div>
 
         <!-- Modal de confirmação -->
-        <div v-if="showDeleteConfirmation" class="fixed inset-0 z-10 overflow-y-auto" aria-labelledby="modal-title" role="dialog" aria-modal="true">
-          <div class="flex items-end justify-center min-h-screen pt-4 px-4 pb-20 text-center sm:block sm:p-0">
-            <!-- Background overlay -->
-            <div class="fixed inset-0 bg-gray-500 bg-opacity-75 transition-opacity" aria-hidden="true"></div>
-
-            <!-- Modal panel -->
-            <div class="inline-block align-bottom bg-white rounded-lg px-4 pt-5 pb-4 text-left overflow-hidden shadow-xl transform transition-all sm:my-8 sm:align-middle sm:max-w-lg sm:w-full sm:p-6">
+        <div v-if="showDeleteConfirmation" class="modal-backdrop z-10" aria-labelledby="modal-title" role="dialog" aria-modal="true" @click.self="showDeleteConfirmation = false">
+            <div class="modal-panel modal-panel-md p-6 text-left" @click.stop>
               <div>
                 <div class="mx-auto flex items-center justify-center h-12 w-12 rounded-full bg-red-100">
                   <svg class="h-6 w-6 text-red-600" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -493,7 +488,6 @@ onUnmounted(() => {
                 </button>
               </div>
             </div>
-          </div>
         </div>
 
         <!-- Formulário -->

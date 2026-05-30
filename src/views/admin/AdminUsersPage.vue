@@ -981,8 +981,8 @@ const formatWhatsApp = (whatsapp: string | null | undefined): string => {
     </div>
 
     <!-- Confirmar envio de link SSO -->
-    <div v-if="showConfirmSendLink" class="fixed inset-0 bg-gray-500 bg-opacity-75 flex items-center justify-center z-[110] p-4">
-      <div class="bg-white rounded-lg px-4 pt-5 pb-4 overflow-hidden shadow-xl transform transition-all sm:max-w-md sm:w-full sm:p-6">
+    <div v-if="showConfirmSendLink" class="modal-backdrop z-[110]" @click.self="showConfirmSendLink = false">
+      <div class="modal-panel modal-panel-sm p-6" @click.stop>
         <h3 class="text-lg leading-6 font-medium text-gray-900 mb-2">Confirmar envio</h3>
         <p class="text-sm text-gray-700 mb-4">Deseja enviar o link do relatório semanal para este líder agora?</p>
         <div class="sm:flex sm:flex-row-reverse gap-3">
@@ -1102,8 +1102,8 @@ const formatWhatsApp = (whatsapp: string | null | undefined): string => {
     />
 
     <!-- Modal de confirmação de exclusão -->
-    <div v-if="showDeleteConfirm" class="fixed inset-0 bg-gray-500 bg-opacity-75 flex items-center justify-center z-[110] p-4">
-      <div class="bg-white rounded-lg px-4 pt-5 pb-4 overflow-hidden shadow-xl transform transition-all sm:max-w-lg sm:w-full sm:p-6">
+    <div v-if="showDeleteConfirm" class="modal-backdrop z-[110]" @click.self="showDeleteConfirm = false">
+      <div class="modal-panel modal-panel-md p-6" @click.stop>
         <div class="sm:flex sm:items-start">
           <div class="mt-3 text-center sm:mt-0 sm:text-left w-full">
             <h3 class="text-lg leading-6 font-medium text-gray-900">

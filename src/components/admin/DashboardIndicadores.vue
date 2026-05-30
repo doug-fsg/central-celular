@@ -1,7 +1,12 @@
 <script setup lang="ts">
-import { ref, watch, defineAsyncComponent, onMounted } from 'vue'
+import { ref, watch, computed, defineAsyncComponent, onMounted } from 'vue'
 import { adminService, type AdminStats } from '../../services/adminService'
 import { DASHBOARD_INDICADORES_COPY } from '../../constants/dashboardCuidado'
+import {
+  PUBLICO_CELULA_OPTIONS,
+  PUBLICO_CELULA_LABELS,
+  type PublicoCelula,
+} from '../../constants/publicoCelula'
 import AppIcon from '../AppIcon.vue'
 
 const FrequencyChart = defineAsyncComponent(() => import('../FrequencyChart.vue'))
@@ -12,6 +17,7 @@ const props = defineProps<{
 }>()
 
 const periodoSelecionado = ref('semana')
+const publicoSelecionado = ref('')
 const loadingStats = ref(false)
 const chartsLoadedFlag = ref(false)
 
@@ -37,6 +43,22 @@ const stats = ref<AdminStats>({
     anterior: { celula: 0, culto: 0, media: 0 },
   },
   regioes: [],
+  porPublico: [],
+  filtros: { liderId: null, publico: null },
+})
+
+const publicoCards = computed(() => {
+  const order: PublicoCelula[] = ['homens', 'mulheres', 'misto', 'nao_informado']
+  return order.map((publico) => {
+    const item = stats.value.porPublico?.find((p) => p.publico === publico)
+    return {
+      publico,
+      label: PUBLICO_CELULA_LABELS[publico],
+      totalCelulas: item?.totalCelulas ?? 0,
+      totalMembros: item?.totalMembros ?? 0,
+      relatoriosEnviados: item?.relatoriosEnviados ?? 0,
+    }
+  })
 })
 
 async function carregarStats() {
@@ -47,6 +69,7 @@ async function carregarStats() {
     stats.value = await adminService.obterEstatisticas(
       periodoSelecionado.value,
       liderId !== undefined && !Number.isNaN(liderId) ? liderId : undefined,
+      publicoSelecionado.value || undefined,
     )
     chartsLoadedFlag.value = true
   } catch (e) {
@@ -64,7 +87,7 @@ watch(
 )
 
 watch(
-  () => [periodoSelecionado.value, props.leaderFilterId] as const,
+  () => [periodoSelecionado.value, props.leaderFilterId, publicoSelecionado.value] as const,
   () => {
     if (props.active) void carregarStats()
   },
@@ -78,6 +101,10 @@ function setPeriodo(key: string) {
   if (key === 'semana' || key === 'mes' || key === 'trimestre' || key === 'ano') {
     periodoSelecionado.value = key
   }
+}
+
+function setPublico(value: string) {
+  publicoSelecionado.value = value
 }
 </script>
 
@@ -112,6 +139,53 @@ function setPeriodo(key: string) {
           <span class="sm:hidden">{{ periodo.labelMobile }}</span>
           <span class="hidden sm:inline">{{ periodo.label }}</span>
         </button>
+      </div>
+
+      <div class="-mx-1 overflow-x-auto flex gap-2 snap-x snap-mandatory pb-1">
+        <button
+          type="button"
+          class="min-h-[36px] px-3 rounded-lg text-xs font-medium whitespace-nowrap flex-shrink-0 snap-start touch-manipulation"
+          :class="
+            !publicoSelecionado
+              ? 'bg-neutral-800 text-white shadow-sm'
+              : 'bg-neutral-100 text-neutral-700 hover:bg-neutral-200'
+          "
+          @click="setPublico('')"
+        >
+          Todos os públicos
+        </button>
+        <button
+          v-for="opt in PUBLICO_CELULA_OPTIONS"
+          :key="opt.value"
+          type="button"
+          class="min-h-[36px] px-3 rounded-lg text-xs font-medium whitespace-nowrap flex-shrink-0 snap-start touch-manipulation"
+          :class="
+            publicoSelecionado === opt.value
+              ? 'bg-neutral-800 text-white shadow-sm'
+              : 'bg-neutral-100 text-neutral-700 hover:bg-neutral-200'
+          "
+          @click="setPublico(opt.value)"
+        >
+          {{ opt.label }}
+        </button>
+      </div>
+    </div>
+
+    <!-- Resumo por público -->
+    <div class="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+      <div
+        v-for="card in publicoCards"
+        :key="card.publico"
+        class="card p-4 border-neutral-200 bg-white"
+      >
+        <p class="text-xs font-medium text-neutral-500 mb-2">{{ card.label }}</p>
+        <div class="space-y-1 text-sm">
+          <p><span class="font-semibold tabular-nums">{{ card.totalCelulas }}</span> células</p>
+          <p><span class="font-semibold tabular-nums">{{ card.totalMembros }}</span> membros</p>
+          <p class="text-neutral-600">
+            <span class="font-semibold tabular-nums">{{ card.relatoriosEnviados }}</span> relatórios no período
+          </p>
+        </div>
       </div>
     </div>
 

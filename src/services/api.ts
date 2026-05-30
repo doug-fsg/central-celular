@@ -270,6 +270,29 @@ const api = {
     return fetchApi(endpoint, 'DELETE');
   },
 
+  async download(endpoint: string, filename = 'download.csv') {
+    const headers: Record<string, string> = {};
+    const currentToken = getTokenFn ? getTokenFn() : null;
+    if (currentToken) {
+      headers['Authorization'] = `Bearer ${currentToken}`;
+    }
+
+    const response = await fetch(`${API_URL}${endpoint}`, { method: 'GET', headers });
+    if (!response.ok) {
+      throw new Error('Erro ao baixar arquivo');
+    }
+
+    const blob = await response.blob();
+    const url = URL.createObjectURL(blob);
+    const anchor = document.createElement('a');
+    anchor.href = url;
+    anchor.download = filename;
+    document.body.appendChild(anchor);
+    anchor.click();
+    anchor.remove();
+    URL.revokeObjectURL(url);
+  },
+
   // Validação de token (função utilitária)
   isTokenExpired: (tokenString: string | null) => isTokenExpired(tokenString),
 };

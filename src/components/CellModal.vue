@@ -1,6 +1,10 @@
 <script setup lang="ts">
 import { ref, watch, computed } from 'vue'
+import { Teleport } from 'vue'
 import type { Celula } from '../services/adminService'
+import { PUBLICO_CELULA_OPTIONS, type PublicoCelula } from '../constants/publicoCelula'
+
+const publicoOptions = PUBLICO_CELULA_OPTIONS.filter((o) => o.value !== 'nao_informado')
 
 const props = defineProps<{
   isOpen: boolean
@@ -16,11 +20,12 @@ const emit = defineEmits<{
 
 const formData = ref({
   nome: '',
+  publico: '' as PublicoCelula | '',
   endereco: '',
   diaSemana: '',
   horario: '',
   lider_id: '',
-  supervisor_id: ''
+  supervisor_id: '',
 })
 
 const errors = ref<Record<string, string>>({})
@@ -28,7 +33,7 @@ const touched = ref<Record<string, boolean>>({})
 
 const validateField = (field: string, value: any) => {
   touched.value[field] = true
-  
+
   switch (field) {
     case 'nome':
       if (!value || value.trim().length < 3) {
@@ -42,7 +47,6 @@ const validateField = (field: string, value: any) => {
         return false
       }
       break
-    // supervisor_id agora é opcional
     case 'endereco':
       if (!value || value.trim().length < 5) {
         errors.value[field] = 'Endereço deve ter pelo menos 5 caracteres'
@@ -61,58 +65,68 @@ const validateField = (field: string, value: any) => {
         return false
       }
       break
+    case 'publico':
+      if (!value || value === 'nao_informado') {
+        errors.value[field] = 'Selecione o público da célula'
+        return false
+      }
+      break
   }
-  
+
   delete errors.value[field]
   return true
 }
 
 const validateForm = () => {
-  const fields = ['nome', 'lider_id', 'endereco', 'diaSemana', 'horario']
+  const fields = ['nome', 'publico', 'lider_id', 'endereco', 'diaSemana', 'horario']
   let isValid = true
-  
-  fields.forEach(field => {
+
+  fields.forEach((field) => {
     if (!validateField(field, formData.value[field as keyof typeof formData.value])) {
       isValid = false
     }
   })
-  
+
   return isValid
 }
 
-// Reset form quando o modal abrir/fechar
-watch(() => props.isOpen, (newVal) => {
-  if (newVal && props.cell) {
-    formData.value = { 
-      nome: props.cell.nome || '',
-      endereco: props.cell.endereco || '',
-      diaSemana: props.cell.diaSemana || '',
-      horario: props.cell.horario || '',
-      lider_id: (props.cell.lider_id || props.cell.liderId)?.toString() || '',
-      supervisor_id: (props.cell.supervisor_id || props.cell.supervisorId || props.cell.supervisor?.id)?.toString() || ''
+watch(
+  () => props.isOpen,
+  (newVal) => {
+    if (newVal && props.cell) {
+      const publicoAtual = props.cell.publico
+      formData.value = {
+        nome: props.cell.nome || '',
+        publico: publicoAtual && publicoAtual !== 'nao_informado' ? publicoAtual : '',
+        endereco: props.cell.endereco || '',
+        diaSemana: props.cell.diaSemana || '',
+        horario: props.cell.horario || '',
+        lider_id: (props.cell.lider_id || props.cell.liderId)?.toString() || '',
+        supervisor_id:
+          (props.cell.supervisor_id || props.cell.supervisorId || props.cell.supervisor?.id)?.toString() || '',
+      }
+    } else {
+      formData.value = {
+        nome: '',
+        publico: '',
+        endereco: '',
+        diaSemana: '',
+        horario: '',
+        lider_id: '',
+        supervisor_id: '',
+      }
     }
-  } else {
-    formData.value = {
-      nome: '',
-      endereco: '',
-      diaSemana: '',
-      horario: '',
-      lider_id: '',
-      supervisor_id: ''
-    }
-  }
-  errors.value = {}
-  touched.value = {}
-})
+    errors.value = {}
+    touched.value = {}
+  },
+)
 
 const handleSubmit = () => {
-  if (!validateForm()) {
-    return
-  }
+  if (!validateForm()) return
 
   const liderId = parseInt(formData.value.lider_id)
   const supervisorId = formData.value.supervisor_id ? parseInt(formData.value.supervisor_id) : undefined
-  
+
   if (isNaN(liderId)) {
     errors.value.lider_id = 'ID do líder inválido'
     return
@@ -125,17 +139,17 @@ const handleSubmit = () => {
 
   const data: any = {
     nome: formData.value.nome.trim(),
+    publico: formData.value.publico,
     endereco: formData.value.endereco.trim(),
     diaSemana: formData.value.diaSemana,
     horario: formData.value.horario,
-    liderId: liderId,
+    liderId,
   }
   if (typeof supervisorId === 'number') {
     data.supervisorId = supervisorId
     data.supervisor_id = supervisorId
   }
 
-  console.log('Dados do formulário para salvar:', data)
   emit('save', data)
 }
 
@@ -146,201 +160,265 @@ const diasSemana = [
   'Quinta-feira',
   'Sexta-feira',
   'Sábado',
-  'Domingo'
+  'Domingo',
 ]
 
-const getFieldClass = (field: string) => {
-  const baseClass = 'mt-1 block w-full border rounded-md shadow-sm py-2 px-3 focus:outline-none sm:text-sm'
-  if (!touched.value[field]) return `${baseClass} border-gray-300 focus:ring-primary-500 focus:border-primary-500`
+const fieldClass = (field: string) => {
+  const base =
+    'mt-1 block w-full rounded-lg border bg-white py-2.5 px-3 text-sm shadow-sm focus:outline-none focus:ring-2 focus:ring-primary-500/20 focus:border-primary-500'
+  if (!touched.value[field]) return `${base} border-gray-200`
   return errors.value[field]
-    ? `${baseClass} border-red-300 text-red-900 placeholder-red-300 focus:ring-red-500 focus:border-red-500`
-    : `${baseClass} border-green-300 focus:ring-green-500 focus:border-green-500`
+    ? `${base} border-red-300 text-red-900 focus:border-red-500 focus:ring-red-500/20`
+    : `${base} border-green-300 focus:border-green-500 focus:ring-green-500/20`
 }
 
-// Ordenar líderes por cargo e nome
+const selectClass = (field: string) => `${fieldClass(field)} appearance-none pr-10`
+
 const sortedLeaders = computed(() => {
-  const sorted = [...props.availableLeaders];
-  return sorted.sort((a, b) => {
-    // Primeiro por cargo (SUPERVISOR vem antes de LIDER)
-    if (a.cargo !== b.cargo) {
-      return a.cargo === 'SUPERVISOR' ? -1 : 1;
-    }
-    // Se o cargo for igual, ordena por nome
-    return a.nome.localeCompare(b.nome);
-  });
-});
-
-// Filtrar apenas supervisores
-const availableSupervisors = computed(() => {
-  return props.availableLeaders.filter(user => user.cargo === 'SUPERVISOR')
-    .sort((a, b) => a.nome.localeCompare(b.nome));
+  return [...props.availableLeaders].sort((a, b) => {
+    if (a.cargo !== b.cargo) return a.cargo === 'SUPERVISOR' ? -1 : 1
+    return a.nome.localeCompare(b.nome)
+  })
 })
 
-// Filtrar apenas líderes
-const availableOnlyLeaders = computed(() => {
-  return props.availableLeaders.filter(user => user.cargo === 'LIDER')
-    .sort((a, b) => a.nome.localeCompare(b.nome));
-})
+const availableSupervisors = computed(() =>
+  props.availableLeaders
+    .filter((user) => user.cargo === 'SUPERVISOR')
+    .sort((a, b) => a.nome.localeCompare(b.nome)),
+)
 </script>
 
 <template>
-  <div v-if="isOpen" class="fixed inset-0 bg-gray-500 bg-opacity-75 flex items-center justify-center z-50">
-    <div class="bg-white rounded-lg px-4 pt-5 pb-4 overflow-hidden shadow-xl transform transition-all sm:max-w-lg sm:w-full sm:p-6">
-      <div class="sm:flex sm:items-start">
-        <div class="mt-3 text-center sm:mt-0 sm:text-left w-full">
-          <h3 class="text-lg leading-6 font-medium text-gray-900">
-            {{ cell ? 'Editar Célula' : 'Nova Célula' }}
-          </h3>
-          
-          <form @submit.prevent="handleSubmit" class="mt-6 space-y-4">
-            <!-- Nome da célula -->
-            <div>
-              <label for="nome" class="block text-sm font-medium text-gray-700">
-                Nome da Célula <span class="text-red-500">*</span>
-              </label>
-              <input
-                type="text"
-                id="nome"
-                v-model="formData.nome"
-                @blur="validateField('nome', formData.nome)"
-                required
-                :class="getFieldClass('nome')"
-              />
-              <p v-if="errors.nome" class="mt-1 text-sm text-red-600">{{ errors.nome }}</p>
+  <Teleport to="body">
+    <div v-if="isOpen" class="modal-backdrop" @click.self="emit('close')">
+      <div class="modal-panel modal-panel-lg" @click.stop>
+        <!-- Cabeçalho (mesmo padrão do modal de membros) -->
+        <div
+          class="flex shrink-0 items-center justify-between border-b border-gray-200 bg-white px-4 py-3 sm:px-6 sm:py-4"
+        >
+          <div class="flex min-w-0 flex-1 items-center gap-3">
+            <button
+              type="button"
+              class="-ml-2 flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-gray-600 transition-colors active:bg-gray-100 active:text-gray-900 sm:hidden"
+              aria-label="Voltar"
+              @click="emit('close')"
+            >
+              <svg class="h-6 w-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7" />
+              </svg>
+            </button>
+            <div class="min-w-0 flex-1">
+              <h3 class="truncate text-base font-medium text-gray-900 sm:text-lg">
+                {{ cell ? 'Editar Célula' : 'Nova Célula' }}
+              </h3>
+              <p v-if="cell?.nome" class="mt-0.5 truncate text-xs text-gray-500 sm:hidden">
+                {{ cell.nome }}
+              </p>
             </div>
-
-            <!-- Líder -->
-            <div>
-              <label for="lider" class="block text-sm font-medium text-gray-700">
-                Líder <span class="text-red-500">*</span>
-              </label>
-              <div class="relative mt-1">
-                <select
-                  id="lider"
-                  v-model="formData.lider_id"
-                  @blur="validateField('lider_id', formData.lider_id)"
-                  required
-                  :class="getFieldClass('lider_id')"
-                >
-                  <option value="" disabled>Selecione um líder</option>
-                  <option v-for="lider in sortedLeaders" :key="lider.id" :value="lider.id">
-                    {{ lider.nome }} ({{ lider.cargo }})
-                  </option>
-                </select>
-                <div class="absolute inset-y-0 right-0 flex items-center px-2 pointer-events-none">
-                  <svg class="h-5 w-5 text-gray-400" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor">
-                    <path fill-rule="evenodd" d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z" clip-rule="evenodd" />
-                  </svg>
-                </div>
-              </div>
-              <p v-if="errors.lider_id" class="mt-1 text-sm text-red-600">{{ errors.lider_id }}</p>
-              <p class="mt-1 text-xs text-gray-500">Líderes, supervisores, administradores e pastores disponíveis</p>
-            </div>
-
-            <!-- Supervisor -->
-            <div>
-            <label for="supervisor" class="block text-sm font-medium text-gray-700">
-              Supervisor (opcional)
-            </label>
-              <div class="relative mt-1">
-                <select
-                  id="supervisor"
-                  v-model="formData.supervisor_id"
-                  :class="getFieldClass('supervisor_id')"
-                >
-                  <option value="" disabled>Selecione um supervisor</option>
-                  <option v-for="supervisor in availableSupervisors" :key="supervisor.id" :value="supervisor.id">
-                    {{ supervisor.nome }} ({{ supervisor.cargo }})
-                  </option>
-                </select>
-                <div class="absolute inset-y-0 right-0 flex items-center px-2 pointer-events-none">
-                  <svg class="h-5 w-5 text-gray-400" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor">
-                    <path fill-rule="evenodd" d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z" clip-rule="evenodd" />
-                  </svg>
-                </div>
-              </div>
-              <p v-if="errors.supervisor_id" class="mt-1 text-sm text-red-600">{{ errors.supervisor_id }}</p>
-              <p class="mt-1 text-xs text-gray-500">Somente supervisores disponíveis</p>
-            </div>
-
-            <!-- Dia da Semana -->
-            <div>
-              <label for="diaSemana" class="block text-sm font-medium text-gray-700">
-                Dia da Semana <span class="text-red-500">*</span>
-              </label>
-              <select
-                id="diaSemana"
-                v-model="formData.diaSemana"
-                @blur="validateField('diaSemana', formData.diaSemana)"
-                required
-                :class="getFieldClass('diaSemana')"
-              >
-                <option value="" disabled>Selecione um dia</option>
-                <option v-for="dia in diasSemana" :key="dia" :value="dia">
-                  {{ dia }}
-                </option>
-              </select>
-              <p v-if="errors.diaSemana" class="mt-1 text-sm text-red-600">{{ errors.diaSemana }}</p>
-            </div>
-
-            <!-- Horário -->
-            <div>
-              <label for="horario" class="block text-sm font-medium text-gray-700">
-                Horário <span class="text-red-500">*</span>
-              </label>
-              <input
-                type="time"
-                id="horario"
-                v-model="formData.horario"
-                @blur="validateField('horario', formData.horario)"
-                required
-                :class="getFieldClass('horario')"
-              />
-              <p v-if="errors.horario" class="mt-1 text-sm text-red-600">{{ errors.horario }}</p>
-            </div>
-            
-            <!-- Endereço -->
-            <div>
-              <label for="endereco" class="block text-sm font-medium text-gray-700">
-                Endereço Completo <span class="text-red-500">*</span>
-              </label>
-              <textarea
-                id="endereco"
-                v-model="formData.endereco"
-                @blur="validateField('endereco', formData.endereco)"
-                required
-                rows="2"
-                placeholder="Digite o endereço completo (rua, número, bairro, cidade)"
-                :class="getFieldClass('endereco')"
-              ></textarea>
-              <p v-if="errors.endereco" class="mt-1 text-sm text-red-600">{{ errors.endereco }}</p>
-              <p class="mt-1 text-xs text-gray-500">Ex: Rua das Flores, 123 - Centro, São Paulo</p>
-            </div>
-
-            <div class="mt-5 sm:mt-4 sm:flex sm:flex-row-reverse">
-              <button
-                type="submit"
-                :disabled="props.isLoading"
-                class="w-full inline-flex justify-center rounded-md border border-transparent shadow-sm px-4 py-2 bg-primary-600 text-base font-medium text-white hover:bg-primary-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500 sm:ml-3 sm:w-auto sm:text-sm disabled:opacity-50 disabled:cursor-not-allowed"
-              >
-                <svg v-if="props.isLoading" class="animate-spin -ml-1 mr-3 h-5 w-5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                  <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
-                  <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                </svg>
-                {{ props.isLoading ? 'Salvando...' : 'Salvar' }}
-              </button>
-              <button
-                type="button"
-                @click="emit('close')"
-                :disabled="props.isLoading"
-                class="mt-3 w-full inline-flex justify-center rounded-md border border-gray-300 shadow-sm px-4 py-2 bg-white text-base font-medium text-gray-700 hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500 sm:mt-0 sm:w-auto sm:text-sm disabled:opacity-50 disabled:cursor-not-allowed"
-              >
-                Cancelar
-              </button>
-            </div>
-          </form>
+          </div>
+          <button
+            type="button"
+            class="hidden h-8 w-8 shrink-0 items-center justify-center rounded-full text-xl font-bold text-gray-500 transition-colors hover:bg-gray-100 hover:text-gray-700 sm:flex"
+            aria-label="Fechar"
+            @click="emit('close')"
+          >
+            ✕
+          </button>
         </div>
+
+        <form class="flex min-h-0 flex-1 flex-col" @submit.prevent="handleSubmit">
+          <div class="flex-1 overflow-y-auto overscroll-contain">
+            <!-- Dados da célula -->
+            <div class="border-b border-gray-100 px-4 py-4 sm:px-6">
+              <p class="mb-3 text-[11px] font-semibold uppercase tracking-wide text-gray-500">
+                Dados da célula
+              </p>
+              <div class="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                <div>
+                  <label for="nome" class="block text-sm font-medium text-gray-700">
+                    Nome <span class="text-red-500">*</span>
+                  </label>
+                  <input
+                    id="nome"
+                    v-model="formData.nome"
+                    type="text"
+                    required
+                    :class="fieldClass('nome')"
+                    @blur="validateField('nome', formData.nome)"
+                  />
+                  <p v-if="errors.nome" class="mt-1 text-sm text-red-600">{{ errors.nome }}</p>
+                </div>
+                <div>
+                  <label for="publico" class="block text-sm font-medium text-gray-700">
+                    Público <span class="text-red-500">*</span>
+                  </label>
+                  <select
+                    id="publico"
+                    v-model="formData.publico"
+                    required
+                    :class="selectClass('publico')"
+                    @blur="validateField('publico', formData.publico)"
+                  >
+                    <option value="" disabled>Selecione o público</option>
+                    <option v-for="opt in publicoOptions" :key="opt.value" :value="opt.value">
+                      {{ opt.label }}
+                    </option>
+                  </select>
+                  <p v-if="errors.publico" class="mt-1 text-sm text-red-600">{{ errors.publico }}</p>
+                </div>
+              </div>
+            </div>
+
+            <!-- Equipe -->
+            <div class="border-b border-gray-100 px-4 py-4 sm:px-6">
+              <p class="mb-3 text-[11px] font-semibold uppercase tracking-wide text-gray-500">Equipe</p>
+              <div class="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                <div>
+                  <label for="lider" class="block text-sm font-medium text-gray-700">
+                    Líder <span class="text-red-500">*</span>
+                  </label>
+                  <div class="relative">
+                    <select
+                      id="lider"
+                      v-model="formData.lider_id"
+                      required
+                      :class="selectClass('lider_id')"
+                      @blur="validateField('lider_id', formData.lider_id)"
+                    >
+                      <option value="" disabled>Selecione um líder</option>
+                      <option v-for="lider in sortedLeaders" :key="lider.id" :value="lider.id">
+                        {{ lider.nome }} ({{ lider.cargo }})
+                      </option>
+                    </select>
+                    <div class="pointer-events-none absolute inset-y-0 right-0 flex items-center px-2">
+                      <svg class="h-5 w-5 text-gray-400" viewBox="0 0 20 20" fill="currentColor">
+                        <path
+                          fill-rule="evenodd"
+                          d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z"
+                          clip-rule="evenodd"
+                        />
+                      </svg>
+                    </div>
+                  </div>
+                  <p v-if="errors.lider_id" class="mt-1 text-sm text-red-600">{{ errors.lider_id }}</p>
+                  <p class="mt-1 text-xs text-gray-500">Líderes, supervisores, admins e pastores</p>
+                </div>
+                <div>
+                  <label for="supervisor" class="block text-sm font-medium text-gray-700">
+                    Supervisor <span class="text-gray-400 font-normal">(opcional)</span>
+                  </label>
+                  <div class="relative">
+                    <select id="supervisor" v-model="formData.supervisor_id" :class="selectClass('supervisor_id')">
+                      <option value="">Nenhum</option>
+                      <option v-for="supervisor in availableSupervisors" :key="supervisor.id" :value="supervisor.id">
+                        {{ supervisor.nome }}
+                      </option>
+                    </select>
+                    <div class="pointer-events-none absolute inset-y-0 right-0 flex items-center px-2">
+                      <svg class="h-5 w-5 text-gray-400" viewBox="0 0 20 20" fill="currentColor">
+                        <path
+                          fill-rule="evenodd"
+                          d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z"
+                          clip-rule="evenodd"
+                        />
+                      </svg>
+                    </div>
+                  </div>
+                  <p v-if="errors.supervisor_id" class="mt-1 text-sm text-red-600">{{ errors.supervisor_id }}</p>
+                </div>
+              </div>
+            </div>
+
+            <!-- Encontro e local -->
+            <div class="px-4 py-4 pb-5 sm:px-6">
+              <p class="mb-3 text-[11px] font-semibold uppercase tracking-wide text-gray-500">
+                Encontro e local
+              </p>
+              <div class="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                <div>
+                  <label for="diaSemana" class="block text-sm font-medium text-gray-700">
+                    Dia da semana <span class="text-red-500">*</span>
+                  </label>
+                  <select
+                    id="diaSemana"
+                    v-model="formData.diaSemana"
+                    required
+                    :class="selectClass('diaSemana')"
+                    @blur="validateField('diaSemana', formData.diaSemana)"
+                  >
+                    <option value="" disabled>Selecione um dia</option>
+                    <option v-for="dia in diasSemana" :key="dia" :value="dia">{{ dia }}</option>
+                  </select>
+                  <p v-if="errors.diaSemana" class="mt-1 text-sm text-red-600">{{ errors.diaSemana }}</p>
+                </div>
+                <div>
+                  <label for="horario" class="block text-sm font-medium text-gray-700">
+                    Horário <span class="text-red-500">*</span>
+                  </label>
+                  <input
+                    id="horario"
+                    v-model="formData.horario"
+                    type="time"
+                    required
+                    :class="fieldClass('horario')"
+                    @blur="validateField('horario', formData.horario)"
+                  />
+                  <p v-if="errors.horario" class="mt-1 text-sm text-red-600">{{ errors.horario }}</p>
+                </div>
+                <div class="sm:col-span-2">
+                  <label for="endereco" class="block text-sm font-medium text-gray-700">
+                    Endereço completo <span class="text-red-500">*</span>
+                  </label>
+                  <textarea
+                    id="endereco"
+                    v-model="formData.endereco"
+                    rows="2"
+                    required
+                    placeholder="Rua, número, bairro, cidade"
+                    :class="fieldClass('endereco')"
+                    @blur="validateField('endereco', formData.endereco)"
+                  />
+                  <p v-if="errors.endereco" class="mt-1 text-sm text-red-600">{{ errors.endereco }}</p>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Rodapé fixo -->
+          <div
+            class="flex shrink-0 flex-col-reverse gap-2 border-t border-gray-200 bg-white px-4 py-3 sm:flex-row sm:justify-end sm:gap-3 sm:px-6 sm:py-4"
+          >
+            <button
+              type="button"
+              :disabled="props.isLoading"
+              class="inline-flex min-h-[44px] w-full items-center justify-center rounded-lg border border-gray-300 bg-white px-4 py-2.5 text-sm font-medium text-gray-700 shadow-sm hover:bg-gray-50 disabled:opacity-50 sm:w-auto"
+              @click="emit('close')"
+            >
+              Cancelar
+            </button>
+            <button
+              type="submit"
+              :disabled="props.isLoading"
+              class="inline-flex min-h-[44px] w-full items-center justify-center rounded-lg border border-transparent bg-primary-600 px-4 py-2.5 text-sm font-medium text-white shadow-sm hover:bg-primary-700 disabled:opacity-50 sm:w-auto"
+            >
+              <svg
+                v-if="props.isLoading"
+                class="-ml-1 mr-2 h-4 w-4 animate-spin text-white"
+                fill="none"
+                viewBox="0 0 24 24"
+              >
+                <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4" />
+                <path
+                  class="opacity-75"
+                  fill="currentColor"
+                  d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
+                />
+              </svg>
+              {{ props.isLoading ? 'Salvando…' : 'Salvar' }}
+            </button>
+          </div>
+        </form>
       </div>
     </div>
-  </div>
-</template> 
+  </Teleport>
+</template>

@@ -69,12 +69,9 @@ watch(() => props.membroId, () => {
 
 <template>
   <Teleport to="body">
-    <div v-if="isOpen" class="fixed inset-0 z-50 sm:bg-gray-500 sm:bg-opacity-75 sm:flex sm:items-center sm:justify-center sm:p-4">
-      <!-- Overlay apenas no desktop -->
-      <div v-if="isOpen" class="hidden sm:block fixed inset-0 bg-gray-500 bg-opacity-75" @click="emit('close')"></div>
-      
+    <div v-if="isOpen" class="modal-backdrop" @click.self="emit('close')">
       <!-- Modal Container -->
-      <div class="bg-white w-full h-full sm:h-auto sm:max-h-[90vh] sm:max-w-2xl sm:rounded-lg sm:shadow-xl flex flex-col sm:relative">
+      <div class="modal-panel modal-panel-lg" @click.stop>
         <!-- Header Fixo -->
         <div class="px-4 sm:px-6 py-3 sm:py-4 border-b border-gray-200 flex items-center justify-between flex-shrink-0 bg-white">
           <div class="flex items-center gap-3 flex-1 min-w-0">

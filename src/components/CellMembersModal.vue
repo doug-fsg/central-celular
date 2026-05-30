@@ -18,6 +18,7 @@ interface Membro {
   ehConsolidador?: boolean
   ehCoLider?: boolean
   ehAnfitriao?: boolean
+  ehLider?: boolean
 }
 
 const props = defineProps<{
@@ -33,6 +34,7 @@ const showFrequencyModal = ref(false)
 const selectedMembro = ref<{ id: number; nome: string } | null>(null)
 
 function handleMembroClick(membro: Membro) {
+  if (membro.ehLider) return
   selectedMembro.value = { id: membro.id, nome: membro.nome }
   showFrequencyModal.value = true
 }
@@ -40,6 +42,10 @@ function handleMembroClick(membro: Membro) {
 const loading = ref(false)
 const membros = ref<Membro[]>([])
 const redeData = ref<RedeCuidadoResponse | null>(null)
+const celulaDetalhe = ref<{
+  lider?: { id: number; nome: string }
+  coLider?: { nome: string } | null
+} | null>(null)
 
 /** Atribuição: quem cuida de cada membro (nome) */
 const cuidadoPorNome = computed(() => {
@@ -75,7 +81,28 @@ function iniciais(nome: string) {
 }
 
 function membroSemRede(m: Membro) {
+  if (m.ehLider) return false
   return m.ativo && !cuidadoPorNome.value.has(m.id)
+}
+
+function nomesQueCuidadosDe(linha: Membro): string[] {
+  if (linha.ehLider) return cuidadosDoLider.value
+  return nomesQueCuidadosConsolidador(linha.id)
+}
+
+function badgesDaLinha(m: Membro) {
+  const badges: { key: string; label: string; class: string }[] = []
+  if (m.ehLider) {
+    badges.push({ key: 'lider', label: 'Líder', class: 'bg-primary-100 text-primary-800' })
+  }
+  for (const b of papelBadges) {
+    if (m[b.prop]) badges.push({ key: b.key, label: b.label, class: b.class })
+  }
+  return badges
+}
+
+function linhaTemPapel(m: Membro) {
+  return Boolean(m.ehLider || m.ehConsolidador || m.ehCoLider || m.ehAnfitriao)
 }
 
 async function loadRede() {
@@ -177,11 +204,105 @@ async function removerDaRede(membroId: number, membroNome: string, e: Event) {
 function nomesQueCuidadosConsolidador(membroId: number): string[] {
   return nomesCuidadosPorConsolidadorId.value.get(membroId) ?? []
 }
-const totalMembros = computed(() => membros.value.length)
-const ativos = computed(() => membros.value.filter(m => m.ativo).length)
-const colideres = computed(() => membros.value.filter(m => m.ehCoLider).length)
-const consolidadores = computed(() => membros.value.filter(m => m.ehConsolidador).length)
-const anfitrioes = computed(() => membros.value.filter(m => m.ehAnfitriao).length)
+
+const liderNome = computed(
+  () => redeData.value?.lider?.nome ?? celulaDetalhe.value?.lider?.nome ?? null
+)
+
+const coliderNomes = computed(() => {
+  const nomes = new Set<string>()
+  if (celulaDetalhe.value?.coLider?.nome) nomes.add(celulaDetalhe.value.coLider.nome)
+  for (const m of membros.value) {
+    if (m.ehCoLider) nomes.add(m.nome)
+  }
+  return [...nomes]
+})
+
+const anfitriaoNomes = computed(() =>
+  membros.value.filter((m) => m.ehAnfitriao).map((m) => m.nome)
+)
+
+const consolidadorNomes = computed(() =>
+  membros.value.filter((m) => m.ehConsolidador).map((m) => m.nome)
+)
+
+function formatNomesLista(nomes: string[]) {
+  return nomes.length > 0 ? nomes.join(', ') : '—'
+}
+
+const cuidadosDoLider = computed((): string[] => {
+  const r = redeData.value
+  if (!r) return []
+  const entry = r.cuidadores.find(
+    (c) => c.tipo === 'lider' && c.cuidadorId === r.lider.id
+  )
+  return entry?.cuidados.map((x) => x.nome) ?? []
+})
+
+const linhaLider = computed((): Membro | null => {
+  const id = redeData.value?.lider?.id ?? celulaDetalhe.value?.lider?.id
+  const nome = redeData.value?.lider?.nome ?? celulaDetalhe.value?.lider?.nome
+  if (!nome) return null
+  return { id: id ?? 0, nome, ativo: true, ehLider: true }
+})
+
+const linhasTabela = computed(() => {
+  const lider = linhaLider.value
+  if (lider) return [lider, ...membros.value]
+  return membros.value
+})
+
+const totalMembros = computed(() => linhasTabela.value.length)
+const totalComPapel = computed(() => linhasTabela.value.filter((m) => linhaTemPapel(m)).length)
+const totalComCuidadoPor = computed(() =>
+  membros.value.filter((m) => cuidadoPorNome.value.has(m.id)).length
+)
+const totalCuidados = computed(() => {
+  const r = redeData.value
+  if (r) return r.cuidadores.reduce((acc, c) => acc + c.cuidados.length, 0)
+  let n = 0
+  for (const nomes of nomesCuidadosPorConsolidadorId.value.values()) {
+    n += nomes.length
+  }
+  return n
+})
+
+const papelBadges = [
+  { key: 'consolidador', prop: 'ehConsolidador' as const, label: 'Consolid.', class: 'bg-violet-100 text-violet-800' },
+  { key: 'colider', prop: 'ehCoLider' as const, label: 'Co-líder', class: 'bg-amber-100 text-amber-800' },
+  { key: 'anfitriao', prop: 'ehAnfitriao' as const, label: 'Anfitrião', class: 'bg-sky-100 text-sky-800' },
+]
+
+const equipeCelula = computed(() => [
+  {
+    id: 'lider',
+    label: 'Líder',
+    nomes: liderNome.value ? [liderNome.value] : [],
+    labelClass: 'text-gray-500',
+    chipClass: 'bg-gray-50 text-gray-900 ring-gray-200/80',
+  },
+  {
+    id: 'colider',
+    label: coliderNomes.value.length > 1 ? 'Co-líderes' : 'Co-líder',
+    nomes: coliderNomes.value,
+    labelClass: 'text-amber-800',
+    chipClass: 'bg-amber-50 text-amber-900 ring-amber-200/80',
+  },
+  {
+    id: 'anfitriao',
+    label: anfitriaoNomes.value.length > 1 ? 'Anfitriões' : 'Anfitrião',
+    nomes: anfitriaoNomes.value,
+    labelClass: 'text-blue-700',
+    chipClass: 'bg-sky-50 text-sky-900 ring-sky-200/80',
+  },
+  {
+    id: 'consolidador',
+    label: consolidadorNomes.value.length > 1 ? 'Consolidadores' : 'Consolidador',
+    nomes: consolidadorNomes.value,
+    labelClass: 'text-violet-700',
+    chipClass: 'bg-violet-50 text-violet-900 ring-violet-200/80',
+  },
+])
 
 // Dashboard de frequência
 const frequenciaCulto = ref({ ultimaSemana: 0, penultimaSemana: 0, media: 0 })
@@ -218,11 +339,28 @@ async function loadFrequencia() {
   }
 }
 
+async function loadCelulaDetalhe() {
+  if (!props.cellId) {
+    celulaDetalhe.value = null
+    return
+  }
+  try {
+    const c = await adminService.obterCelula(props.cellId)
+    celulaDetalhe.value = {
+      lider: c.lider ? { id: c.lider.id, nome: c.lider.nome } : undefined,
+      coLider: c.coLider ? { nome: c.coLider.nome } : null,
+    }
+  } catch (e) {
+    console.warn('[CellMembersModal] detalhe célula:', e)
+    celulaDetalhe.value = null
+  }
+}
+
 async function loadMembers() {
   if (!props.cellId) return
   try {
     loading.value = true
-    await Promise.all([loadMembersData(), loadFrequencia(), loadRede()])
+    await Promise.all([loadMembersData(), loadFrequencia(), loadRede(), loadCelulaDetalhe()])
   } finally {
     loading.value = false
   }
@@ -246,12 +384,9 @@ watch(() => props.cellId, () => { if (props.isOpen) loadMembers() })
 <template>
   <!-- Mobile: Fullscreen App-like -->
   <Teleport to="body">
-    <div v-if="isOpen" class="fixed inset-0 z-50 sm:bg-gray-500 sm:bg-opacity-75 sm:flex sm:items-center sm:justify-center sm:p-4">
-      <!-- Overlay apenas no desktop -->
-      <div v-if="isOpen" class="hidden sm:block fixed inset-0 bg-gray-500 bg-opacity-75" @click="emit('close')"></div>
-      
+    <div v-if="isOpen" class="modal-backdrop" @click.self="emit('close')">
       <!-- Modal Container -->
-      <div class="bg-white w-full h-full sm:h-auto sm:max-h-[90vh] sm:max-w-5xl sm:rounded-lg sm:shadow-xl flex flex-col sm:relative">
+      <div class="modal-panel modal-panel-xl" @click.stop>
       <!-- Header Fixo (App-like no mobile) -->
       <div class="px-4 sm:px-6 py-3 sm:py-4 border-b border-gray-200 flex items-center justify-between flex-shrink-0 bg-white">
         <div class="flex items-center gap-3 flex-1 min-w-0">
@@ -285,101 +420,113 @@ watch(() => props.cellId, () => { if (props.isOpen) loadMembers() })
       
       <!-- Conteúdo com Scroll (tudo dentro de uma única área scrollável) -->
       <div class="flex-1 overflow-y-auto overscroll-contain -webkit-overflow-scrolling-touch">
-        <!-- Composição da célula (texto legível, discreto) -->
-        <div class="px-4 sm:px-6 py-2.5 border-b border-gray-100 bg-gray-50/70">
-          <!-- Mobile: quebra linha mais confortável -->
-          <div class="sm:hidden flex flex-wrap gap-x-2 gap-y-1 text-[11px] text-gray-600">
-            <span><span class="text-gray-500">Total</span> <strong class="tabular-nums text-gray-800">{{ totalMembros }}</strong></span>
-            <span class="text-gray-300">|</span>
-            <span class="text-emerald-700">Ativos <strong class="tabular-nums">{{ ativos }}</strong></span>
-            <span class="text-gray-300">|</span>
-            <span class="text-violet-700">Consolid. <strong class="tabular-nums">{{ consolidadores }}</strong></span>
-            <span class="text-gray-300">|</span>
-            <span class="text-amber-800">Co-líderes <strong class="tabular-nums">{{ colideres }}</strong></span>
-            <span class="text-gray-300">|</span>
-            <span class="text-blue-700">Anfitriões <strong class="tabular-nums">{{ anfitrioes }}</strong></span>
+        <!-- Composição da célula (líder, co-líderes, anfitriões, consolidadores) -->
+        <div class="px-4 sm:px-6 py-3 border-b border-gray-100 bg-gray-50/70">
+          <div class="flex items-start gap-3">
+            <div class="grid grid-cols-2 sm:grid-cols-4 gap-2 sm:gap-3 min-w-0 flex-1">
+              <div
+                v-for="papel in equipeCelula"
+                :key="papel.id"
+                class="min-w-0 rounded-lg border border-gray-200/80 bg-white px-3 py-2 shadow-sm flex flex-col"
+              >
+                <p
+                  class="text-[11px] font-medium uppercase tracking-wide truncate flex items-center gap-1"
+                  :class="papel.labelClass"
+                >
+                  <span class="truncate">{{ papel.label }}</span>
+                  <span
+                    v-if="papel.nomes.length > 1"
+                    class="shrink-0 text-[10px] font-semibold tabular-nums normal-case tracking-normal opacity-80"
+                  >
+                    ({{ papel.nomes.length }})
+                  </span>
+                </p>
+                <p
+                  v-if="papel.nomes.length === 0"
+                  class="mt-1 text-sm text-gray-400 leading-snug"
+                >
+                  —
+                </p>
+                <p
+                  v-else-if="papel.nomes.length === 1"
+                  class="mt-1 text-sm sm:text-[15px] font-semibold text-gray-900 truncate leading-snug"
+                  :title="papel.nomes[0]"
+                >
+                  {{ papel.nomes[0] }}
+                </p>
+                <ul
+                  v-else
+                  class="mt-1 flex flex-col gap-1 min-w-0 max-h-[5.5rem] overflow-y-auto overscroll-contain"
+                  :aria-label="`${papel.label}: ${formatNomesLista(papel.nomes)}`"
+                >
+                  <li v-for="nome in papel.nomes" :key="nome" class="min-w-0">
+                    <span
+                      class="block w-full truncate rounded-md px-2 py-1 text-xs sm:text-sm font-medium ring-1 ring-inset leading-snug"
+                      :class="papel.chipClass"
+                      :title="nome"
+                    >
+                      {{ nome }}
+                    </span>
+                  </li>
+                </ul>
+              </div>
+            </div>
+            <button
+              v-if="cellId && redeData"
+              type="button"
+              class="rounded-full p-2 text-gray-500 hover:bg-white hover:text-gray-700 shrink-0 mt-0.5"
+              title="Atualizar rede"
+              aria-label="Atualizar rede"
+              @click="loadRede()"
+            >
+              <AppIcon name="refresh" size="sm" />
+            </button>
           </div>
-          <!-- Desktop -->
-          <p class="hidden sm:block text-xs text-gray-600 leading-relaxed">
-            <span class="text-gray-500">Total</span>
-            <strong class="tabular-nums font-semibold text-gray-800 ml-0.5">{{ totalMembros }}</strong>
-            <span class="text-gray-300 mx-2">·</span>
-            <span class="text-emerald-700">Ativos</span>
-            <strong class="tabular-nums font-semibold text-emerald-800 ml-0.5">{{ ativos }}</strong>
-            <span class="text-gray-300 mx-2">·</span>
-            <span class="text-violet-700">Consolid.</span>
-            <strong class="tabular-nums font-semibold text-violet-900 ml-0.5">{{ consolidadores }}</strong>
-            <span class="text-gray-300 mx-2">·</span>
-            <span class="text-amber-800">Co-líderes</span>
-            <strong class="tabular-nums font-semibold text-amber-900 ml-0.5">{{ colideres }}</strong>
-            <span class="text-gray-300 mx-2">·</span>
-            <span class="text-blue-700">Anfitriões</span>
-            <strong class="tabular-nums font-semibold text-blue-900 ml-0.5">{{ anfitrioes }}</strong>
-          </p>
         </div>
 
         <!-- Rede + membros -->
         <div class="px-4 sm:px-6 pb-4 pt-4 border-b border-gray-100">
           <div v-if="loading" class="text-center text-gray-500 py-8 text-sm">Carregando…</div>
           <template v-else>
-            <div class="flex items-center justify-between gap-2 mb-3">
-              <div class="flex flex-col gap-1 sm:flex-row sm:items-center sm:gap-3 text-[11px] sm:text-xs text-gray-600">
-                <span class="inline-flex items-center gap-1.5 font-medium text-gray-700">
-                  <AppIcon name="heart" size="xs" class="text-rose-400" /> Cuidado por
-                </span>
-                <span class="hidden sm:inline text-gray-300">•</span>
-                <span class="inline-flex items-center gap-1.5 text-gray-600">
-                  <AppIcon name="users" size="xs" class="text-violet-400" /> Quem esse membro cuida na rede
-                </span>
-              </div>
-              <button
-                v-if="cellId && redeData"
-                type="button"
-                class="rounded-full p-2 text-gray-500 hover:bg-gray-100 hover:text-gray-700"
-                title="Atualizar rede"
-                aria-label="Atualizar rede"
-                @click="loadRede()"
-              >
-                <AppIcon name="refresh" size="sm" />
-              </button>
-            </div>
             <!-- Mobile -->
             <div class="sm:hidden space-y-2">
               <div
-                v-for="m in membros"
-                :key="m.id"
-                role="button"
-                tabindex="0"
-                class="rounded-lg border px-3 py-2.5 flex flex-col gap-2 active:bg-gray-50 cursor-pointer shadow-sm transition-colors touch-manipulation"
-                :class="membroSemRede(m) ? 'bg-rose-50/90 border-rose-200/80' : 'bg-white border-gray-100'"
-                @click="handleMembroClick(m)"
-                @keydown.enter.prevent="handleMembroClick(m)"
+                v-for="m in linhasTabela"
+                :key="m.ehLider ? 'lider' : m.id"
+                :role="m.ehLider ? undefined : 'button'"
+                :tabindex="m.ehLider ? undefined : 0"
+                class="rounded-lg border px-3 py-2.5 flex flex-col gap-2 shadow-sm transition-colors touch-manipulation"
+                :class="[
+                  m.ehLider
+                    ? 'bg-primary-50/80 border-primary-100'
+                    : membroSemRede(m)
+                      ? 'bg-rose-50/90 border-rose-200/80 active:bg-gray-50 cursor-pointer'
+                      : 'bg-white border-gray-100 active:bg-gray-50 cursor-pointer',
+                ]"
+                @click="!m.ehLider && handleMembroClick(m)"
+                @keydown.enter.prevent="!m.ehLider && handleMembroClick(m)"
               >
                 <div class="flex items-center gap-2 min-w-0">
                   <div
                     class="w-9 h-9 rounded-full flex-shrink-0 flex items-center justify-center text-[11px] font-bold text-white"
-                    :class="membroSemRede(m) ? 'bg-rose-400' : 'bg-gradient-to-br from-primary-400 to-primary-600'"
+                    :class="m.ehLider ? 'bg-primary-600' : membroSemRede(m) ? 'bg-rose-400' : 'bg-gradient-to-br from-primary-400 to-primary-600'"
                   >
                     {{ iniciais(m.nome) }}
                   </div>
                   <div class="min-w-0 flex-1">
                     <p class="text-sm font-medium text-gray-900 truncate">{{ m.nome }}</p>
-                    <div class="flex items-center gap-1 mt-1">
+                    <div class="flex flex-wrap items-center gap-1 mt-1">
                       <span
-                        v-if="m.ehConsolidador"
-                        class="h-2 w-2 rounded-full bg-violet-500"
-                        title="Consolidador"
-                      />
-                      <span v-if="m.ehCoLider" class="h-2 w-2 rounded-full bg-amber-400" title="Co-líder" />
-                      <span v-if="m.ehAnfitriao" class="h-2 w-2 rounded-full bg-sky-500" title="Anfitrião" />
-                      <span
-                        v-if="!m.ehConsolidador && !m.ehCoLider && !m.ehAnfitriao"
-                        class="h-2 w-2 rounded-full bg-gray-300"
-                        title="Membro"
-                      />
+                        v-for="badge in badgesDaLinha(m)"
+                        :key="badge.key"
+                        class="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium leading-none"
+                        :class="badge.class"
+                      >
+                        {{ badge.label }}
+                      </span>
                     </div>
                   </div>
-                  <div class="flex-shrink-0 flex items-center gap-1" @click.stop>
+                  <div v-if="!m.ehLider" class="flex-shrink-0 flex items-center gap-1" @click.stop>
                     <button
                       type="button"
                       class="rounded-full p-2 text-gray-500 hover:bg-violet-50 hover:text-violet-600"
@@ -401,7 +548,7 @@ watch(() => props.cellId, () => { if (props.isOpen) loadMembers() })
                     </button>
                   </div>
                 </div>
-                <div class="flex items-start justify-between gap-2 text-[11px]">
+                <div v-if="!m.ehLider" class="flex items-start justify-between gap-2 text-[11px]">
                   <div class="flex items-center gap-1.5 min-w-0">
                     <AppIcon name="heart" size="xs" class="text-rose-400 flex-shrink-0 mt-0.5" />
                     <template v-if="cuidadoPorNome.get(m.id)">
@@ -414,107 +561,139 @@ watch(() => props.cellId, () => { if (props.isOpen) loadMembers() })
                   </div>
                   <div class="flex items-center gap-1 flex-shrink-0">
                     <AppIcon name="users" size="xs" class="text-violet-400" />
-                    <template v-if="nomesQueCuidadosConsolidador(m.id).length">
+                    <template v-if="nomesQueCuidadosDe(m).length">
                       <span
-                        v-for="(nm, i) in nomesQueCuidadosConsolidador(m.id).slice(0, 3)"
+                        v-for="(nm, i) in nomesQueCuidadosDe(m).slice(0, 3)"
                         :key="i"
                         class="w-7 h-7 rounded-full bg-violet-100 text-[9px] font-bold text-violet-800 flex items-center justify-center ring-2 ring-white -ml-1 first:ml-0"
                         :title="nm"
                         >{{ iniciais(nm) }}</span
                       >
                       <span
-                        v-if="nomesQueCuidadosConsolidador(m.id).length > 3"
+                        v-if="nomesQueCuidadosDe(m).length > 3"
                         class="text-[10px] text-gray-500 ml-1"
-                        >+{{ nomesQueCuidadosConsolidador(m.id).length - 3 }}</span
+                        >+{{ nomesQueCuidadosDe(m).length - 3 }}</span
                       >
                     </template>
                     <span v-else class="text-gray-300 text-lg leading-none px-1">—</span>
                   </div>
                 </div>
+                <div v-else class="flex items-center gap-1.5 text-[11px] min-w-0">
+                  <AppIcon name="users" size="xs" class="text-violet-400 flex-shrink-0" />
+                  <template v-if="nomesQueCuidadosDe(m).length">
+                    <span class="truncate text-gray-700">{{ nomesQueCuidadosDe(m).join(', ') }}</span>
+                  </template>
+                  <span v-else class="text-gray-400">—</span>
+                </div>
               </div>
-              <p v-if="membros.length === 0" class="text-center text-gray-500 py-10 text-sm">Nenhum membro</p>
+              <p v-if="linhasTabela.length === 0" class="text-center text-gray-500 py-10 text-sm">Nenhum membro</p>
             </div>
             <!-- Desktop -->
             <div class="hidden sm:block rounded-lg border border-gray-200 overflow-hidden">
               <table class="min-w-full divide-y divide-gray-200 text-sm">
                 <thead class="bg-gray-50">
                   <tr>
-                    <th class="px-3 py-2 text-left font-medium text-gray-500 w-[30%]" title="Nome">Nome</th>
-                    <th class="px-2 py-2 text-center font-medium text-gray-500 w-[8%]" title="Papel">●</th>
-                    <th class="px-2 py-2 text-left text-xs font-medium text-gray-600 w-[22%]" scope="col">
-                      <span class="inline-flex items-center gap-1"
-                        ><AppIcon name="heart" size="xs" class="text-rose-400" />Cuidado por</span
-                      >
+                    <th class="px-3 py-2.5 text-left text-sm font-semibold text-gray-600 w-[30%]" scope="col">
+                      <span class="inline-flex items-baseline gap-1.5">
+                        Nome
+                        <span class="text-xs font-normal tabular-nums text-gray-400">{{ totalMembros }}</span>
+                      </span>
                     </th>
-                    <th class="px-2 py-2 text-left text-xs font-medium text-gray-600 w-[25%]" scope="col">
-                      <span class="inline-flex items-center gap-1"
-                        ><AppIcon name="users" size="xs" class="text-violet-400" />Cuida de</span
-                      >
+                    <th class="px-2 py-2.5 text-left text-sm font-semibold text-gray-600 w-[14%]" scope="col" title="Papel na célula">
+                      <span class="inline-flex items-baseline gap-1.5">
+                        Papel
+                        <span class="text-xs font-normal tabular-nums text-gray-400">{{ totalComPapel }}</span>
+                      </span>
                     </th>
-                    <th class="px-2 py-2 text-right font-medium text-gray-500 w-[15%]" title="Rede">&nbsp;</th>
+                    <th class="px-2 py-2.5 text-left text-sm font-semibold text-gray-600 w-[22%]" scope="col">
+                      <span class="inline-flex items-baseline gap-1.5">
+                        <span class="inline-flex items-center gap-1">
+                          <AppIcon name="heart" size="xs" class="text-rose-400" />Cuidado por
+                        </span>
+                        <span class="text-xs font-normal tabular-nums text-gray-400">{{ totalComCuidadoPor }}</span>
+                      </span>
+                    </th>
+                    <th class="px-2 py-2.5 text-left text-sm font-semibold text-gray-600 w-[25%]" scope="col">
+                      <span class="inline-flex items-baseline gap-1.5">
+                        <span class="inline-flex items-center gap-1">
+                          <AppIcon name="users" size="xs" class="text-violet-400" />Cuida de
+                        </span>
+                        <span class="text-xs font-normal tabular-nums text-gray-400">{{ totalCuidados }}</span>
+                      </span>
+                    </th>
+                    <th class="px-2 py-2.5 text-right text-sm font-semibold text-gray-600 w-[15%]" scope="col" title="Rede">
+                      &nbsp;
+                    </th>
                   </tr>
                 </thead>
                 <tbody class="bg-white divide-y divide-gray-100">
                   <tr
-                    v-for="m in membros"
-                    :key="m.id"
-                    class="cursor-pointer transition-colors group hover:bg-blue-50/60"
-                    :class="
-                      membroSemRede(m)
-                        ? 'bg-rose-50/95 hover:bg-rose-50'
-                        : ''
-                    "
-                    @click="handleMembroClick(m)"
+                    v-for="m in linhasTabela"
+                    :key="m.ehLider ? 'lider' : m.id"
+                    class="transition-colors group"
+                    :class="[
+                      m.ehLider
+                        ? 'bg-primary-50/60'
+                        : 'cursor-pointer hover:bg-blue-50/60',
+                      !m.ehLider && membroSemRede(m) ? 'bg-rose-50/95 hover:bg-rose-50' : '',
+                    ]"
+                    @click="!m.ehLider && handleMembroClick(m)"
                   >
                     <td class="px-3 py-2 whitespace-nowrap">
                       <div class="flex items-center gap-2 min-w-0">
                         <span
                           class="w-8 h-8 rounded-full flex-shrink-0 flex items-center justify-center text-[10px] font-bold text-white"
-                          :class="membroSemRede(m) ? 'bg-rose-400' : 'bg-primary-500'"
+                          :class="m.ehLider ? 'bg-primary-600' : membroSemRede(m) ? 'bg-rose-400' : 'bg-primary-500'"
                           >{{ iniciais(m.nome) }}</span
                         >
-                        <span class="font-medium text-gray-900 truncate group-hover:text-primary-700">{{ m.nome }}</span>
+                        <span
+                          class="font-medium text-gray-900 truncate"
+                          :class="!m.ehLider ? 'group-hover:text-primary-700' : ''"
+                        >{{ m.nome }}</span>
                       </div>
                     </td>
-                    <td class="px-2 py-2 text-center align-middle">
-                      <div class="flex flex-wrap gap-1 justify-center" @click.stop>
+                    <td class="px-2 py-2 align-middle">
+                      <div class="flex flex-wrap gap-1" @click.stop>
                         <span
-                          v-if="m.ehConsolidador"
-                          class="inline-block h-2 w-2 rounded-full bg-violet-500"
-                          title="Consolidador"
-                        />
-                        <span v-if="m.ehCoLider" class="inline-block h-2 w-2 rounded-full bg-amber-400" title="Co-líder" />
-                        <span v-if="m.ehAnfitriao" class="inline-block h-2 w-2 rounded-full bg-sky-500" title="Anfitrião" />
+                          v-for="badge in badgesDaLinha(m)"
+                          :key="badge.key"
+                          class="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium leading-none"
+                          :class="badge.class"
+                        >
+                          {{ badge.label }}
+                        </span>
+                        <span v-if="!linhaTemPapel(m)" class="text-[10px] text-gray-400">—</span>
                       </div>
                     </td>
                     <td class="px-2 py-2 text-gray-700 min-w-0 max-w-[10rem]" @click.stop>
                       <div class="truncate">
-                        <span v-if="cuidadoPorNome.get(m.id)" class="text-gray-800">{{ cuidadoPorNome.get(m.id) }}</span>
+                        <span v-if="m.ehLider" class="text-gray-400">—</span>
+                        <span v-else-if="cuidadoPorNome.get(m.id)" class="text-gray-800">{{ cuidadoPorNome.get(m.id) }}</span>
                         <span v-else-if="membroSemRede(m)" class="text-rose-500 text-xs italic">livre</span>
                         <span v-else class="text-gray-400">—</span>
                       </div>
                     </td>
                     <td class="px-2 py-2 min-w-0" @click.stop>
                       <div class="flex items-center gap-1 flex-wrap">
-                        <template v-if="nomesQueCuidadosConsolidador(m.id).length">
+                        <template v-if="nomesQueCuidadosDe(m).length">
                           <span
-                            v-for="(nm, i) in nomesQueCuidadosConsolidador(m.id).slice(0, 4)"
+                            v-for="(nm, i) in nomesQueCuidadosDe(m).slice(0, 4)"
                             :key="i"
                             class="w-8 h-8 rounded-full bg-violet-100 text-[10px] font-bold text-violet-900 flex items-center justify-center shadow-sm ring-2 ring-white -ml-1 first:ml-0 cursor-default"
                             :title="nm"
                             >{{ iniciais(nm) }}</span
                           >
                           <span
-                            v-if="nomesQueCuidadosConsolidador(m.id).length > 4"
+                            v-if="nomesQueCuidadosDe(m).length > 4"
                             class="text-[11px] text-gray-400 ml-0.5"
-                            >+{{ nomesQueCuidadosConsolidador(m.id).length - 4 }}</span
+                            >+{{ nomesQueCuidadosDe(m).length - 4 }}</span
                           >
                         </template>
                         <span v-else class="text-gray-300">—</span>
                       </div>
                     </td>
                     <td class="px-2 py-2 text-right whitespace-nowrap align-middle">
-                      <div class="flex items-center justify-end gap-1" @click.stop>
+                      <div v-if="!m.ehLider" class="flex items-center justify-end gap-1" @click.stop>
                         <button
                           type="button"
                           class="rounded-full p-1.5 text-gray-400 hover:bg-violet-100 hover:text-violet-600"
@@ -539,7 +718,7 @@ watch(() => props.cellId, () => { if (props.isOpen) loadMembers() })
                   </tr>
                 </tbody>
               </table>
-              <div v-if="membros.length === 0" class="py-12 text-center text-gray-500 text-sm">Nenhum membro</div>
+              <div v-if="linhasTabela.length === 0" class="py-12 text-center text-gray-500 text-sm">Nenhum membro</div>
             </div>
           </template>
         </div>
@@ -648,9 +827,7 @@ watch(() => props.cellId, () => { if (props.isOpen) loadMembers() })
             leave-from="opacity-100 translate-y-0 sm:scale-100"
             leave-to="opacity-0 translate-y-4 sm:scale-95"
           >
-            <DialogPanel
-              class="w-full max-w-sm transform rounded-2xl bg-white p-5 shadow-xl border border-gray-100"
-            >
+            <DialogPanel class="modal-dialog-panel max-w-sm p-5">
               <DialogTitle class="flex items-center gap-2 text-base font-semibold text-gray-900">
                 <AppIcon name="heart" size="sm" class="text-rose-500" />
                 <span>Cuidador</span>

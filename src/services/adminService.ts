@@ -40,6 +40,16 @@ export interface AdminStats {
     totalMembros: number;
     mediaMembros: number;
   }>;
+  porPublico: Array<{
+    publico: string;
+    totalCelulas: number;
+    totalMembros: number;
+    relatoriosEnviados: number;
+  }>;
+  filtros: {
+    liderId: number | null;
+    publico: string | null;
+  };
 }
 
 export type StatusSemafaro = 'ok' | 'atencao' | 'critico';
@@ -105,6 +115,7 @@ export interface Usuario {
 export interface Celula {
   id: number;
   nome: string;
+  publico?: 'homens' | 'mulheres' | 'misto' | 'nao_informado';
   endereco?: string;
   diaSemana: string;
   horario: string;
@@ -157,11 +168,14 @@ export interface PaginatedResponse<T> {
 // Serviço de administração
 export const adminService = {
   // Obter estatísticas
-  async obterEstatisticas(periodo: string, liderId?: number): Promise<AdminStats> {
+  async obterEstatisticas(periodo: string, liderId?: number, publico?: string): Promise<AdminStats> {
     try {
       let url = `/admin/estatisticas?periodo=${periodo}`;
       if (liderId) {
         url += `&liderId=${liderId}`;
+      }
+      if (publico) {
+        url += `&publico=${publico}`;
       }
       return await api.get(url);
     } catch (error) {
@@ -283,15 +297,22 @@ export const adminService = {
     }
   },
 
-  // Listar células com paginação (opcionalmente filtrando por líder e dia da semana)
-  async listarCelulas(page: number = 1, limit: number = 10, liderId?: number, diaSemana?: string) {
-    console.log('[adminService] Iniciando busca de células:', { page, limit, liderId, diaSemana });
+  // Listar células com paginação (opcionalmente filtrando por líder, dia da semana e busca)
+  async listarCelulas(
+    page: number = 1,
+    limit: number = 10,
+    liderId?: number,
+    diaSemana?: string,
+    search?: string,
+    publico?: string
+  ) {
     try {
       const params = new URLSearchParams({ page: String(page), limit: String(limit) })
       if (liderId) params.append('lider', String(liderId))
       if (diaSemana) params.append('diaSemana', diaSemana)
+      if (search?.trim()) params.append('search', search.trim())
+      if (publico) params.append('publico', publico)
       const response = await api.get(`/admin/celulas?${params.toString()}`);
-      console.log('[adminService] Resposta da API:', response);
       
       // Verificar se a resposta é válida
       if (!response || typeof response !== 'object') {
@@ -317,6 +338,22 @@ export const adminService = {
       console.error('[adminService] Erro ao listar células:', error);
       throw error;
     }
+  },
+
+  async statusRelatoriosCelulas(
+    celulaIds: number[],
+    mes?: number,
+    ano?: number
+  ): Promise<{ semanas: string[]; porCelula: Record<string, boolean[]> }> {
+    if (celulaIds.length === 0) {
+      return { semanas: [], porCelula: {} };
+    }
+
+    const params = new URLSearchParams({ ids: celulaIds.join(',') });
+    if (mes !== undefined) params.append('mes', String(mes));
+    if (ano !== undefined) params.append('ano', String(ano));
+
+    return api.get(`/admin/celulas/status-relatorios?${params.toString()}`);
   },
 
   // Obter célula por ID
@@ -367,11 +404,11 @@ export const adminService = {
     // Removemos qualquer referência à região
     const dadosSemRegiao = {
       nome: dados.nome,
+      publico: dados.publico,
       endereco: dados.endereco,
       diaSemana: dados.diaSemana,
       horario: dados.horario,
       liderId: dados.liderId,
-      // Usar o formato correto supervisorId esperado pelo backend
       supervisorId: dados.supervisor_id
     }
     const response = await api.post('/admin/celulas', dadosSemRegiao);
@@ -380,14 +417,13 @@ export const adminService = {
 
   // Atualizar célula
   async atualizarCelula(id: number, dados: Partial<Omit<Celula, 'id'>>) {
-    // Removemos qualquer referência à região
     const dadosSemRegiao = {
       nome: dados.nome,
+      publico: dados.publico,
       endereco: dados.endereco,
       diaSemana: dados.diaSemana,
       horario: dados.horario,
       liderId: dados.liderId,
-      // Usar o formato correto supervisorId esperado pelo backend
       supervisorId: dados.supervisor_id
     }
     const response = await api.put(`/admin/celulas/${id}`, dadosSemRegiao);
@@ -398,8 +434,23 @@ export const adminService = {
   async excluirCelula(id: number) {
     const response = await api.delete(`/admin/celulas/${id}`);
     return response.data;
-  }
-  ,
+  },
+
+  async exportarCelulasCsv(filters?: {
+    publico?: string;
+    diaSemana?: string;
+    search?: string;
+  }) {
+    const params = new URLSearchParams();
+    if (filters?.publico) params.append('publico', filters.publico);
+    if (filters?.diaSemana) params.append('diaSemana', filters.diaSemana);
+    if (filters?.search?.trim()) params.append('search', filters.search.trim());
+    const query = params.toString();
+    const endpoint = `/admin/celulas/exportar${query ? `?${query}` : ''}`;
+    const mes = new Date().toISOString().slice(0, 7);
+    await api.download(endpoint, `celulas-${mes}.csv`);
+  },
+
   // Listar membros de uma célula
   async listarMembrosCelula(celulaId: number) {
     // Endpoint público autenticado para membros da célula

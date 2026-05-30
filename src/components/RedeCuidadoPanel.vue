@@ -353,9 +353,7 @@ watch(
               leave-from="opacity-100 translate-y-0 sm:scale-100"
               leave-to="opacity-0 translate-y-4 sm:scale-95"
             >
-              <DialogPanel
-                class="w-full max-w-sm transform overflow-hidden rounded-2xl bg-white p-6 text-left align-middle shadow-xl transition-all"
-              >
+              <DialogPanel class="modal-dialog-panel max-w-sm p-6">
                 <DialogTitle as="h3" class="text-lg font-semibold text-neutral-900 mb-1">
                   {{ modalMembroId ? 'Atribuir cuidador' : 'Atribuir membro' }}
                 </DialogTitle>

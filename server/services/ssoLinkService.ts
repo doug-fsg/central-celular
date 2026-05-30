@@ -1,6 +1,6 @@
 import { prisma } from '../lib/prisma';
 import crypto from 'crypto';
-import { addDays, startOfWeek, endOfWeek, format, subHours } from 'date-fns';
+import { addDays, startOfWeek, endOfWeek, format, subHours, subWeeks } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { authService } from './authService';
 import { whatsappService } from './whatsappService';
@@ -57,14 +57,16 @@ export const ssoLinkService = {
 
   // Criar um link SSO para um líder
   async createSsoLink(usuarioId: number) {
-    // Calcular período da semana atual (segunda a domingo)
     const hoje = subHours(new Date(), TIMEZONE_OFFSET); // Ajusta para horário de Brasília
-    const dataInicio = startOfWeek(hoje, { weekStartsOn: 1 }); // Segunda-feira
-    const dataFim = endOfWeek(hoje, { weekStartsOn: 1 }); // Domingo
-    
-    // Data de expiração: quarta-feira às 23:59 horário de Brasília
-    const quartaFeira = new Date(dataInicio);
-    quartaFeira.setDate(quartaFeira.getDate() + 2); // Adicionar 2 dias para chegar na quarta
+
+    // Período do relatório: semana passada (segunda a domingo), igual ao formulário
+    const semanaRelatorio = subWeeks(hoje, 1);
+    const dataInicio = startOfWeek(semanaRelatorio, { weekStartsOn: 1 });
+    const dataFim = endOfWeek(semanaRelatorio, { weekStartsOn: 1 });
+
+    // Expiração: quarta-feira da semana atual às 23:59 (horário de Brasília)
+    const inicioSemanaAtual = startOfWeek(hoje, { weekStartsOn: 1 });
+    const quartaFeira = addDays(inicioSemanaAtual, 2);
     quartaFeira.setHours(23, 59, 59, 999);
 
     console.log('[SsoLinkService] Criando novo link:', {
@@ -221,7 +223,7 @@ export const ssoLinkService = {
           celulasLideradas: {
             select: {
               id: true,
-              nome: true
+              nome: true,
             }
           }
         }

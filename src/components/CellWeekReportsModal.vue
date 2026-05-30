@@ -95,20 +95,13 @@ watch(
 
 <template>
   <Teleport to="body">
-    <div
-      v-if="isOpen"
-      class="fixed inset-0 z-[100] sm:flex sm:items-center sm:justify-center sm:p-4 sm:bg-gray-500 sm:bg-opacity-75"
-    >
+    <div v-if="isOpen" class="modal-backdrop z-[100]" @click.self="emit('close')">
       <div
-        class="hidden sm:block fixed inset-0 bg-gray-500 bg-opacity-60"
-        aria-hidden="true"
-        @click="emit('close')"
-      />
-      <div
-        class="bg-white w-full h-full sm:h-auto sm:max-h-[85vh] sm:max-w-lg sm:rounded-xl sm:shadow-xl flex flex-col sm:relative overflow-hidden"
+        class="modal-panel modal-panel-md"
         role="dialog"
         aria-modal="true"
         :aria-labelledby="'cell-week-reports-title'"
+        @click.stop
       >
         <div
           class="px-4 py-3 sm:py-4 border-b border-gray-200 flex items-center justify-between gap-3 flex-shrink-0 bg-white"

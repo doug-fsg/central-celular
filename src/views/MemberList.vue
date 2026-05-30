@@ -398,7 +398,7 @@ async function handleSubmit() {
                 leave-from="opacity-100 scale-100"
                 leave-to="opacity-0 scale-95"
               >
-                <DialogPanel class="w-full max-w-sm transform overflow-hidden rounded-2xl bg-white p-6 text-left align-middle shadow-xl transition-all">
+                <DialogPanel class="modal-dialog-panel max-w-sm p-6 text-left align-middle">
                   <DialogTitle as="h3" class="text-xl font-semibold text-neutral-900 text-center">
                     Adicionar membro
                   </DialogTitle>
@@ -661,7 +661,7 @@ async function handleSubmit() {
                 leave-from="opacity-100 scale-100"
                 leave-to="opacity-0 scale-95"
               >
-                <DialogPanel class="w-full max-w-sm transform overflow-hidden rounded-2xl bg-white p-6 text-left align-middle shadow-xl transition-all">
+                <DialogPanel class="modal-dialog-panel max-w-sm p-6 text-left align-middle">
                   <DialogTitle as="h3" class="text-xl font-semibold text-neutral-900 text-center">
                     Editar membro
                   </DialogTitle>
@@ -761,13 +761,8 @@ async function handleSubmit() {
       </TransitionRoot>
 
       <!-- Delete Confirmation Modal -->
-      <div v-if="showDeleteModal" class="fixed inset-0 overflow-y-auto z-50">
-        <div class="flex items-center justify-center min-h-screen px-4 pt-4 pb-20 text-center sm:block sm:p-0">
-          <div class="fixed inset-0 transition-opacity" aria-hidden="true">
-            <div class="absolute inset-0 bg-neutral-900 opacity-75"></div>
-          </div>
-          <span class="hidden sm:inline-block sm:align-middle sm:h-screen" aria-hidden="true">&#8203;</span>
-          <div class="inline-block align-bottom bg-white rounded-lg text-left overflow-hidden shadow-xl transform transition-all sm:my-8 sm:align-middle sm:max-w-lg sm:w-full">
+      <div v-if="showDeleteModal" class="modal-backdrop" @click.self="showDeleteModal = false">
+          <div class="modal-panel modal-panel-md text-left" @click.stop>
             <div class="bg-white px-4 pt-4 pb-3 sm:p-5 sm:pb-4">
               <div class="sm:flex sm:items-start">
                 <div class="mx-auto flex-shrink-0 flex items-center justify-center h-10 w-10 rounded-full bg-red-100 sm:mx-0 sm:h-8 sm:w-8">
@@ -795,7 +790,6 @@ async function handleSubmit() {
             </div>
           </div>
         </div>
-      </div>
     </main>
   </div>
 
