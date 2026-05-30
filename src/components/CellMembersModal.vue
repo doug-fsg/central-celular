@@ -246,10 +246,35 @@ const linhaLider = computed((): Membro | null => {
   return { id: id ?? 0, nome, ativo: true, ehLider: true }
 })
 
+/** Ordem na tabela: consolidadores → anfitrião → co-líder → demais (alfabético dentro do grupo). */
+function prioridadePapelNaTabela(m: Membro): number {
+  if (m.ehConsolidador) return 1
+  if (m.ehAnfitriao) return 2
+  if (m.ehCoLider) return 3
+  return 4
+}
+
+function ordenarMembrosParaTabela(lista: Membro[]): Membro[] {
+  return [...lista].sort((a, b) => {
+    const diff = prioridadePapelNaTabela(a) - prioridadePapelNaTabela(b)
+    if (diff !== 0) return diff
+    return a.nome.localeCompare(b.nome, 'pt-BR', { sensitivity: 'base' })
+  })
+}
+
 const linhasTabela = computed(() => {
   const lider = linhaLider.value
-  if (lider) return [lider, ...membros.value]
-  return membros.value
+  const liderId = lider?.id && lider.id > 0 ? lider.id : null
+
+  const demais = membros.value.filter((m) => {
+    if (m.ehLider) return false
+    if (liderId != null && m.id === liderId) return false
+    return true
+  })
+
+  const ordenados = ordenarMembrosParaTabela(demais)
+  if (lider) return [lider, ...ordenados]
+  return ordenados
 })
 
 const totalMembros = computed(() => linhasTabela.value.length)
