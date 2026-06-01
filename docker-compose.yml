@@ -1,13 +1,10 @@
-# Deploy (VPS): cp .env.example .env → edite → yarn build → docker compose up -d --build
+# Deploy: yarn build && docker compose up -d --build
 #
-# Toda configuração (URLs, senhas, portas) fica no .env — nada sensível neste arquivo.
+# Compatível com .env "legado" (só DATABASE_URL, JWT_SECRET, VITE_*, FRONTEND_URL)
+# ou com POSTGRES_* / portas explícitas — veja .env.example.
 #
-# Front: nginx serve ./dist (rode yarn build antes; VITE_* vem do .env no build).
-# Back:  API em app:3000, proxy em /api no nginx.
-#
-#   yarn build && docker compose up -d --build
-#   docker compose up -d --build app      # só backend
-#   yarn build && docker compose up -d frontend
+# O entrypoint do app troca localhost → db em DATABASE_URL.
+# O entrypoint do db deriva POSTGRES_* de DATABASE_URL se necessário.
 
 services:
   db:
@@ -19,10 +16,12 @@ services:
       - .env
     environment:
       POSTGRES_USER: ${POSTGRES_USER:-postgres}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Defina POSTGRES_PASSWORD no .env}
       POSTGRES_DB: ${POSTGRES_DB:-central_db}
     volumes:
       - postgres_data:/var/lib/postgresql/data
+      - ./docker/db-entrypoint.sh:/docker/db-entrypoint.sh:ro
+    entrypoint: ["/bin/sh", "/docker/db-entrypoint.sh"]
+    command: ["postgres"]
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"]
       interval: 5s
@@ -41,12 +40,9 @@ services:
     env_file:
       - .env
     environment:
-      DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB:-central_db}
       NODE_ENV: ${NODE_ENV:-production}
       HOST: ${HOST:-0.0.0.0}
       PORT: "3000"
-      JWT_SECRET: ${JWT_SECRET:?Defina JWT_SECRET no .env}
-      FRONTEND_URL: ${FRONTEND_URL:?Defina FRONTEND_URL no .env}
     depends_on:
       db:
         condition: service_healthy
@@ -71,7 +67,7 @@ services:
     env_file:
       - .env
     environment:
-      QUEPASA_UPSTREAM: ${QUEPASA_UPSTREAM:?Defina QUEPASA_UPSTREAM no .env}
+      QUEPASA_UPSTREAM: ${QUEPASA_UPSTREAM:-http://173.249.22.227:31000}
     volumes:
       - ./dist:/usr/share/nginx/html:ro
       - ./docker/nginx.conf.template:/etc/nginx/templates/default.conf.template:ro
