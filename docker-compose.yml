@@ -1,16 +1,22 @@
-# Deploy (VPS): git pull && docker compose up -d --build
-#   ou: yarn deploy:docker
+# Deploy (VPS): cp .env.example .env → edite → yarn build → docker compose up -d --build
 #
-# NÃO basta "yarn build" + "docker compose up -d" (sem --build): o build local
-# grava em ./dist na máquina, mas o nginx do container usa o dist gerado DENTRO da imagem.
-# Mudou VITE_* no .env → rebuild obrigatório do serviço frontend.
+# Toda configuração (URLs, senhas, portas) fica no .env — nada sensível neste arquivo.
 #
-# Configuração: copie .env.example para .env e ajuste os valores.
+# Front: nginx serve ./dist (rode yarn build antes; VITE_* vem do .env no build).
+# Back:  API em app:3000, proxy em /api no nginx.
+#
+#   yarn build && docker compose up -d --build
+#   docker compose up -d --build app      # só backend
+#   yarn build && docker compose up -d frontend
 
 services:
   db:
     image: postgres:15-alpine
     restart: unless-stopped
+    ports:
+      - "${DB_HOST_PORT:-5433}:5432"
+    env_file:
+      - .env
     environment:
       POSTGRES_USER: ${POSTGRES_USER:-postgres}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Defina POSTGRES_PASSWORD no .env}
@@ -27,16 +33,17 @@ services:
       - central-network
 
   app:
-    build:
-      context: .
-      dockerfile: Dockerfile
+    build: .
+    image: ${DOCKER_IMAGE:-douglagoncalves/central-celular:latest}
     restart: unless-stopped
+    ports:
+      - "${APP_HOST_PORT:-33000}:3000"
     env_file:
       - .env
     environment:
       DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB:-central_db}
-      NODE_ENV: production
-      HOST: 0.0.0.0
+      NODE_ENV: ${NODE_ENV:-production}
+      HOST: ${HOST:-0.0.0.0}
       PORT: "3000"
       JWT_SECRET: ${JWT_SECRET:?Defina JWT_SECRET no .env}
       FRONTEND_URL: ${FRONTEND_URL:?Defina FRONTEND_URL no .env}
@@ -57,17 +64,19 @@ services:
       - central-network
 
   frontend:
-    build:
-      context: .
-      dockerfile: Dockerfile.frontend
-      args:
-        VITE_API_URL: ${VITE_API_URL:?Defina VITE_API_URL no .env}
-        VITE_QUEPASA_USER_EMAIL: ${VITE_QUEPASA_USER_EMAIL:?Defina VITE_QUEPASA_USER_EMAIL no .env}
+    image: nginx:alpine
     restart: unless-stopped
     ports:
       - "${FRONTEND_PORT:-8181}:80"
+    env_file:
+      - .env
     environment:
-      QUEPASA_UPSTREAM: ${QUEPASA_UPSTREAM:-http://173.249.22.227:31000}
+      QUEPASA_UPSTREAM: ${QUEPASA_UPSTREAM:?Defina QUEPASA_UPSTREAM no .env}
+    volumes:
+      - ./dist:/usr/share/nginx/html:ro
+      - ./docker/nginx.conf.template:/etc/nginx/templates/default.conf.template:ro
+      - ./docker/frontend-entrypoint.sh:/docker-entrypoint.sh:ro
+    entrypoint: ["/bin/sh", "/docker-entrypoint.sh"]
     depends_on:
       app:
         condition: service_healthy
