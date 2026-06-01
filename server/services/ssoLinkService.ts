@@ -146,16 +146,20 @@ export const ssoLinkService = {
 
     if (!link) {
       console.log('[SsoLinkService] Link não encontrado no banco de dados');
-      return { valid: false, message: 'Link expirado ou inválido', usuario: null, token: null };
+      return {
+        valid: false,
+        message: 'Link inválido. Peça um novo link ao administrador da sua igreja.',
+        usuario: null,
+        token: null,
+      };
     }
 
     console.log('[SsoLinkService] Link encontrado:', {
       id: link.id,
       usuarioId: link.usuarioId,
       expiresAt: format(link.expiresAt, 'dd/MM/yyyy HH:mm:ss', { locale: ptBR }),
-      usado: link.usado,
       dataInicio: format(link.dataInicio, 'dd/MM/yyyy HH:mm:ss', { locale: ptBR }),
-      dataFim: format(link.dataFim, 'dd/MM/yyyy HH:mm:ss', { locale: ptBR })
+      dataFim: format(link.dataFim, 'dd/MM/yyyy HH:mm:ss', { locale: ptBR }),
     });
 
     const agora = subHours(new Date(), TIMEZONE_OFFSET); // Ajusta para horário de Brasília
@@ -169,19 +173,44 @@ export const ssoLinkService = {
 
     if (agora > dataExpiracao) {
       console.log('[SsoLinkService] Link expirado');
-      return { valid: false, message: 'Link expirado ou inválido', usuario: null, token: null };
+      return {
+        valid: false,
+        message: 'Este link expirou (prazo: quarta-feira às 23:59). Peça um novo link ao administrador.',
+        usuario: null,
+        token: null,
+      };
     }
 
-    if (link.usado) {
-      console.log('[SsoLinkService] Link já foi utilizado anteriormente');
-      return { valid: false, message: 'Este link já foi utilizado', usuario: null, token: null };
+    const celulaId = link.usuario.celulasLideradas[0]?.id;
+    if (!celulaId) {
+      console.log('[SsoLinkService] Líder sem célula vinculada');
+      return {
+        valid: false,
+        message: 'Não foi possível abrir o formulário. Entre em contato com o administrador.',
+        usuario: null,
+        token: null,
+      };
     }
 
-    // Marcar como usado
-    await prisma.ssoLink.update({
-      where: { id: link.id },
-      data: { usado: true }
+    const relatorioEnviado = await prisma.relatorio.findFirst({
+      where: {
+        celulaId,
+        dataInicio: link.dataInicio,
+        dataFim: link.dataFim,
+        evento: 0,
+        status: 1,
+      },
     });
+
+    if (relatorioEnviado) {
+      console.log('[SsoLinkService] Relatório da semana já enviado');
+      return {
+        valid: false,
+        message: 'O relatório desta semana já foi enviado. Se precisar de ajuda, fale com o administrador.',
+        usuario: null,
+        token: null,
+      };
+    }
 
     console.log('[SsoLinkService] Link validado com sucesso para usuário:', link.usuario.nome);
 
@@ -281,7 +310,7 @@ export const ssoLinkService = {
         `⏰ *Link válido até:* Quarta-feira às 23:59\n\n` +
         `Clique no link abaixo para acessar diretamente o formulário:\n` +
         `${FRONTEND_URL}/sso/${ssoLink.token}\n\n` +
-        `_Este é um link de acesso único e seguro. Não compartilhe com outras pessoas._\n\n` +
+        `_Este é um link de acesso seguro. Não compartilhe com outras pessoas._\n\n` +
         `------------`;
 
       // Formatar o número antes de enviar

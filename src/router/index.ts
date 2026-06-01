@@ -196,13 +196,15 @@ router.beforeEach(async (to: RouteLocationNormalized, from: RouteLocationNormali
         // Redirecionar para o formulário de presença
         return next();
       } else {
-        // Token inválido ou expirado
-        alert('Link expirado ou inválido. Por favor, solicite um novo link ao administrador.')
+        const msg =
+          result.message?.trim() ||
+          'Não foi possível abrir o link. Peça um novo link ao administrador.'
+        alert(msg)
         return next({ name: 'login' })
       }
     } catch (error) {
       console.error('Erro ao validar token SSO:', error)
-      alert('Erro ao validar o link. Por favor, tente novamente ou solicite um novo link.')
+      alert('Erro ao validar o link. Tente de novo ou peça um novo link ao administrador.')
       return next({ name: 'login' })
     }
   }

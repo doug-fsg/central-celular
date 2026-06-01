@@ -1,4 +1,10 @@
-# Deploy: git pull && docker compose up -d --build
+# Deploy (VPS): git pull && docker compose up -d --build
+#   ou: yarn deploy:docker
+#
+# NÃO basta "yarn build" + "docker compose up -d" (sem --build): o build local
+# grava em ./dist na máquina, mas o nginx do container usa o dist gerado DENTRO da imagem.
+# Mudou VITE_* no .env → rebuild obrigatório do serviço frontend.
+#
 # Configuração: copie .env.example para .env e ajuste os valores.
 
 services:
