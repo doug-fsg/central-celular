@@ -21,6 +21,18 @@ export const setTokenGetter = (fn: () => string | null) => {
   getTokenFn = fn;
 };
 
+/** Lê o payload do JWT (sem validar assinatura). */
+export function getJwtPayload(tokenString: string | null): Record<string, unknown> | null {
+  if (!tokenString) return null;
+  try {
+    const parts = tokenString.split('.');
+    if (parts.length !== 3) return null;
+    return JSON.parse(atob(parts[1])) as Record<string, unknown>;
+  } catch {
+    return null;
+  }
+}
+
 // Função para validar se o token JWT está expirado
 const isTokenExpired = (tokenString: string | null): boolean => {
   if (!tokenString) return true;

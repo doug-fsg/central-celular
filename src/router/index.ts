@@ -24,6 +24,10 @@ const router = createRouter({
           next({ name: 'login', replace: true })
           return
         }
+        if (userStore.isPlatformOwner) {
+          next({ name: 'super-admin', replace: true })
+          return
+        }
         if (
           userStore.isAdmin &&
           !(userStore.canToggleView && userStore.currentView === 'cell')
@@ -73,6 +77,12 @@ const router = createRouter({
       name: 'onboarding',
       component: () => import('../views/OnboardingWizard.vue'),
       meta: { requiresAuth: true, requiresLeader: true },
+    },
+    {
+      path: '/super-admin',
+      name: 'super-admin',
+      component: () => import('../views/super-admin/SuperAdminPage.vue'),
+      meta: { requiresAuth: true, requiresPlatformOwner: true },
     },
     {
       path: '/admin',
@@ -223,7 +233,11 @@ router.beforeEach(async (to: RouteLocationNormalized, from: RouteLocationNormali
     }
   }
   
-  // Verifica se a rota requer privilégios de admin
+  if (to.meta.requiresPlatformOwner && !userStore.isPlatformOwner) {
+    return next(userStore.isAdmin ? { name: 'admin-dashboard' } : { name: 'dashboard' })
+  }
+
+  // Verifica se a rota requer privilégios de admin da igreja
   if (to.meta.requiresAdmin && !userStore.isAdmin) {
     return next({ name: 'dashboard' })
   }
@@ -277,6 +291,9 @@ router.beforeEach(async (to: RouteLocationNormalized, from: RouteLocationNormali
   
   // Verifica se a rota é só para visitantes (login, registro)
   if (to.meta.requiresGuest && userStore.isLoggedIn) {
+    if (userStore.isPlatformOwner) {
+      return next({ name: 'super-admin' })
+    }
     if (userStore.isAdmin && !(userStore.canToggleView && userStore.currentView === 'cell')) {
       return next({ name: 'admin-dashboard' })
     }

@@ -3,6 +3,28 @@ import { prisma } from '../lib/prisma';
 import bcrypt from 'bcryptjs';
 import { z } from 'zod';
 import { otpService } from '../services/otpService';
+import { CARGO, isPlatformOwner } from '../lib/roles';
+
+function resolveIsSuperAdminForCargo(
+  cargo: string,
+  actorIsSuperAdmin: boolean,
+): { ok: boolean; isSuperAdmin: boolean; message?: string } {
+  const c = cargo.toUpperCase();
+  if (c === CARGO.ADMINISTRADOR) {
+    if (!actorIsSuperAdmin) {
+      return {
+        ok: false,
+        isSuperAdmin: false,
+        message: 'Somente o dono da plataforma pode criar ou atribuir o cargo Administrador.',
+      };
+    }
+    return { ok: true, isSuperAdmin: true };
+  }
+  if (c === CARGO.PASTOR) {
+    return { ok: true, isSuperAdmin: false };
+  }
+  return { ok: true, isSuperAdmin: false };
+}
 
 // Normalização conservadora para números BR: garante prefixo 55
 function normalizeBrazilPhone(raw: string): string {
@@ -66,8 +88,8 @@ const criarUsuarioSchema = z.object({
     .min(10, 'WhatsApp deve ter pelo menos 10 dígitos')
     .max(13, 'WhatsApp deve ter no máximo 13 dígitos')
     .regex(/^\d+$/, 'WhatsApp deve conter apenas números'),
-  cargo: z.enum(['ADMINISTRADOR', 'SUPERVISOR', 'LIDER'], {
-    errorMap: () => ({ message: 'Cargo deve ser ADMINISTRADOR, SUPERVISOR ou LIDER' })
+  cargo: z.enum(['ADMINISTRADOR', 'PASTOR', 'SUPERVISOR', 'LIDER'], {
+    errorMap: () => ({ message: 'Cargo deve ser ADMINISTRADOR, PASTOR, SUPERVISOR ou LIDER' })
   }),
   senha: z.string().min(6, 'Senha deve ter pelo menos 6 caracteres').optional(),
   enviarConvite: z.boolean().optional()
@@ -80,8 +102,8 @@ const atualizarUsuarioSchema = z.object({
     .min(10, 'WhatsApp deve ter pelo menos 10 dígitos')
     .max(13, 'WhatsApp deve ter no máximo 13 dígitos')
     .regex(/^\d+$/, 'WhatsApp deve conter apenas números'),
-  cargo: z.enum(['ADMINISTRADOR', 'SUPERVISOR', 'LIDER'], {
-    errorMap: () => ({ message: 'Cargo deve ser ADMINISTRADOR, SUPERVISOR ou LIDER' })
+  cargo: z.enum(['ADMINISTRADOR', 'PASTOR', 'SUPERVISOR', 'LIDER'], {
+    errorMap: () => ({ message: 'Cargo deve ser ADMINISTRADOR, PASTOR, SUPERVISOR ou LIDER' })
   }),
   senha: z.string().min(6, 'Senha deve ter pelo menos 6 caracteres').optional()
 });
@@ -139,7 +161,8 @@ export const listarUsuarios = async (req: Request, res: Response) => {
 
     // Ordenar cargos na ordem específica
     const ordemCargos = {
-      'ADMINISTRADOR': 1,
+      'ADMINISTRADOR': 0,
+      'PASTOR': 1,
       'SUPERVISOR': 2,
       'LIDER': 3,
       'MEMBRO': 4,
@@ -232,6 +255,12 @@ export const criarUsuario = async (req: Request, res: Response) => {
       }
     }
 
+    const actorIsSuperAdmin = isPlatformOwner((req as any).user?.isSuperAdmin);
+    const roleMeta = resolveIsSuperAdminForCargo(dados.cargo, actorIsSuperAdmin);
+    if (!roleMeta.ok) {
+      return res.status(403).json({ message: roleMeta.message });
+    }
+
     const comSenhaInicial = Boolean(dados.senha);
 
     // Criar usuário: só fica ativo após senha definida (admin na criação ou primeiro acesso)
@@ -242,7 +271,8 @@ export const criarUsuario = async (req: Request, res: Response) => {
         cargo: dados.cargo,
         senha: dados.senha ? await bcrypt.hash(dados.senha, 10) : null,
         accountId: accountId,
-        ativo: comSenhaInicial
+        ativo: comSenhaInicial,
+        isSuperAdmin: roleMeta.isSuperAdmin,
       }
     });
 
@@ -365,11 +395,18 @@ export const atualizarUsuario = async (req: Request, res: Response) => {
       return res.status(404).json({ message: 'Usuário não encontrado' });
     }
 
+    const actorIsSuperAdmin = isPlatformOwner((req as any).user?.isSuperAdmin);
+    const roleMeta = resolveIsSuperAdminForCargo(dados.cargo, actorIsSuperAdmin);
+    if (!roleMeta.ok) {
+      return res.status(403).json({ message: roleMeta.message });
+    }
+
     // Dados para atualização
     const dadosAtualizacao: any = {
       nome: dados.nome,
       whatsapp: whatsappNormalizado,
-      cargo: dados.cargo
+      cargo: dados.cargo,
+      isSuperAdmin: roleMeta.isSuperAdmin,
     };
 
     // Se a senha foi fornecida, hash e atualiza (passa a poder logar como ativo)
@@ -436,21 +473,20 @@ export const ativarDesativarUsuario = async (req: Request, res: Response) => {
       });
     }
 
-    // Verificar se é o último administrador ativo
-    if (!ativo && usuarioExistente.cargo === 'ADMINISTRADOR') {
-      const adminsAtivos = await prisma.usuario.count({
+    // Verificar se é o último pastor ativo da conta (admin da igreja)
+    if (!ativo && usuarioExistente.cargo === CARGO.PASTOR) {
+      const pastoresAtivos = await prisma.usuario.count({
         where: {
-          cargo: 'ADMINISTRADOR',
+          accountId: usuarioExistente.accountId,
+          cargo: CARGO.PASTOR,
           ativo: true,
-          NOT: {
-            id: Number(id)
-          }
-        }
+          NOT: { id: Number(id) },
+        },
       });
 
-      if (adminsAtivos === 0) {
-        return res.status(400).json({ 
-          message: 'Não é possível desativar o último administrador do sistema' 
+      if (pastoresAtivos === 0) {
+        return res.status(400).json({
+          message: 'Não é possível desativar o último pastor ativo desta igreja',
         });
       }
     }
@@ -535,20 +571,21 @@ export const ativarDesativarUsuariosLote = async (req: Request, res: Response) =
         continue;
       }
 
-      if (!ativo && usuarioExistente.cargo === 'ADMINISTRADOR') {
-        const adminsAtivos = await prisma.usuario.count({
+      if (!ativo && usuarioExistente.cargo === CARGO.PASTOR) {
+        const pastoresAtivos = await prisma.usuario.count({
           where: {
-            cargo: 'ADMINISTRADOR',
+            accountId: usuarioExistente.accountId,
+            cargo: CARGO.PASTOR,
             ativo: true,
             NOT: { id },
           },
         });
 
-        if (adminsAtivos === 0) {
+        if (pastoresAtivos === 0) {
           detalhes.push({
             usuarioId: id,
             ok: false,
-            erro: 'Não é possível desativar o último administrador ativo',
+            erro: 'Não é possível desativar o último pastor ativo desta igreja',
           });
           continue;
         }

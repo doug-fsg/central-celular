@@ -48,7 +48,18 @@ const navLinks = computed(() => {
     ]
   }
   
-  if (userStore.isAdmin) {
+  if (userStore.isPlatformOwner) {
+    return [
+      { name: 'super-admin', label: 'Super Admin' },
+      { name: 'admin-dashboard', label: 'Igreja' },
+      { name: 'admin-users', label: 'Usuários' },
+      { name: 'admin-cells', label: 'Células' },
+      { name: 'admin-members', label: 'Membros' },
+      { name: 'admin-rede-cuidado', label: 'Rede de cuidado' },
+    ]
+  }
+
+  if (userStore.isChurchAdmin) {
     return [
       { name: 'admin-dashboard', label: 'Dashboard' },
       { name: 'admin-users', label: 'Usuários' },
@@ -108,7 +119,7 @@ function toggleView() {
         <div class="flex">
           <div class="flex-shrink-0 flex items-center">
             <router-link 
-              :to="userStore.isAdmin ? { name: 'admin-dashboard' } : { name: 'home' }" 
+              :to="userStore.isPlatformOwner ? { name: 'super-admin' } : userStore.isChurchAdmin ? { name: 'admin-dashboard' } : { name: 'home' }" 
               class="flex items-center gap-2"
             >
               <img src="/src/assets/brand/logo-icon.png" alt="Aprisco" class="h-7 w-7" />

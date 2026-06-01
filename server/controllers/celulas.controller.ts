@@ -479,7 +479,8 @@ export const atualizarCelula = async (req: Request, res: Response) => {
     }
 
     const cargo = ((req as any).usuario?.cargo ?? '').toUpperCase();
-    const isAdminUser = ['ADMINISTRADOR', 'ADMIN', 'PASTOR'].includes(cargo);
+    const isAdminUser =
+      cargo === 'PASTOR' || (req as any).user?.isSuperAdmin === true;
     const updateData = { ...data };
     if (!isAdminUser) {
       updateData.publico = celulaExistente.publico;

@@ -37,11 +37,10 @@ async function verificarPermissao(
   const usuario = (req as any).usuario;
   const cargo = (usuario?.cargo ?? '').toUpperCase();
 
-  // Admin / Pastor: acesso total na account
+  // Pastor da igreja ou dono da plataforma: acesso total na account
   if (
-    cargo === 'ADMINISTRADOR' ||
     cargo === 'PASTOR' ||
-    (req as any).user?.isSuperAdmin
+    (req as any).user?.isSuperAdmin === true
   ) {
     // Garantir que a célula pertence à mesma account
     const celulas = await prisma.$queryRaw<{ id: number }[]>`

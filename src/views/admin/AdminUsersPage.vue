@@ -620,7 +620,7 @@ const formatWhatsApp = (whatsapp: string | null | undefined): string => {
             <option value="">Todos</option>
             <option value="LIDER">Líder</option>
             <option value="SUPERVISOR">Supervisor</option>
-            <option value="ADMINISTRADOR">Administrador</option>
+            <option value="PASTOR">Pastor (admin da igreja)</option>
           </select>
         </div>
       </div>

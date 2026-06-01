@@ -9,8 +9,10 @@ RUN apk add --no-cache python3 make g++ openssl openssl-dev libc6-compat
 COPY package.json yarn.lock ./
 COPY prisma ./prisma/
 
-# Instalar todas as dependências (incluindo devDependencies)
-RUN yarn install
+# VPS com rede instável: timeout alto + uma nova tentativa
+ENV YARN_NETWORK_TIMEOUT=600000
+RUN yarn install --frozen-lockfile --network-timeout 600000 \
+  || yarn install --frozen-lockfile --network-timeout 600000
 
 # Gerar cliente Prisma
 RUN yarn prisma generate

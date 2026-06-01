@@ -94,10 +94,11 @@ const handleLogin = async () => {
 
     console.log('[LoginPage] Login bem-sucedido, redirecionando...')
     // Redirecionar conforme o cargo do usuário
-    const cargo = userStore.user?.cargo
-    if (cargo === 'ADMINISTRADOR' || cargo === 'PASTOR') {
+    if (userStore.isPlatformOwner) {
+      router.push({ name: 'super-admin' })
+    } else if (userStore.isChurchAdmin) {
       router.push({ name: 'admin-dashboard' })
-    } else if (cargo === 'SUPERVISOR') {
+    } else if (userStore.user?.cargo === 'SUPERVISOR') {
       router.push({ name: 'supervisor-dashboard' })
     } else {
       router.push({ name: 'dashboard' })

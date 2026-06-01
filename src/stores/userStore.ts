@@ -1,7 +1,7 @@
 import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
 import { useMemberStore } from './memberStore'
-import api, { setTokenGetter } from '../services/api'
+import api, { getJwtPayload, setTokenGetter } from '../services/api'
 import celulaService from '../services/celulaService'
 
 export interface UserProfile {
@@ -32,7 +32,14 @@ export const useUserStore = defineStore('user', () => {
 
   // Getters
   const isLoggedIn = computed(() => !!user.value);
-  const isAdmin = computed(() => user.value?.cargo === 'ADMINISTRADOR' || user.value?.cargo === 'PASTOR' || user.value?.isSuperAdmin === true);
+  /** Dono da plataforma SaaS — painel Super Admin (todas as igrejas). */
+  const isPlatformOwner = computed(() => user.value?.isSuperAdmin === true);
+  /** Admin da igreja — painel /admin/* só da própria conta. */
+  const isChurchAdmin = computed(() => user.value?.cargo === 'PASTOR');
+  /** Painel da igreja: pastor ou dono da plataforma. */
+  const isAdmin = computed(
+    () => isChurchAdmin.value || isPlatformOwner.value,
+  );
   const isSupervisor = computed(() => user.value?.cargo === 'SUPERVISOR');
   const isLeader = computed(() => user.value?.cargo === 'LIDER' || user.value?.cargo === 'LIDER_EM_TREINAMENTO');
   const userRole = computed(() => user.value?.cargo || '')
@@ -40,7 +47,8 @@ export const useUserStore = defineStore('user', () => {
   const userId = computed(() => user.value?.id);
   const accountId = computed(() => user.value?.accountId);
   const celulaId = computed(() => user.value?.celulaId);
-  const isSuperAdmin = computed(() => user.value?.isSuperAdmin);
+  /** @deprecated Use isPlatformOwner */
+  const isSuperAdmin = isPlatformOwner;
   const isUserActive = computed(() => user.value?.ativo !== false);
 
   // Estado de visão (admin ou cell)
@@ -55,7 +63,7 @@ export const useUserStore = defineStore('user', () => {
 
   // Computed para verificar se pode alternar visão
   const canToggleView = computed(() => {
-    return (user.value?.cargo === 'ADMINISTRADOR' || user.value?.cargo === 'PASTOR' || user.value?.isSuperAdmin) && hasCell.value;
+    return isAdmin.value && hasCell.value;
   });
 
   // Estado para células do usuário
@@ -96,11 +104,24 @@ export const useUserStore = defineStore('user', () => {
     localStorage.setItem('currentView', currentView.value);
   }
 
+  /** Alinha isSuperAdmin com o JWT (sessão antiga no localStorage pode estar desatualizada). */
+  function mergeUserWithToken(userData: UserProfile, authToken: string | null): UserProfile {
+    const payload = getJwtPayload(authToken);
+    if (payload && typeof payload.isSuperAdmin === 'boolean') {
+      return { ...userData, isSuperAdmin: payload.isSuperAdmin };
+    }
+    return userData;
+  }
+
   // Ações
-  function setUser(userData: UserProfile | null) {
-    user.value = userData;
-    if (userData) {
-      localStorage.setItem('usuario', JSON.stringify(userData));
+  function setUser(userData: UserProfile | null, authToken?: string | null) {
+    const normalized =
+      userData && authToken !== undefined
+        ? mergeUserWithToken(userData, authToken ?? token.value)
+        : userData;
+    user.value = normalized;
+    if (normalized) {
+      localStorage.setItem('usuario', JSON.stringify(normalized));
     } else {
       localStorage.removeItem('usuario');
     }
@@ -143,8 +164,8 @@ export const useUserStore = defineStore('user', () => {
       const response = await api.login(loginData.whatsapp, loginData.senha);
       console.log('[UserStore] Resposta da API recebida:', response);
       console.log('[UserStore] Usuário logado:', response.usuario);
-      setUser(response.usuario);
       setToken(response.token);
+      setUser(response.usuario, response.token);
       
       // Inicializar stores após login
       console.log('[UserStore] Inicializando stores dependentes...');
@@ -152,7 +173,7 @@ export const useUserStore = defineStore('user', () => {
       await memberStore.carregarMembros();
       
       // Se for admin/pastor, buscar células do usuário
-      if (response.usuario.cargo === 'ADMINISTRADOR' || response.usuario.cargo === 'PASTOR' || response.usuario.isSuperAdmin) {
+      if (response.usuario.cargo === 'PASTOR' || response.usuario.isSuperAdmin) {
         await checkUserCell();
       }
       
@@ -178,15 +199,15 @@ export const useUserStore = defineStore('user', () => {
       ativo: true // Usuários de SSO são considerados ativos
     };
 
-    setUser(userProfile);
     setToken(ssoResult.token);
+    setUser(userProfile, ssoResult.token);
 
     // Inicializar stores que dependem do usuário logado
     const memberStore = useMemberStore();
     await memberStore.carregarMembros();
 
     // Se for admin/pastor, buscar células do usuário
-    if (userProfile.cargo === 'ADMINISTRADOR' || userProfile.cargo === 'PASTOR' || userProfile.isSuperAdmin) {
+    if (userProfile.cargo === 'PASTOR' || userProfile.isSuperAdmin) {
       await checkUserCell();
     }
 
@@ -211,12 +232,12 @@ export const useUserStore = defineStore('user', () => {
         return;
       }
       
-      const userData = JSON.parse(storedUser);
-      setUser(userData);
+      const userData = JSON.parse(storedUser) as UserProfile;
       setToken(storedToken);
+      setUser(userData, storedToken);
       
       // Se for admin/pastor, buscar células do usuário
-      if (userData.cargo === 'ADMINISTRADOR' || userData.cargo === 'PASTOR' || userData.isSuperAdmin) {
+      if (userData.cargo === 'PASTOR' || userData.isSuperAdmin) {
         await checkUserCell();
       }
     }
@@ -240,6 +261,8 @@ export const useUserStore = defineStore('user', () => {
     loading,
     isLoggedIn,
     isAdmin,
+    isChurchAdmin,
+    isPlatformOwner,
     isSupervisor,
     isLeader,
     userName,

@@ -1,4 +1,8 @@
-# Deploy: yarn build && docker compose up -d --build
+# Deploy na VPS (rede lenta): prefira imagem pronta — sem build no servidor:
+#   docker compose pull app && docker compose up -d app
+# Build local/CI, push: docker build -t douglagoncalves/central-celular:latest . && docker push ...
+#
+# Deploy com build na máquina: yarn build && docker compose up -d --build
 #
 # Compatível com .env "legado" (só DATABASE_URL, JWT_SECRET, VITE_*, FRONTEND_URL)
 # ou com POSTGRES_* / portas explícitas — veja .env.example.

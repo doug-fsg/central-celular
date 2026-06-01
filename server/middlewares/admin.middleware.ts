@@ -1,32 +1,23 @@
 import { Request, Response, NextFunction } from 'express';
+import { canAccessChurchAdminPanel, CARGO } from '../lib/roles';
 
-// Middleware para verificar se o usuário é administrador
+/** Painel admin da igreja: PASTOR ou dono da plataforma (isSuperAdmin). */
 export const verificarAdmin = (req: Request, res: Response, next: NextFunction) => {
-  // Verificar primeiro o formato novo
-  if (req.user) {
-    // TODO: Verificar o cargo no formato novo quando implementado
-    // Por enquanto, permitir se for super admin
-    if (req.user.isSuperAdmin) {
-      console.log('[verificarAdmin] Usuário é super admin');
-      return next();
-    }
-  }
-  
-  // Verificar formato antigo
-  const usuario = req.usuario;
+  const isSuperAdmin = req.user?.isSuperAdmin === true;
+  const cargo = (req.usuario?.cargo ?? '').toUpperCase();
 
-  if (!usuario) {
-    console.log('[verificarAdmin] Usuário não autenticado');
-    return res.status(401).json({ message: 'Usuário não autenticado' });
+  if (canAccessChurchAdminPanel(cargo, isSuperAdmin)) {
+    return next();
   }
 
-  console.log('[verificarAdmin] Cargo do usuário:', usuario.cargo);
-  
-  if (usuario.cargo !== 'ADMINISTRADOR' && usuario.cargo !== 'PASTOR') {
-    console.log('[verificarAdmin] Acesso negado - cargo inválido');
-    return res.status(403).json({ message: 'Acesso negado. Apenas administradores podem acessar este recurso.' });
+  if (cargo === CARGO.ADMINISTRADOR && !isSuperAdmin) {
+    return res.status(403).json({
+      message:
+        'Este perfil é reservado ao dono da plataforma. Peça para ativar Super Admin na sua conta ou use o cargo Pastor para administrar a igreja.',
+    });
   }
 
-  console.log('[verificarAdmin] Usuário tem permissão de admin');
-  next();
-}; 
+  return res.status(403).json({
+    message: 'Acesso negado. Apenas pastores ou o dono da plataforma podem acessar este recurso.',
+  });
+};

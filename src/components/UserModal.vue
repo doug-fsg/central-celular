@@ -17,9 +17,9 @@ const emit = defineEmits<{
 
 // Lista de cargos permitidos
 const cargosPermitidos = [
-  'ADMINISTRADOR',
+  'PASTOR',
   'SUPERVISOR',
-  'LIDER'
+  'LIDER',
 ]
 
 // Formulário

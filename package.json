@@ -14,11 +14,13 @@
     "db:push": "prisma db push",
     "prisma:studio": "prisma studio",
     "seed": "tsx server/seed.js",
+    "db:check-user": "node scripts/check-user.mjs",
     "start:dev": "concurrently \"yarn dev:server\" \"yarn dev\"",
     "start": "tsx server/index.ts",
     "deploy:docker": "docker compose up -d --build",
     "deploy:docker:frontend": "docker compose up -d --build frontend",
     "deploy:docker:app": "docker compose up -d --build app",
+    "deploy:docker:app:pull": "docker compose pull app && docker compose up -d app",
     "generate:icons": "node -e \"require('fs').copyFileSync('src/assets/brand/logo-icon.svg','public/favicon.svg')\" && pwa-assets-generator --config pwa-assets.config.ts"
   },
   "dependencies": {

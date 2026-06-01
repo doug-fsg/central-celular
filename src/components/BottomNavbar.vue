@@ -29,7 +29,16 @@ const navItems = computed<NavItem[]>(() => {
     ];
   }
   
-  if (userStore.isAdmin) {
+  if (userStore.isPlatformOwner) {
+    return [
+      { name: 'super-admin', label: 'SaaS', icon: 'grid' },
+      { name: 'admin-dashboard', label: 'Igreja', icon: 'home' },
+      { name: 'admin-users', label: 'Usuários', icon: 'users' },
+      { name: 'admin-cells', label: 'Células', icon: 'grid' },
+    ];
+  }
+
+  if (userStore.isChurchAdmin) {
     return [
       { name: 'admin-dashboard', label: 'Dashboard', icon: 'home' },
       { name: 'admin-users', label: 'Usuários', icon: 'users' },
