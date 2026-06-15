@@ -114,12 +114,42 @@ const alterarSenhaSchema = z.object({
   novaSenha: z.string().min(6, 'Nova senha deve ter pelo menos 6 caracteres')
 });
 
+type SortDirection = 'asc' | 'desc';
+
+function buildUsuarioOrderBy(sortBy: string, _dir: SortDirection) {
+  switch (sortBy) {
+    case 'nome':
+      return [{ nome: _dir }];
+    case 'whatsapp':
+      return [{ whatsapp: _dir }];
+    case 'cargo':
+    case 'status':
+      return [{ nome: 'asc' as const }];
+    default:
+      return [{ cargo: 'asc' as const }, { nome: 'asc' as const }];
+  }
+}
+
 // Listar todos os usuários
 export const listarUsuarios = async (req: Request, res: Response) => {
   try {
     const page = Number(req.query.page) || 1;
-    const limit = Number(req.query.limit) || 10;
-    const skip = (page - 1) * limit;
+    const perPage = Math.min(Math.max(1, Number(req.query.limit) || 10), 500);
+    const currentPage = Math.max(1, page);
+    const skip = (currentPage - 1) * perPage;
+    const sortBy = typeof req.query.sortBy === 'string' ? req.query.sortBy : '';
+    const sortDir = req.query.sortDir === 'desc' ? 'desc' : 'asc';
+
+    const ordemCargos = {
+      'ADMINISTRADOR': 0,
+      'PASTOR': 1,
+      'SUPERVISOR': 2,
+      'LIDER': 3,
+      'MEMBRO': 4,
+      'VISITANTE': 5
+    };
+
+    const orderBy = buildUsuarioOrderBy(sortBy, sortDir);
 
     // Obter o accountId do usuário autenticado
     const accountId = (req as any).user?.accountId || (req as any).usuario?.accountId;
@@ -151,31 +181,38 @@ export const listarUsuarios = async (req: Request, res: Response) => {
         accountId: true,
         senha: true
       },
-      orderBy: [
-        { cargo: 'asc' },
-        { nome: 'asc' }
-      ],
+      orderBy,
       skip,
-      take: limit
+      take: perPage
     });
 
-    // Ordenar cargos na ordem específica
-    const ordemCargos = {
-      'ADMINISTRADOR': 0,
-      'PASTOR': 1,
-      'SUPERVISOR': 2,
-      'LIDER': 3,
-      'MEMBRO': 4,
-      'VISITANTE': 5
-    };
+    const needsClientSort = !sortBy || sortBy === 'cargo' || sortBy === 'status';
 
-    const usuariosOrdenados = usuarios
-      .sort((a, b) => {
+    let usuariosOrdenados = usuarios;
+    if (needsClientSort) {
+      usuariosOrdenados = [...usuarios].sort((a, b) => {
+        if (sortBy === 'status') {
+          const rank = (u: typeof a) => {
+            if (!u.senha || u.senha.length === 0) return 0;
+            if (u.ativo) return 1;
+            return 2;
+          };
+          const result = rank(a) - rank(b);
+          if (result !== 0) return sortDir === 'asc' ? result : -result;
+          return a.nome.localeCompare(b.nome, 'pt-BR', { sensitivity: 'base' });
+        }
+
         const ordemA = ordemCargos[a.cargo as keyof typeof ordemCargos] || 999;
         const ordemB = ordemCargos[b.cargo as keyof typeof ordemCargos] || 999;
-        if (ordemA !== ordemB) return ordemA - ordemB;
-        return a.nome.localeCompare(b.nome);
-      })
+        if (ordemA !== ordemB) {
+          const result = ordemA - ordemB;
+          return sortDir === 'asc' ? result : -result;
+        }
+        return a.nome.localeCompare(b.nome, 'pt-BR', { sensitivity: 'base' });
+      });
+    }
+
+    const usuariosResposta = usuariosOrdenados
       .map(({ senha, ...u }) => ({
         ...u,
         possuiSenha: senha != null && senha.length > 0,
@@ -183,12 +220,12 @@ export const listarUsuarios = async (req: Request, res: Response) => {
       }));
 
     res.json({
-      usuarios: usuariosOrdenados,
+      usuarios: usuariosResposta,
       pagination: {
         total,
-        pages: Math.ceil(total / limit),
-        currentPage: page,
-        perPage: limit
+        pages: Math.ceil(total / perPage),
+        currentPage,
+        perPage,
       }
     });
   } catch (error) {

@@ -4,8 +4,10 @@ import { startOfWeek, endOfWeek, startOfMonth, endOfMonth, addWeeks } from 'date
 import CellModal from '../../components/CellModal.vue'
 import CellMembersModal from '../../components/CellMembersModal.vue'
 import AppIcon from '../../components/AppIcon.vue'
+import SortableTableHeader from '../../components/admin/SortableTableHeader.vue'
 import { adminService } from '../../services/adminService'
 import type { Celula, Usuario } from '../../services/adminService'
+import { toggleSortState, type SortState } from '../../utils/tableSort'
 import {
   PUBLICO_CELULA_OPTIONS,
   PUBLICO_CELULA_BADGE_CLASS,
@@ -25,6 +27,48 @@ const cellPagination = ref({
   currentPage: 1,
   perPage: 10
 })
+
+const PAGE_SIZE_OPTIONS = [10, 25, 50, 100] as const
+type PageSizeOption = (typeof PAGE_SIZE_OPTIONS)[number] | 'all'
+const PAGE_SIZE_STORAGE_KEY = 'admin-cells-page-size'
+
+function loadPageSize(): PageSizeOption {
+  try {
+    const saved = localStorage.getItem(PAGE_SIZE_STORAGE_KEY)
+    if (saved === 'all') return 'all'
+    const num = Number(saved)
+    if (PAGE_SIZE_OPTIONS.includes(num as (typeof PAGE_SIZE_OPTIONS)[number])) {
+      return num as PageSizeOption
+    }
+  } catch {
+    /* ignore */
+  }
+  return 10
+}
+
+const pageSize = ref<PageSizeOption>(loadPageSize())
+
+const getEffectiveLimit = () => (pageSize.value === 'all' ? 500 : pageSize.value)
+
+const paginationRange = computed(() => {
+  const { total, currentPage, perPage } = cellPagination.value
+  if (total === 0) return { from: 0, to: 0 }
+  const from = (currentPage - 1) * perPage + 1
+  const to = Math.min(currentPage * perPage, total)
+  return { from, to }
+})
+
+const handlePageSizeChange = () => {
+  localStorage.setItem(PAGE_SIZE_STORAGE_KEY, String(pageSize.value))
+  loadCells(1)
+}
+
+const sortState = ref<SortState | null>(null)
+
+const handleSort = (key: string) => {
+  sortState.value = toggleSortState(sortState.value, key)
+  loadCells(1)
+}
 
 const totais = ref({ celulas: 0, membros: 0, semPublico: 0 })
 
@@ -326,11 +370,12 @@ const loadCells = async (page: number = 1) => {
 
     const response = await adminService.listarCelulas(
       page,
-      10,
+      getEffectiveLimit(),
       undefined,
       cellFilters.value.diaSemana || undefined,
       cellFilters.value.searchTerm.trim() || undefined,
-      cellFilters.value.publico || undefined
+      cellFilters.value.publico || undefined,
+      sortState.value ? { sortBy: sortState.value.key, sortDir: sortState.value.dir } : undefined,
     )
 
     if (!response || typeof response !== 'object') {
@@ -863,61 +908,76 @@ onUnmounted(() => {
         <table class="min-w-full divide-y divide-gray-200">
           <thead class="bg-gray-50">
             <tr>
-              <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                Líder
-              </th>
-              <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                Célula
-              </th>
-              <th
+              <SortableTableHeader
+                label="Líder"
+                sort-key="lider"
+                :active-key="sortState?.key ?? null"
+                :direction="sortState?.dir ?? 'asc'"
+                @sort="handleSort"
+              />
+              <SortableTableHeader
+                label="Célula"
+                sort-key="nome"
+                :active-key="sortState?.key ?? null"
+                :direction="sortState?.dir ?? 'asc'"
+                @sort="handleSort"
+              />
+              <SortableTableHeader
                 v-if="isColumnVisible('publico')"
-                scope="col"
-                class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider"
-              >
-                Público
-              </th>
-              <th
+                label="Público"
+                sort-key="publico"
+                :active-key="sortState?.key ?? null"
+                :direction="sortState?.dir ?? 'asc'"
+                @sort="handleSort"
+              />
+              <SortableTableHeader
                 v-if="isColumnVisible('supervisor')"
-                scope="col"
-                class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider"
-              >
-                Supervisor
-              </th>
-              <th
+                label="Supervisor"
+                sort-key="supervisor"
+                :active-key="sortState?.key ?? null"
+                :direction="sortState?.dir ?? 'asc'"
+                @sort="handleSort"
+              />
+              <SortableTableHeader
                 v-if="isColumnVisible('colider')"
-                scope="col"
-                class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider"
-              >
-                Co-líder
-              </th>
-              <th
+                label="Co-líder"
+                sort-key="colider"
+                :active-key="sortState?.key ?? null"
+                :direction="sortState?.dir ?? 'asc'"
+                @sort="handleSort"
+              />
+              <SortableTableHeader
                 v-if="isColumnVisible('membros')"
-                scope="col"
-                class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider"
-              >
-                Membros
-              </th>
-              <th
+                label="Membros"
+                sort-key="membros"
+                :active-key="sortState?.key ?? null"
+                :direction="sortState?.dir ?? 'asc'"
+                @sort="handleSort"
+              />
+              <SortableTableHeader
                 v-if="isColumnVisible('dia')"
-                scope="col"
-                class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider"
-              >
-                Dia
-              </th>
-              <th
+                label="Dia"
+                sort-key="dia"
+                :active-key="sortState?.key ?? null"
+                :direction="sortState?.dir ?? 'asc'"
+                @sort="handleSort"
+              />
+              <SortableTableHeader
                 v-if="isColumnVisible('horario')"
-                scope="col"
-                class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider"
-              >
-                Horário
-              </th>
-              <th
+                label="Horário"
+                sort-key="horario"
+                :active-key="sortState?.key ?? null"
+                :direction="sortState?.dir ?? 'asc'"
+                @sort="handleSort"
+              />
+              <SortableTableHeader
                 v-if="isColumnVisible('endereco')"
-                scope="col"
-                class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider"
-              >
-                Endereço
-              </th>
+                label="Endereço"
+                sort-key="endereco"
+                :active-key="sortState?.key ?? null"
+                :direction="sortState?.dir ?? 'asc'"
+                @sort="handleSort"
+              />
               <th
                 v-if="isColumnVisible('relatorios')"
                 scope="col"
@@ -925,13 +985,14 @@ onUnmounted(() => {
               >
                 Relatórios
               </th>
-              <th
+              <SortableTableHeader
                 v-if="isColumnVisible('status')"
-                scope="col"
-                class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider"
-              >
-                Status
-              </th>
+                label="Status"
+                sort-key="status"
+                :active-key="sortState?.key ?? null"
+                :direction="sortState?.dir ?? 'asc'"
+                @sort="handleSort"
+              />
               <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                 Ações
               </th>
@@ -1077,22 +1138,101 @@ onUnmounted(() => {
       </div>
 
       <!-- Paginação -->
-      <div v-if="cellPagination.pages > 1" class="mt-4 flex justify-center">
-        <nav class="relative z-0 inline-flex rounded-md shadow-sm -space-x-px" aria-label="Pagination">
-          <button
-            v-for="page in cellPagination.pages"
-            :key="page"
-            @click="handleCellPageChange(page)"
-            :class="[
-              'relative inline-flex items-center px-4 py-2 border text-sm font-medium',
-              page === cellPagination.currentPage
-                ? 'z-10 bg-primary-50 border-primary-500 text-primary-600'
-                : 'bg-white border-gray-300 text-gray-500 hover:bg-gray-50'
-            ]"
-          >
-            {{ page }}
-          </button>
-        </nav>
+      <div
+        v-if="cells.length > 0"
+        class="bg-white px-4 py-3 flex flex-col gap-3 border-t border-gray-200 sm:px-6 sm:flex-row sm:items-center sm:justify-between"
+      >
+        <div class="flex flex-wrap items-center gap-x-4 gap-y-2">
+          <label class="inline-flex items-center gap-2 text-sm text-gray-700">
+            <span class="whitespace-nowrap">Itens por página</span>
+            <div class="relative">
+              <select
+                v-model="pageSize"
+                :class="[filterSelectClass, 'min-w-[5.5rem] h-8']"
+                aria-label="Itens por página"
+                @change="handlePageSizeChange"
+              >
+                <option v-for="opt in PAGE_SIZE_OPTIONS" :key="opt" :value="opt">
+                  {{ opt }}
+                </option>
+                <option value="all">Todos</option>
+              </select>
+              <div class="pointer-events-none absolute inset-y-0 right-2.5 flex items-center" aria-hidden="true">
+                <svg class="h-4 w-4 text-neutral-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7" />
+                </svg>
+              </div>
+            </div>
+          </label>
+          <p class="text-sm text-gray-700 tabular-nums">
+            Mostrando
+            <span class="font-medium">{{ paginationRange.from }}</span>
+            até
+            <span class="font-medium">{{ paginationRange.to }}</span>
+            de
+            <span class="font-medium">{{ cellPagination.total }}</span>
+            {{ cellPagination.total === 1 ? 'célula' : 'células' }}
+          </p>
+        </div>
+
+        <div v-if="cellPagination.pages > 1" class="flex items-center justify-between sm:justify-end gap-3">
+          <div class="flex sm:hidden gap-2">
+            <button
+              type="button"
+              :disabled="cellPagination.currentPage === 1"
+              @click="handleCellPageChange(cellPagination.currentPage - 1)"
+              class="relative inline-flex items-center px-4 py-2 border border-gray-300 text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              Anterior
+            </button>
+            <button
+              type="button"
+              :disabled="cellPagination.currentPage === cellPagination.pages"
+              @click="handleCellPageChange(cellPagination.currentPage + 1)"
+              class="relative inline-flex items-center px-4 py-2 border border-gray-300 text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              Próxima
+            </button>
+          </div>
+          <nav class="relative z-0 hidden sm:inline-flex rounded-md shadow-sm -space-x-px" aria-label="Paginação de células">
+            <button
+              type="button"
+              :disabled="cellPagination.currentPage === 1"
+              @click="handleCellPageChange(cellPagination.currentPage - 1)"
+              class="relative inline-flex items-center px-2 py-2 rounded-l-md border border-gray-300 bg-white text-sm font-medium text-gray-500 hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              <span class="sr-only">Anterior</span>
+              <svg class="h-5 w-5" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
+                <path fill-rule="evenodd" d="M12.707 5.293a1 1 0 010 1.414L9.414 10l3.293 3.293a1 1 0 01-1.414 1.414l-4-4a1 1 0 010-1.414l4-4a1 1 0 011.414 0z" clip-rule="evenodd" />
+              </svg>
+            </button>
+            <button
+              v-for="page in cellPagination.pages"
+              :key="page"
+              type="button"
+              @click="handleCellPageChange(page)"
+              :class="[
+                'relative inline-flex items-center px-4 py-2 border text-sm font-medium',
+                page === cellPagination.currentPage
+                  ? 'z-10 bg-primary-50 border-primary-500 text-primary-600'
+                  : 'bg-white border-gray-300 text-gray-500 hover:bg-gray-50'
+              ]"
+            >
+              {{ page }}
+            </button>
+            <button
+              type="button"
+              :disabled="cellPagination.currentPage === cellPagination.pages"
+              @click="handleCellPageChange(cellPagination.currentPage + 1)"
+              class="relative inline-flex items-center px-2 py-2 rounded-r-md border border-gray-300 bg-white text-sm font-medium text-gray-500 hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              <span class="sr-only">Próxima</span>
+              <svg class="h-5 w-5" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
+                <path fill-rule="evenodd" d="M7.293 14.707a1 1 0 010-1.414L10.586 10 7.293 6.707a1 1 0 011.414-1.414l4 4a1 1 0 010 1.414l-4 4a1 1 0 01-1.414 0z" clip-rule="evenodd" />
+              </svg>
+            </button>
+          </nav>
+        </div>
       </div>
     </div>
 

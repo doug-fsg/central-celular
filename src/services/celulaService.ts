@@ -210,6 +210,18 @@ const celulaService = {
     }
   },
 
+  // Mover membro para outra célula
+  async moverMembro(celulaId: number, membroId: number, celulaDestinoId: number) {
+    try {
+      return await api.patch(`/celulas/${celulaId}/membros/${membroId}/mover`, {
+        celulaDestinoId,
+      });
+    } catch (error) {
+      console.error('Erro ao mover membro:', error);
+      throw error;
+    }
+  },
+
   // Atualizar dados de um membro
   async atualizarMembro(celulaId: number, membroId: number, dadosMembro: NovoMembroInput) {
     try {

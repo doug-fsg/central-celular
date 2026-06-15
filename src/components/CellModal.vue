@@ -3,6 +3,7 @@ import { ref, watch, computed } from 'vue'
 import { Teleport } from 'vue'
 import type { Celula } from '../services/adminService'
 import { PUBLICO_CELULA_OPTIONS, type PublicoCelula } from '../constants/publicoCelula'
+import CellMembersPanel from './CellMembersPanel.vue'
 
 const publicoOptions = PUBLICO_CELULA_OPTIONS.filter((o) => o.value !== 'nao_informado')
 
@@ -186,12 +187,25 @@ const availableSupervisors = computed(() =>
     .filter((user) => user.cargo === 'SUPERVISOR')
     .sort((a, b) => a.nome.localeCompare(b.nome)),
 )
+
+const isEditMode = computed(() => Boolean(props.cell?.id))
+const liderNome = computed(() => props.cell?.lider?.nome)
+const liderId = computed(() => props.cell?.lider?.id ?? props.cell?.liderId)
 </script>
 
 <template>
   <Teleport to="body">
-    <div v-if="isOpen" class="modal-backdrop" @click.self="emit('close')">
-      <div class="modal-panel modal-panel-lg" @click.stop>
+    <div
+      v-if="isOpen"
+      class="modal-backdrop"
+      :class="isEditMode ? 'p-1 sm:p-2' : ''"
+      @click.self="emit('close')"
+    >
+      <div
+        class="modal-panel"
+        :class="isEditMode ? 'modal-panel-2xl' : 'modal-panel-lg'"
+        @click.stop
+      >
         <!-- Cabeçalho (mesmo padrão do modal de membros) -->
         <div
           class="flex shrink-0 items-center justify-between border-b border-gray-200 bg-white px-4 py-3 sm:px-6 sm:py-4"
@@ -227,7 +241,9 @@ const availableSupervisors = computed(() =>
         </div>
 
         <form class="flex min-h-0 flex-1 flex-col" @submit.prevent="handleSubmit">
-          <div class="flex-1 overflow-y-auto overscroll-contain">
+          <div class="flex min-h-0 flex-1 flex-col lg:flex-row">
+            <!-- Coluna esquerda: dados da célula -->
+            <div class="flex min-h-0 min-w-0 flex-1 flex-col overflow-y-auto overscroll-contain lg:max-w-[50%]">
             <!-- Dados da célula -->
             <div class="border-b border-gray-100 px-4 py-4 sm:px-6">
               <p class="mb-3 text-[11px] font-semibold uppercase tracking-wide text-gray-500">
@@ -382,6 +398,15 @@ const availableSupervisors = computed(() =>
                 </div>
               </div>
             </div>
+            </div>
+
+            <!-- Coluna direita: membros (somente ao editar) -->
+            <CellMembersPanel
+              v-if="isEditMode && cell?.id"
+              :celula-id="cell.id"
+              :lider-nome="liderNome"
+              :lider-id="liderId"
+            />
           </div>
 
           <!-- Rodapé fixo -->

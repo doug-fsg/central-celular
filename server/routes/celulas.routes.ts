@@ -13,6 +13,7 @@ import {
   marcarComoCoLider,
   marcarComoAnfitriao,
   atualizarMembro,
+  moverMembro,
   listarMembros
 } from '../controllers/celulas.controller';
 import {
@@ -35,6 +36,7 @@ router.patch('/:id/desativar', desativarCelula);
 // Rotas para membros da célula
 router.post('/:id/membros', adicionarMembro);
 router.patch('/:id/membros/:membroId', atualizarMembro);
+router.patch('/:id/membros/:membroId/mover', moverMembro);
 router.delete('/:id/membros/:membroId', removerMembro);
 router.patch('/:id/membros/:membroId/status', atualizarStatusMembro);
 router.patch('/:id/membros/:membroId/ativo', toggleAtivoMembro);

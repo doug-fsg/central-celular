@@ -6,6 +6,8 @@ import type { Usuario } from '../../services/adminService'
 import { ssoLinkService } from '../../services/ssoLinkService'
 import AppIcon from '../../components/AppIcon.vue'
 import AdminUsersBulkBar from '../../components/admin/AdminUsersBulkBar.vue'
+import SortableTableHeader from '../../components/admin/SortableTableHeader.vue'
+import { toggleSortState, compareUsuarios, type SortState } from '../../utils/tableSort'
 
 /** Mesmas regras do menu "Enviar link": só líder ativo (célula validada no backend). */
 function podeReceberLinkSso(user: Usuario): boolean {
@@ -46,6 +48,53 @@ const pagination = ref({
   perPage: 10
 })
 
+const PAGE_SIZE_OPTIONS = [10, 25, 50, 100] as const
+type PageSizeOption = (typeof PAGE_SIZE_OPTIONS)[number] | 'all'
+const PAGE_SIZE_STORAGE_KEY = 'admin-users-page-size'
+
+function loadPageSize(): PageSizeOption {
+  try {
+    const saved = localStorage.getItem(PAGE_SIZE_STORAGE_KEY)
+    if (saved === 'all') return 'all'
+    const num = Number(saved)
+    if (PAGE_SIZE_OPTIONS.includes(num as (typeof PAGE_SIZE_OPTIONS)[number])) {
+      return num as PageSizeOption
+    }
+  } catch {
+    /* ignore */
+  }
+  return 10
+}
+
+const pageSize = ref<PageSizeOption>(loadPageSize())
+
+const getEffectiveLimit = () => (pageSize.value === 'all' ? 500 : pageSize.value)
+
+const paginationRange = computed(() => {
+  const { total, currentPage, perPage } = pagination.value
+  if (total === 0) return { from: 0, to: 0 }
+  const from = (currentPage - 1) * perPage + 1
+  const to = Math.min(currentPage * perPage, total)
+  return { from, to }
+})
+
+const handlePageSizeChange = () => {
+  localStorage.setItem(PAGE_SIZE_STORAGE_KEY, String(pageSize.value))
+  loadUsers(1)
+}
+
+const filterSelectClass =
+  'h-9 min-w-[8.5rem] cursor-pointer appearance-none rounded-lg border border-neutral-200 bg-neutral-50/80 pl-3 pr-8 text-sm text-neutral-700 transition-colors duration-200 hover:border-neutral-300 hover:bg-white focus:border-primary-500 focus:outline-none focus:ring-2 focus:ring-primary-500/20'
+
+const sortState = ref<SortState | null>(null)
+
+const handleSort = (key: string) => {
+  sortState.value = toggleSortState(sortState.value, key)
+  if (!isFilteringUsers.value) {
+    loadUsers(1)
+  }
+}
+
 // Filtros da lista de usuários
 const userSearchTerm = ref('')
 const userRoleFilter = ref('')
@@ -53,7 +102,7 @@ const isFilteringUsers = computed(() => userSearchTerm.value.trim() !== '' || us
 const filteredUsers = computed(() => {
   const term = userSearchTerm.value.toLowerCase().trim()
   const source = isFilteringUsers.value ? usersAll.value : users.value
-  return source.filter(u => {
+  let list = source.filter(u => {
     const matchesTerm = !term ||
       u.nome.toLowerCase().includes(term) ||
       (u.whatsapp || '').toLowerCase().includes(term) ||
@@ -61,6 +110,12 @@ const filteredUsers = computed(() => {
     const matchesRole = !userRoleFilter.value || (u.cargo || '').toUpperCase() === userRoleFilter.value
     return matchesTerm && matchesRole
   })
+
+  if (sortState.value && isFilteringUsers.value) {
+    list = [...list].sort((a, b) => compareUsuarios(a, b, sortState.value!))
+  }
+
+  return list
 })
 
 const selectedUserIds = ref<number[]>([])
@@ -119,11 +174,11 @@ const bulkSheetOpen = ref(false)
 const loadAllUsers = async () => {
   try {
     loadingAllUsers.value = true
-    const first = await adminService.listarUsuarios(1, 100)
+    const first = await adminService.listarUsuarios(1, 500)
     let all: Usuario[] = first.usuarios
     const totalPages = first.pagination.pages
     for (let p = 2; p <= totalPages; p++) {
-      const resp = await adminService.listarUsuarios(p, 100)
+      const resp = await adminService.listarUsuarios(p, 500)
       all = all.concat(resp.usuarios)
     }
     usersAll.value = all
@@ -212,7 +267,12 @@ const showFeedback = (message: string, type: 'success' | 'error' = 'success') =>
 const loadUsers = async (page: number = 1) => {
   try {
     loading.value = true
-    const response = await adminService.listarUsuarios(page)
+    const response = await adminService.listarUsuarios(
+      page,
+      getEffectiveLimit(),
+      undefined,
+      sortState.value ? { sortBy: sortState.value.key, sortDir: sortState.value.dir } : undefined,
+    )
     users.value = response.usuarios
     pagination.value = response.pagination
   } catch (error) {
@@ -780,18 +840,34 @@ const formatWhatsApp = (whatsapp: string | null | undefined): string => {
                   aria-label="Selecionar todos os usuários visíveis na lista"
                 />
               </th>
-              <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                Nome
-              </th>
-              <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                Whatsapp
-              </th>
-              <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                Função
-              </th>
-              <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                Status
-              </th>
+              <SortableTableHeader
+                label="Nome"
+                sort-key="nome"
+                :active-key="sortState?.key ?? null"
+                :direction="sortState?.dir ?? 'asc'"
+                @sort="handleSort"
+              />
+              <SortableTableHeader
+                label="Whatsapp"
+                sort-key="whatsapp"
+                :active-key="sortState?.key ?? null"
+                :direction="sortState?.dir ?? 'asc'"
+                @sort="handleSort"
+              />
+              <SortableTableHeader
+                label="Função"
+                sort-key="cargo"
+                :active-key="sortState?.key ?? null"
+                :direction="sortState?.dir ?? 'asc'"
+                @sort="handleSort"
+              />
+              <SortableTableHeader
+                label="Status"
+                sort-key="status"
+                :active-key="sortState?.key ?? null"
+                :direction="sortState?.dir ?? 'asc'"
+                @sort="handleSort"
+              />
               <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                 Ações
               </th>
@@ -910,72 +986,106 @@ const formatWhatsApp = (whatsapp: string | null | undefined): string => {
       </template>
 
       <!-- Paginação -->
-      <div v-if="!loading && filteredUsers.length > 0" class="bg-white px-4 py-3 flex items-center justify-between border-t border-gray-200 sm:px-6">
-        <div class="flex-1 flex justify-between sm:hidden">
-          <button
-            :disabled="pagination.currentPage === 1"
-            @click="handlePageChange(pagination.currentPage - 1)"
-            class="relative inline-flex items-center px-4 py-2 border border-gray-300 text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50"
-          >
-            Anterior
-          </button>
-          <button
-            :disabled="pagination.currentPage === pagination.pages"
-            @click="handlePageChange(pagination.currentPage + 1)"
-            class="ml-3 relative inline-flex items-center px-4 py-2 border border-gray-300 text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50"
-          >
-            Próxima
-          </button>
-        </div>
-        <div class="hidden sm:flex-1 sm:flex sm:items-center sm:justify-between">
-          <div>
-            <p class="text-sm text-gray-700">
+      <div
+        v-if="!loading && filteredUsers.length > 0"
+        class="bg-white px-4 py-3 flex flex-col gap-3 border-t border-gray-200 sm:px-6 sm:flex-row sm:items-center sm:justify-between"
+      >
+        <div class="flex flex-wrap items-center gap-x-4 gap-y-2">
+          <label v-if="!isFilteringUsers" class="inline-flex items-center gap-2 text-sm text-gray-700">
+            <span class="whitespace-nowrap">Itens por página</span>
+            <div class="relative">
+              <select
+                v-model="pageSize"
+                :class="[filterSelectClass, 'min-w-[5.5rem] h-8']"
+                aria-label="Itens por página"
+                @change="handlePageSizeChange"
+              >
+                <option v-for="opt in PAGE_SIZE_OPTIONS" :key="opt" :value="opt">
+                  {{ opt }}
+                </option>
+                <option value="all">Todos</option>
+              </select>
+              <div class="pointer-events-none absolute inset-y-0 right-2.5 flex items-center" aria-hidden="true">
+                <svg class="h-4 w-4 text-neutral-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7" />
+                </svg>
+              </div>
+            </div>
+          </label>
+          <p class="text-sm text-gray-700 tabular-nums">
+            <template v-if="isFilteringUsers">
+              <span class="font-medium">{{ filteredUsers.length }}</span>
+              {{ filteredUsers.length === 1 ? 'usuário encontrado' : 'usuários encontrados' }}
+            </template>
+            <template v-else>
               Mostrando
-              <span class="font-medium">{{ ((pagination.currentPage - 1) * pagination.perPage) + 1 }}</span>
+              <span class="font-medium">{{ paginationRange.from }}</span>
               até
-              <span class="font-medium">{{ Math.min(pagination.currentPage * pagination.perPage, pagination.total) }}</span>
+              <span class="font-medium">{{ paginationRange.to }}</span>
               de
               <span class="font-medium">{{ pagination.total }}</span>
-              resultados
-            </p>
+              {{ pagination.total === 1 ? 'usuário' : 'usuários' }}
+            </template>
+          </p>
+        </div>
+
+        <div v-if="!isFilteringUsers && pagination.pages > 1" class="flex items-center justify-between sm:justify-end gap-3">
+          <div class="flex sm:hidden gap-2">
+            <button
+              type="button"
+              :disabled="pagination.currentPage === 1"
+              @click="handlePageChange(pagination.currentPage - 1)"
+              class="relative inline-flex items-center px-4 py-2 border border-gray-300 text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              Anterior
+            </button>
+            <button
+              type="button"
+              :disabled="pagination.currentPage === pagination.pages"
+              @click="handlePageChange(pagination.currentPage + 1)"
+              class="relative inline-flex items-center px-4 py-2 border border-gray-300 text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              Próxima
+            </button>
           </div>
-          <div>
-            <nav class="relative z-0 inline-flex rounded-md shadow-sm -space-x-px" aria-label="Pagination">
-              <button
-                :disabled="pagination.currentPage === 1"
-                @click="handlePageChange(pagination.currentPage - 1)"
-                class="relative inline-flex items-center px-2 py-2 rounded-l-md border border-gray-300 bg-white text-sm font-medium text-gray-500 hover:bg-gray-50"
-              >
-                <span class="sr-only">Anterior</span>
-                <svg class="h-5 w-5" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
-                  <path fill-rule="evenodd" d="M12.707 5.293a1 1 0 010 1.414L9.414 10l3.293 3.293a1 1 0 01-1.414 1.414l-4-4a1 1 0 010-1.414l4-4a1 1 0 011.414 0z" clip-rule="evenodd" />
-                </svg>
-              </button>
-              <button
-                v-for="page in pagination.pages"
-                :key="page"
-                @click="handlePageChange(page)"
-                :class="[
-                  page === pagination.currentPage
-                    ? 'z-10 bg-primary-50 border-primary-500 text-primary-600'
-                    : 'bg-white border-gray-300 text-gray-500 hover:bg-gray-50',
-                  'relative inline-flex items-center px-4 py-2 border text-sm font-medium'
-                ]"
-              >
-                {{ page }}
-              </button>
-              <button
-                :disabled="pagination.currentPage === pagination.pages"
-                @click="handlePageChange(pagination.currentPage + 1)"
-                class="relative inline-flex items-center px-2 py-2 rounded-r-md border border-gray-300 bg-white text-sm font-medium text-gray-500 hover:bg-gray-50"
-              >
-                <span class="sr-only">Próxima</span>
-                <svg class="h-5 w-5" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
-                  <path fill-rule="evenodd" d="M7.293 14.707a1 1 0 010-1.414L10.586 10 7.293 6.707a1 1 0 011.414-1.414l4 4a1 1 0 010 1.414l-4 4a1 1 0 01-1.414 0z" clip-rule="evenodd" />
-                </svg>
-              </button>
-            </nav>
-          </div>
+          <nav class="relative z-0 hidden sm:inline-flex rounded-md shadow-sm -space-x-px" aria-label="Paginação de usuários">
+            <button
+              type="button"
+              :disabled="pagination.currentPage === 1"
+              @click="handlePageChange(pagination.currentPage - 1)"
+              class="relative inline-flex items-center px-2 py-2 rounded-l-md border border-gray-300 bg-white text-sm font-medium text-gray-500 hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              <span class="sr-only">Anterior</span>
+              <svg class="h-5 w-5" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
+                <path fill-rule="evenodd" d="M12.707 5.293a1 1 0 010 1.414L9.414 10l3.293 3.293a1 1 0 01-1.414 1.414l-4-4a1 1 0 010-1.414l4-4a1 1 0 011.414 0z" clip-rule="evenodd" />
+              </svg>
+            </button>
+            <button
+              v-for="page in pagination.pages"
+              :key="page"
+              type="button"
+              @click="handlePageChange(page)"
+              :class="[
+                'relative inline-flex items-center px-4 py-2 border text-sm font-medium',
+                page === pagination.currentPage
+                  ? 'z-10 bg-primary-50 border-primary-500 text-primary-600'
+                  : 'bg-white border-gray-300 text-gray-500 hover:bg-gray-50'
+              ]"
+            >
+              {{ page }}
+            </button>
+            <button
+              type="button"
+              :disabled="pagination.currentPage === pagination.pages"
+              @click="handlePageChange(pagination.currentPage + 1)"
+              class="relative inline-flex items-center px-2 py-2 rounded-r-md border border-gray-300 bg-white text-sm font-medium text-gray-500 hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              <span class="sr-only">Próxima</span>
+              <svg class="h-5 w-5" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
+                <path fill-rule="evenodd" d="M7.293 14.707a1 1 0 010-1.414L10.586 10 7.293 6.707a1 1 0 011.414-1.414l4 4a1 1 0 010 1.414l-4 4a1 1 0 01-1.414 0z" clip-rule="evenodd" />
+              </svg>
+            </button>
+          </nav>
         </div>
       </div>
     </div>

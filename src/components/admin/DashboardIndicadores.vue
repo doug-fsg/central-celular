@@ -1,7 +1,6 @@
 <script setup lang="ts">
 import { ref, watch, computed, defineAsyncComponent, onMounted } from 'vue'
 import { adminService, type AdminStats } from '../../services/adminService'
-import { DASHBOARD_INDICADORES_COPY } from '../../constants/dashboardCuidado'
 import {
   PUBLICO_CELULA_OPTIONS,
   PUBLICO_CELULA_LABELS,
@@ -20,6 +19,13 @@ const periodoSelecionado = ref('semana')
 const publicoSelecionado = ref('')
 const loadingStats = ref(false)
 const chartsLoadedFlag = ref(false)
+
+const periodos = [
+  { key: 'semana', label: 'Última Semana', labelMobile: 'Últ. Semana' },
+  { key: 'mes', label: 'Mês', labelMobile: 'Mês' },
+  { key: 'trimestre', label: 'Trimestre', labelMobile: 'Trim.' },
+  { key: 'ano', label: 'Ano', labelMobile: 'Ano' },
+] as const
 
 const stats = ref<AdminStats>({
   resumo: {
@@ -110,65 +116,52 @@ function setPublico(value: string) {
 
 <template>
   <div class="space-y-4 motion-reduce:transition-none tab-fade">
-    <p
-      class="text-xs leading-relaxed text-neutral-700 border border-neutral-200 bg-neutral-100 rounded-xl px-3 py-2.5"
-    >
-      {{ DASHBOARD_INDICADORES_COPY.banner }}
-    </p>
+    <!-- Período + público na mesma linha -->
+    <div class="-mx-1 overflow-x-auto flex flex-nowrap items-center gap-2 snap-x snap-mandatory pb-1">
+      <button
+        v-for="periodo in periodos"
+        :key="periodo.key"
+        type="button"
+        class="min-h-[36px] px-3 rounded-lg text-xs font-medium whitespace-nowrap flex-shrink-0 snap-start touch-manipulation"
+        :class="
+          periodoSelecionado === periodo.key
+            ? 'bg-primary-500 text-white shadow-sm'
+            : 'bg-neutral-100 text-neutral-700 hover:bg-neutral-200'
+        "
+        @click="setPeriodo(periodo.key)"
+      >
+        <span class="sm:hidden">{{ periodo.labelMobile }}</span>
+        <span class="hidden sm:inline">{{ periodo.label }}</span>
+      </button>
 
-    <!-- Período + pills -->
-    <div class="flex flex-col gap-3">
-      <div class="-mx-1 overflow-x-auto flex gap-2 snap-x snap-mandatory pb-1">
-        <button
-          v-for="periodo in [
-            { key: 'semana', label: 'Última Semana', labelMobile: 'Últ. Semana' },
-            { key: 'mes', label: 'Mês', labelMobile: 'Mês' },
-            { key: 'trimestre', label: 'Trimestre', labelMobile: 'Trim.' },
-            { key: 'ano', label: 'Ano', labelMobile: 'Ano' },
-          ]"
-          :key="periodo.key"
-          type="button"
-          class="min-h-[40px] px-3 rounded-lg text-xs font-medium whitespace-nowrap flex-shrink-0 snap-start touch-manipulation"
-          :class="
-            periodoSelecionado === periodo.key
-              ? 'bg-primary-500 text-white shadow-sm'
-              : 'bg-neutral-100 text-neutral-700 hover:bg-neutral-200'
-          "
-          @click="setPeriodo(periodo.key)"
-        >
-          <span class="sm:hidden">{{ periodo.labelMobile }}</span>
-          <span class="hidden sm:inline">{{ periodo.label }}</span>
-        </button>
-      </div>
+      <span class="w-px h-6 bg-neutral-200 flex-shrink-0" aria-hidden="true" />
 
-      <div class="-mx-1 overflow-x-auto flex gap-2 snap-x snap-mandatory pb-1">
-        <button
-          type="button"
-          class="min-h-[36px] px-3 rounded-lg text-xs font-medium whitespace-nowrap flex-shrink-0 snap-start touch-manipulation"
-          :class="
-            !publicoSelecionado
-              ? 'bg-neutral-800 text-white shadow-sm'
-              : 'bg-neutral-100 text-neutral-700 hover:bg-neutral-200'
-          "
-          @click="setPublico('')"
-        >
-          Todos os públicos
-        </button>
-        <button
-          v-for="opt in PUBLICO_CELULA_OPTIONS"
-          :key="opt.value"
-          type="button"
-          class="min-h-[36px] px-3 rounded-lg text-xs font-medium whitespace-nowrap flex-shrink-0 snap-start touch-manipulation"
-          :class="
-            publicoSelecionado === opt.value
-              ? 'bg-neutral-800 text-white shadow-sm'
-              : 'bg-neutral-100 text-neutral-700 hover:bg-neutral-200'
-          "
-          @click="setPublico(opt.value)"
-        >
-          {{ opt.label }}
-        </button>
-      </div>
+      <button
+        type="button"
+        class="min-h-[36px] px-3 rounded-lg text-xs font-medium whitespace-nowrap flex-shrink-0 snap-start touch-manipulation"
+        :class="
+          !publicoSelecionado
+            ? 'bg-neutral-800 text-white shadow-sm'
+            : 'bg-neutral-100 text-neutral-700 hover:bg-neutral-200'
+        "
+        @click="setPublico('')"
+      >
+        Todos os públicos
+      </button>
+      <button
+        v-for="opt in PUBLICO_CELULA_OPTIONS"
+        :key="opt.value"
+        type="button"
+        class="min-h-[36px] px-3 rounded-lg text-xs font-medium whitespace-nowrap flex-shrink-0 snap-start touch-manipulation"
+        :class="
+          publicoSelecionado === opt.value
+            ? 'bg-neutral-800 text-white shadow-sm'
+            : 'bg-neutral-100 text-neutral-700 hover:bg-neutral-200'
+        "
+        @click="setPublico(opt.value)"
+      >
+        {{ opt.label }}
+      </button>
     </div>
 
     <!-- Resumo por público -->

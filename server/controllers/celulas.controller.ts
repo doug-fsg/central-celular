@@ -25,6 +25,50 @@ function calcularSemanasDoMes(referencia: Date): Array<{ inicio: Date; fim: Date
 
 const publicoCelulaSchema = z.enum(PUBLICO_CELULA_VALUES);
 
+type SortDirection = 'asc' | 'desc';
+
+function buildCelulaOrderBy(sortBy: string, dir: SortDirection) {
+  switch (sortBy) {
+    case 'lider':
+      return { lider: { nome: dir } };
+    case 'nome':
+      return { nome: dir };
+    case 'publico':
+      return { publico: dir };
+    case 'supervisor':
+      return { supervisor: { nome: dir } };
+    case 'colider':
+      return { coLider: { nome: dir } };
+    case 'membros':
+      return { membros: { _count: dir } };
+    case 'dia':
+      return { diaSemana: dir };
+    case 'horario':
+      return { horario: dir };
+    case 'endereco':
+      return { endereco: dir };
+    case 'status':
+      return { ativo: dir };
+    default:
+      return { nome: 'asc' as const };
+  }
+}
+
+function buildMembroOrderBy(sortBy: string, dir: SortDirection) {
+  switch (sortBy) {
+    case 'nome':
+      return { nome: dir };
+    case 'celula':
+      return { celula: { nome: dir } };
+    case 'lider':
+      return { celula: { lider: { nome: dir } } };
+    case 'status':
+      return { ativo: dir };
+    default:
+      return { nome: 'asc' as const };
+  }
+}
+
 // Schema de validação para células
 const celulaSchema = z.object({
   nome: z.string().min(3, 'Nome deve ter pelo menos 3 caracteres'),
@@ -84,8 +128,16 @@ const membroSchema = z.object({
 // Listar células (com filtros e paginação)
 export const listarCelulas = async (req: Request, res: Response) => {
   try {
-    const { page = '1', limit = '10', lider, ativo, diaSemana, search, publico } = req.query;
-    const skip = (Number(page) - 1) * Number(limit);
+    const { page = '1', limit = '10', lider, ativo, diaSemana, search, publico, sortBy, sortDir } = req.query;
+    const perPage = Math.min(Math.max(1, Number(limit) || 10), 500);
+    const currentPage = Math.max(1, Number(page) || 1);
+    const skip = (currentPage - 1) * perPage;
+    const direction = sortDir === 'desc' ? 'desc' : 'asc';
+
+    const orderBy = buildCelulaOrderBy(
+      typeof sortBy === 'string' ? sortBy : '',
+      direction,
+    );
     
     // Obter o accountId do usuário autenticado
     const accountId = (req as any).user?.accountId || (req as any).usuario?.accountId;
@@ -169,10 +221,8 @@ export const listarCelulas = async (req: Request, res: Response) => {
           }
         },
         skip,
-        take: Number(limit),
-        orderBy: {
-          nome: 'asc'
-        }
+        take: perPage,
+        orderBy,
       }),
     ]);
 
@@ -181,9 +231,9 @@ export const listarCelulas = async (req: Request, res: Response) => {
       celulas,
       pagination: {
         total,
-        pages: Math.ceil(total / Number(limit)),
-        currentPage: Number(page),
-        perPage: Number(limit)
+        pages: Math.ceil(total / perPage),
+        currentPage,
+        perPage,
       },
       totais: {
         celulas: total,
@@ -666,6 +716,62 @@ export const adicionarMembro = async (req: Request, res: Response) => {
   }
 };
 
+// Mover membro para outra célula
+export const moverMembro = async (req: Request, res: Response) => {
+  try {
+    const { id, membroId } = req.params;
+    const celulaOrigemId = Number(id);
+    const celulaDestinoId = Number(req.body.celulaDestinoId);
+
+    if (!celulaDestinoId || Number.isNaN(celulaDestinoId)) {
+      return res.status(400).json({ message: 'Célula de destino inválida' });
+    }
+
+    if (celulaOrigemId === celulaDestinoId) {
+      return res.status(400).json({ message: 'A célula de destino deve ser diferente da atual' });
+    }
+
+    const [membro, celulaDestino] = await Promise.all([
+      prisma.$queryRaw<{ id: number }[]>`
+        SELECT id FROM membros
+        WHERE id = ${Number(membroId)} AND celula_id = ${celulaOrigemId} AND ativo = true
+        LIMIT 1
+      `,
+      prisma.celula.findUnique({ where: { id: celulaDestinoId } }),
+    ]);
+
+    if (!Array.isArray(membro) || membro.length === 0) {
+      return res.status(404).json({ message: 'Membro não encontrado nesta célula' });
+    }
+
+    if (!celulaDestino) {
+      return res.status(404).json({ message: 'Célula de destino não encontrada' });
+    }
+
+    await prisma.$transaction(async (tx) => {
+      await tx.$executeRaw`
+        DELETE FROM atribuicoes_cuidado
+        WHERE membro_id = ${Number(membroId)} AND celula_id = ${celulaOrigemId}
+      `;
+
+      await tx.$executeRaw`
+        UPDATE membros
+        SET celula_id = ${celulaDestinoId}
+        WHERE id = ${Number(membroId)} AND celula_id = ${celulaOrigemId}
+      `;
+    });
+
+    const membroAtualizado = await prisma.$queryRaw`
+      SELECT * FROM membros WHERE id = ${Number(membroId)}
+    `;
+
+    res.json(Array.isArray(membroAtualizado) ? membroAtualizado[0] : membroAtualizado);
+  } catch (error) {
+    console.error('Erro ao mover membro:', error);
+    res.status(500).json({ message: 'Erro ao mover membro' });
+  }
+};
+
 // Remover membro (deletar permanentemente)
 export const removerMembro = async (req: Request, res: Response) => {
   try {
@@ -963,8 +1069,14 @@ export const listarMembros = async (req: Request, res: Response) => {
 export const listarTodosMembros = async (req: Request, res: Response) => {
   try {
     const page = Number(req.query.page) || 1;
-    const limit = Number(req.query.limit) || 20;
-    const skip = (page - 1) * limit;
+    const perPage = Math.min(Math.max(1, Number(req.query.limit) || 20), 500);
+    const currentPage = Math.max(1, page);
+    const skip = (currentPage - 1) * perPage;
+    const sortBy = typeof req.query.sortBy === 'string' ? req.query.sortBy : '';
+    const sortDir = req.query.sortDir === 'desc' ? 'desc' : 'asc';
+    const searchTerm = typeof req.query.search === 'string' ? req.query.search.trim() : '';
+
+    const orderBy = buildMembroOrderBy(sortBy, sortDir);
 
     // Obter o accountId do usuário autenticado
     const accountId = (req as any).user?.accountId || (req as any).usuario?.accountId;
@@ -973,22 +1085,27 @@ export const listarTodosMembros = async (req: Request, res: Response) => {
       return res.status(401).json({ message: 'Conta não identificada' });
     }
 
-    // Buscar total de membros filtrado por accountId (através das células)
-    const total = await prisma.membro.count({
-      where: {
-        celula: {
-          accountId: accountId
-        }
+    const where: any = {
+      celula: {
+        accountId: accountId
       }
-    });
+    };
+
+    if (searchTerm) {
+      where.OR = [
+        { nome: { contains: searchTerm, mode: 'insensitive' } },
+        { telefone: { contains: searchTerm, mode: 'insensitive' } },
+        { celula: { nome: { contains: searchTerm, mode: 'insensitive' } } },
+        { celula: { lider: { nome: { contains: searchTerm, mode: 'insensitive' } } } },
+      ];
+    }
+
+    // Buscar total de membros filtrado por accountId (através das células)
+    const total = await prisma.membro.count({ where });
 
     // Buscar membros com paginação, incluindo celula e lider
     const membros = await prisma.membro.findMany({
-      where: {
-        celula: {
-          accountId: accountId
-        }
-      },
+      where,
       include: {
         celula: {
           select: {
@@ -1003,11 +1120,9 @@ export const listarTodosMembros = async (req: Request, res: Response) => {
           }
         }
       },
-      orderBy: {
-        nome: 'asc'
-      },
+      orderBy,
       skip,
-      take: limit
+      take: perPage
     });
 
     // Formatar resposta
@@ -1034,9 +1149,9 @@ export const listarTodosMembros = async (req: Request, res: Response) => {
       membros: membrosFormatados,
       pagination: {
         total,
-        pages: Math.ceil(total / limit),
-        currentPage: page,
-        perPage: limit
+        pages: Math.ceil(total / perPage),
+        currentPage,
+        perPage,
       }
     });
   } catch (error) {

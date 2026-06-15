@@ -7,8 +7,20 @@ const inferSameOriginApi = () => {
   return 'http://localhost:3000/api';
 };
 
-// Garante que a URL base termine com "/api" para compatibilidade com o backend
-const RAW_API_URL = (import.meta.env.VITE_API_URL as string) || inferSameOriginApi();
+// Em produção (VPS), build com VITE_API_URL=localhost quebra no browser do usuário.
+// Se o site não está em localhost, usa a mesma origem + /api (nginx faz proxy).
+function resolveApiBase(): string {
+  const fromEnv = import.meta.env.VITE_API_URL as string | undefined;
+  if (typeof window !== 'undefined' && fromEnv && /localhost|127\.0\.0\.1/i.test(fromEnv)) {
+    const h = window.location.hostname;
+    if (h !== 'localhost' && h !== '127.0.0.1') {
+      return inferSameOriginApi();
+    }
+  }
+  return fromEnv || inferSameOriginApi();
+}
+
+const RAW_API_URL = resolveApiBase();
 const API_URL = RAW_API_URL.endsWith('/api')
   ? RAW_API_URL
   : `${RAW_API_URL.replace(/\/$/, '')}/api`;

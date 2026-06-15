@@ -22,6 +22,4 @@ export const DASHBOARD_CUIDADO_COPY = {
 export const DASHBOARD_INDICADORES_COPY = {
   tabSubtitle: 'Frequência e envio de relatórios',
   pageTitle: 'Indicadores',
-  banner:
-    'Frequência e relatórios enviados. Referência para acompanhar a saúde da célula — o foco pastoral continua sendo o cuidado.',
 } as const;

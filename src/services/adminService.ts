@@ -196,7 +196,12 @@ export const adminService = {
   },
 
   // Listar usuários com paginação
-  async listarUsuarios(page: number = 1, limit: number = 10, cargo?: string | string[]): Promise<PaginatedResponse<Usuario>> {
+  async listarUsuarios(
+    page: number = 1,
+    limit: number = 10,
+    cargo?: string | string[],
+    sort?: { sortBy?: string; sortDir?: 'asc' | 'desc' },
+  ): Promise<PaginatedResponse<Usuario>> {
     try {
       let params = new URLSearchParams();
       params.append('page', page.toString());
@@ -204,12 +209,15 @@ export const adminService = {
       
       if (cargo) {
         if (Array.isArray(cargo)) {
-          // Se for um array de cargos, adiciona cada um com o mesmo nome de parâmetro
           cargo.forEach(c => params.append('cargo', c));
         } else {
-          // Se for um único cargo
           params.append('cargo', cargo);
         }
+      }
+
+      if (sort?.sortBy) {
+        params.append('sortBy', sort.sortBy);
+        params.append('sortDir', sort.sortDir ?? 'asc');
       }
       
       return await api.get(`/admin/usuarios?${params.toString()}`);
@@ -304,7 +312,8 @@ export const adminService = {
     liderId?: number,
     diaSemana?: string,
     search?: string,
-    publico?: string
+    publico?: string,
+    sort?: { sortBy?: string; sortDir?: 'asc' | 'desc' },
   ) {
     try {
       const params = new URLSearchParams({ page: String(page), limit: String(limit) })
@@ -312,6 +321,10 @@ export const adminService = {
       if (diaSemana) params.append('diaSemana', diaSemana)
       if (search?.trim()) params.append('search', search.trim())
       if (publico) params.append('publico', publico)
+      if (sort?.sortBy) {
+        params.append('sortBy', sort.sortBy)
+        params.append('sortDir', sort.sortDir ?? 'asc')
+      }
       const response = await api.get(`/admin/celulas?${params.toString()}`);
       
       // Verificar se a resposta é válida
@@ -464,9 +477,18 @@ export const adminService = {
   },
 
   // Listar todos os membros com paginação
-  async listarMembros(page: number = 1, limit: number = 20) {
+  async listarMembros(
+    page: number = 1,
+    limit: number = 20,
+    options?: { search?: string; sortBy?: string; sortDir?: 'asc' | 'desc' },
+  ) {
     try {
       const params = new URLSearchParams({ page: String(page), limit: String(limit) });
+      if (options?.search?.trim()) params.append('search', options.search.trim());
+      if (options?.sortBy) {
+        params.append('sortBy', options.sortBy);
+        params.append('sortDir', options.sortDir ?? 'asc');
+      }
       const response = await api.get(`/admin/membros?${params.toString()}`);
       
       if (!response || typeof response !== 'object') {
