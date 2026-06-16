@@ -1,8 +1,15 @@
 <script setup lang="ts">
 import { ref, computed, watch, onMounted, onUnmounted, Teleport } from 'vue'
 import UserModal from '../../components/UserModal.vue'
+import CellModal from '../../components/CellModal.vue'
 import { adminService } from '../../services/adminService'
-import type { Usuario } from '../../services/adminService'
+import type { Celula, Usuario } from '../../services/adminService'
+import {
+  ensureUserInLeaderList,
+  filterUsersForCellLeaderSelect,
+  normalizeCreatedUsuario,
+} from '../../utils/cellLeaders'
+import { normalizeCelulaFromApi } from '../../utils/celula'
 import { ssoLinkService } from '../../services/ssoLinkService'
 import AppIcon from '../../components/AppIcon.vue'
 import AdminUsersBulkBar from '../../components/admin/AdminUsersBulkBar.vue'
@@ -222,6 +229,17 @@ const showUserModal = ref(false)
 const modalMode = ref<'create' | 'edit'>('create')
 const selectedUser = ref<Partial<Usuario> | undefined>(undefined)
 
+// Modal de célula (fluxo "criar célula após salvar líder")
+const showCellModal = ref(false)
+const selectedCell = ref<Partial<Celula> | undefined>(undefined)
+const availableLeaders = ref<Usuario[]>([])
+const isLoadingCell = ref(false)
+
+function closeCellModal() {
+  showCellModal.value = false
+  selectedCell.value = undefined
+}
+
 // Confirmação de exclusão
 const showDeleteConfirm = ref(false)
 const userToDelete = ref<Usuario | null>(null)
@@ -332,8 +350,25 @@ const handleDeleteUser = async () => {
   }
 }
 
+// Carregar líderes disponíveis para o formulário de célula
+const loadAvailableLeaders = async () => {
+  try {
+    const response = await adminService.listarUsuarios(1, 100, ['LIDER', 'SUPERVISOR', 'ADMINISTRADOR', 'PASTOR'])
+    availableLeaders.value = filterUsersForCellLeaderSelect(response.usuarios)
+  } catch (error) {
+    console.error('Erro ao carregar líderes:', error)
+    showFeedback('Erro ao carregar líderes disponíveis', 'error')
+  }
+}
+
 // Salvar usuário (criar/editar)
-const handleSaveUser = async (userData: Partial<Usuario> & { criarCelulaApos?: boolean; enviarConvite?: boolean }) => {
+const handleSaveUser = async (userData: Partial<Usuario> & {
+  criarCelulaApos?: boolean
+  enviarConvite?: boolean
+}) => {
+  const abrirCelulaAposSalvar =
+    modalMode.value === 'create' && userData.cargo === 'LIDER' && userData.criarCelulaApos === true
+
   try {
     if (modalMode.value === 'create') {
       const criado = await adminService.criarUsuario(userData as any)
@@ -351,6 +386,26 @@ const handleSaveUser = async (userData: Partial<Usuario> & { criarCelulaApos?: b
       } else {
         showFeedback('Usuário criado com sucesso.')
       }
+
+      await handlePageChange(pagination.value.currentPage)
+      if (isFilteringUsers.value) {
+        await loadAllUsers()
+      }
+
+      if (abrirCelulaAposSalvar && criado.id) {
+        await loadAvailableLeaders()
+        const lider = normalizeCreatedUsuario(criado)
+        availableLeaders.value = ensureUserInLeaderList(availableLeaders.value, lider)
+        const leaderName = lider.nome || 'Líder'
+        selectedCell.value = {
+          liderId: lider.id,
+          lider: { id: lider.id, nome: lider.nome, whatsapp: lider.whatsapp, cargo: lider.cargo, ativo: lider.ativo, status: lider.status },
+          nome: `Célula - ${leaderName.split(' ')[0]}`,
+        }
+        showUserModal.value = false
+        showCellModal.value = true
+        return
+      }
     } else {
       const atualizado = await adminService.atualizarUsuario(userData.id!, userData)
       const idx = users.value.findIndex(u => u.id === atualizado.id)
@@ -363,7 +418,7 @@ const handleSaveUser = async (userData: Partial<Usuario> & { criarCelulaApos?: b
       }
       showFeedback('Usuário atualizado com sucesso')
     }
-    
+
     await handlePageChange(pagination.value.currentPage)
     if (isFilteringUsers.value) {
       await loadAllUsers()
@@ -372,6 +427,59 @@ const handleSaveUser = async (userData: Partial<Usuario> & { criarCelulaApos?: b
   } catch (error) {
     console.error('Erro ao salvar usuário:', error)
     showFeedback('Erro ao salvar usuário', 'error')
+  }
+}
+
+// Salvar célula (modal aberto após criar líder)
+const handleSaveCell = async (cellData: Partial<Celula>) => {
+  try {
+    isLoadingCell.value = true
+
+    if (!cellData.liderId) {
+      showFeedback('Líder é obrigatório', 'error')
+      return
+    }
+
+    const dadosParaSalvar: Record<string, unknown> = {
+      nome: cellData.nome,
+      publico: cellData.publico,
+      endereco: cellData.endereco,
+      diaSemana: cellData.diaSemana,
+      horario: cellData.horario,
+      liderId: cellData.liderId,
+    }
+    if (cellData.supervisor_id) {
+      dadosParaSalvar.supervisor_id = cellData.supervisor_id
+    }
+
+    if (selectedCell.value?.id) {
+      const atualizada = normalizeCelulaFromApi(
+        await adminService.atualizarCelula(selectedCell.value.id, dadosParaSalvar),
+      )
+      selectedCell.value = { ...selectedCell.value, ...atualizada }
+      showFeedback('Célula atualizada com sucesso')
+      return
+    }
+
+    const novaCelula = normalizeCelulaFromApi(
+      await adminService.criarCelula(dadosParaSalvar as Omit<Celula, 'id'>),
+    )
+
+    if (!novaCelula.id) {
+      showFeedback('Célula criada, mas não foi possível carregar o painel de membros.', 'error')
+      closeCellModal()
+      return
+    }
+
+    selectedCell.value = novaCelula
+    showFeedback('Célula criada. Agora você pode adicionar os membros.')
+  } catch (error: unknown) {
+    console.error('Erro ao salvar célula:', error)
+    const err = error as { errors?: { message?: string }[]; message?: string }
+    const mensagemErro = err.errors?.[0]?.message || err.message || 'Erro ao salvar célula'
+    showFeedback(mensagemErro, 'error')
+  } finally {
+    isLoadingCell.value = false
   }
 }
 
@@ -1209,6 +1317,16 @@ const formatWhatsApp = (whatsapp: string | null | undefined): string => {
       :user="selectedUser"
       @close="showUserModal = false"
       @save="handleSaveUser"
+    />
+
+    <!-- Modal de célula (após criar líder com "criar célula após salvar") -->
+    <CellModal
+      :is-open="showCellModal"
+      :cell="selectedCell"
+      :available-leaders="availableLeaders"
+      :is-loading="isLoadingCell"
+      @close="closeCellModal"
+      @save="handleSaveCell"
     />
 
     <!-- Modal de confirmação de exclusão -->

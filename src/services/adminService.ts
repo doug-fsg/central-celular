@@ -425,7 +425,7 @@ export const adminService = {
       supervisorId: dados.supervisor_id
     }
     const response = await api.post('/admin/celulas', dadosSemRegiao);
-    return response.data;
+    return response?.data ?? response;
   },
 
   // Atualizar célula
@@ -440,7 +440,7 @@ export const adminService = {
       supervisorId: dados.supervisor_id
     }
     const response = await api.put(`/admin/celulas/${id}`, dadosSemRegiao);
-    return response.data;
+    return response?.data ?? response;
   },
 
   // Excluir célula

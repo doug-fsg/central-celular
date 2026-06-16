@@ -92,21 +92,21 @@ const validateForm = () => {
 }
 
 watch(
-  () => props.isOpen,
-  (newVal) => {
-    if (newVal && props.cell) {
-      const publicoAtual = props.cell.publico
+  () => [props.isOpen, props.cell?.id, props.cell] as const,
+  ([open, , cell]) => {
+    if (open && cell) {
+      const publicoAtual = cell.publico
       formData.value = {
-        nome: props.cell.nome || '',
+        nome: cell.nome || '',
         publico: publicoAtual && publicoAtual !== 'nao_informado' ? publicoAtual : '',
-        endereco: props.cell.endereco || '',
-        diaSemana: props.cell.diaSemana || '',
-        horario: props.cell.horario || '',
-        lider_id: (props.cell.lider_id || props.cell.liderId)?.toString() || '',
+        endereco: cell.endereco || '',
+        diaSemana: cell.diaSemana || '',
+        horario: cell.horario || '',
+        lider_id: (cell.lider_id || cell.liderId)?.toString() || '',
         supervisor_id:
-          (props.cell.supervisor_id || props.cell.supervisorId || props.cell.supervisor?.id)?.toString() || '',
+          (cell.supervisor_id || cell.supervisorId || cell.supervisor?.id)?.toString() || '',
       }
-    } else {
+    } else if (!open) {
       formData.value = {
         nome: '',
         publico: '',
@@ -116,9 +116,9 @@ watch(
         lider_id: '',
         supervisor_id: '',
       }
+      errors.value = {}
+      touched.value = {}
     }
-    errors.value = {}
-    touched.value = {}
   },
 )
 
@@ -189,21 +189,32 @@ const availableSupervisors = computed(() =>
 )
 
 const isEditMode = computed(() => Boolean(props.cell?.id))
-const liderNome = computed(() => props.cell?.lider?.nome)
-const liderId = computed(() => props.cell?.lider?.id ?? props.cell?.liderId)
+const cellId = computed(() => props.cell?.id)
+
+const resolvedLiderId = computed(() => {
+  if (props.cell?.lider?.id) return props.cell.lider.id
+  if (props.cell?.liderId) return props.cell.liderId
+  const parsed = parseInt(formData.value.lider_id, 10)
+  return Number.isFinite(parsed) ? parsed : undefined
+})
+
+const resolvedLiderNome = computed(() => {
+  if (props.cell?.lider?.nome) return props.cell.lider.nome
+  const id = resolvedLiderId.value
+  if (!id) return undefined
+  return props.availableLeaders.find((l) => l.id === id)?.nome
+})
 </script>
 
 <template>
   <Teleport to="body">
     <div
       v-if="isOpen"
-      class="modal-backdrop"
-      :class="isEditMode ? 'p-1 sm:p-2' : ''"
+      class="modal-backdrop p-1 sm:p-2"
       @click.self="emit('close')"
     >
       <div
-        class="modal-panel"
-        :class="isEditMode ? 'modal-panel-2xl' : 'modal-panel-lg'"
+        class="modal-panel modal-panel-2xl"
         @click.stop
       >
         <!-- Cabeçalho (mesmo padrão do modal de membros) -->
@@ -223,7 +234,7 @@ const liderId = computed(() => props.cell?.lider?.id ?? props.cell?.liderId)
             </button>
             <div class="min-w-0 flex-1">
               <h3 class="truncate text-base font-medium text-gray-900 sm:text-lg">
-                {{ cell ? 'Editar Célula' : 'Nova Célula' }}
+                {{ isEditMode ? 'Editar Célula' : 'Nova Célula' }}
               </h3>
               <p v-if="cell?.nome" class="mt-0.5 truncate text-xs text-gray-500 sm:hidden">
                 {{ cell.nome }}
@@ -303,7 +314,7 @@ const liderId = computed(() => props.cell?.lider?.id ?? props.cell?.liderId)
                     >
                       <option value="" disabled>Selecione um líder</option>
                       <option v-for="lider in sortedLeaders" :key="lider.id" :value="lider.id">
-                        {{ lider.nome }} ({{ lider.cargo }})
+                        {{ lider.nome }} ({{ lider.cargo }}){{ lider.possuiSenha === false ? ' — pendente' : '' }}
                       </option>
                     </select>
                     <div class="pointer-events-none absolute inset-y-0 right-0 flex items-center px-2">
@@ -400,13 +411,30 @@ const liderId = computed(() => props.cell?.lider?.id ?? props.cell?.liderId)
             </div>
             </div>
 
-            <!-- Coluna direita: membros (somente ao editar) -->
+            <!-- Coluna direita: membros (igual ao modo editar) -->
             <CellMembersPanel
-              v-if="isEditMode && cell?.id"
-              :celula-id="cell.id"
-              :lider-nome="liderNome"
-              :lider-id="liderId"
+              v-if="cellId"
+              :key="cellId"
+              :celula-id="cellId"
+              :lider-nome="resolvedLiderNome"
+              :lider-id="resolvedLiderId"
             />
+            <div
+              v-else
+              class="flex min-h-0 flex-1 flex-col border-t border-gray-200 lg:min-h-[28rem] lg:border-t-0 lg:border-l lg:border-gray-200 bg-gray-50/40"
+            >
+              <div class="shrink-0 border-b border-gray-100 bg-white px-4 py-3 sm:px-5">
+                <h4 class="text-[11px] font-semibold uppercase tracking-wide text-gray-500">
+                  Membros da célula
+                </h4>
+              </div>
+              <div class="flex flex-1 flex-col items-center justify-center gap-2 px-6 py-10 text-center text-sm text-gray-500">
+                <p>Salve os dados da célula para cadastrar membros.</p>
+                <p v-if="resolvedLiderNome" class="text-gray-600">
+                  Líder: <span class="font-medium text-gray-800">{{ resolvedLiderNome }}</span>
+                </p>
+              </div>
+            </div>
           </div>
 
           <!-- Rodapé fixo -->
@@ -419,7 +447,7 @@ const liderId = computed(() => props.cell?.lider?.id ?? props.cell?.liderId)
               class="inline-flex min-h-[44px] w-full items-center justify-center rounded-lg border border-gray-300 bg-white px-4 py-2.5 text-sm font-medium text-gray-700 shadow-sm hover:bg-gray-50 disabled:opacity-50 sm:w-auto"
               @click="emit('close')"
             >
-              Cancelar
+              {{ isEditMode ? 'Concluir' : 'Cancelar' }}
             </button>
             <button
               type="submit"
@@ -439,7 +467,7 @@ const liderId = computed(() => props.cell?.lider?.id ?? props.cell?.liderId)
                   d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
                 />
               </svg>
-              {{ props.isLoading ? 'Salvando…' : 'Salvar' }}
+              {{ props.isLoading ? 'Salvando…' : isEditMode ? 'Salvar alterações' : 'Salvar célula' }}
             </button>
           </div>
         </form>

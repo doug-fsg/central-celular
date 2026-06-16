@@ -12,6 +12,12 @@ import CellMembersModal from '../components/CellMembersModal.vue'
 import { ssoLinkService } from '../services/ssoLinkService'
 import FrequencyChart from '../components/FrequencyChart.vue'
 import AppIcon from '../components/AppIcon.vue'
+import {
+  ensureUserInLeaderList,
+  filterUsersForCellLeaderSelect,
+  normalizeCreatedUsuario,
+} from '../utils/cellLeaders'
+import { normalizeCelulaFromApi } from '../utils/celula'
 
 const activeTab = ref('dashboard') // 'dashboard', 'users', 'cells' ou 'whatsapp'
 const whatsappRef = ref<any>(null)
@@ -141,6 +147,11 @@ const selectedCellForMembers = ref<{ id: number, nome: string } | null>(null)
 // Lista de líderes disponíveis
 const availableLeaders = ref<Usuario[]>([])
 const leaderFilterId = ref<string>('')
+
+function closeCellModal() {
+  showCellModal.value = false
+  selectedCell.value = undefined
+}
 const leaderSearchTerm = ref('')
 const showLeaderDropdown = ref(false)
 
@@ -378,12 +389,14 @@ const handleSaveUser = async (userData: Partial<Usuario> & { criarCelulaApos?: b
       // Se for líder e a opção estiver marcada, abrir modal de nova célula pré-selecionando o líder
       if (userData.cargo === 'LIDER' && userData.criarCelulaApos) {
         await loadAvailableLeaders()
-        // Sugestão de nome para a célula com o nome do líder
-        const leaderName = (novoUsuario as any)?.nome || 'Líder'
-        selectedCell.value = { 
-          liderId: (novoUsuario as any).id,
-          nome: `Célula - ${leaderName.split(' ')[0]}`
-        } as any
+        const lider = normalizeCreatedUsuario(novoUsuario as Usuario & { ativo?: boolean })
+        availableLeaders.value = ensureUserInLeaderList(availableLeaders.value, lider)
+        const leaderName = lider.nome || 'Líder'
+        selectedCell.value = {
+          liderId: lider.id,
+          lider: { id: lider.id, nome: lider.nome, whatsapp: lider.whatsapp, cargo: lider.cargo, ativo: lider.ativo, status: lider.status },
+          nome: `Célula - ${leaderName.split(' ')[0]}`,
+        }
         showUserModal.value = false
         showCellModal.value = true
       }
@@ -459,11 +472,7 @@ const loadAvailableLeaders = async () => {
   try {
     // Buscar líderes e supervisores
     const response = await adminService.listarUsuarios(1, 100, ['LIDER', 'SUPERVISOR'])
-    // Filtrar apenas usuários ativos e com cargo correto
-    availableLeaders.value = response.usuarios.filter(u => 
-      u.status === 'ativo' && 
-      (u.cargo === 'LIDER' || u.cargo === 'SUPERVISOR')
-    )
+    availableLeaders.value = filterUsersForCellLeaderSelect(response.usuarios)
     console.log('Líderes disponíveis carregados:', availableLeaders.value)
   } catch (error) {
     console.error('Erro ao carregar líderes:', error)
@@ -693,14 +702,26 @@ const loadCells = async (page: number = 1) => {
     console.log('Dados para salvar:', dadosParaSalvar)
 
     if (selectedCell.value?.id) {
-      await adminService.atualizarCelula(selectedCell.value.id, dadosParaSalvar)
+      const atualizada = normalizeCelulaFromApi(
+        await adminService.atualizarCelula(selectedCell.value.id, dadosParaSalvar),
+      )
+      selectedCell.value = { ...selectedCell.value, ...atualizada }
       showFeedback('Célula atualizada com sucesso')
+      await loadCells(cellPagination.value.currentPage)
     } else {
-      await adminService.criarCelula(dadosParaSalvar as Omit<Celula, 'id'>)
-      showFeedback('Célula criada com sucesso')
+      const novaCelula = normalizeCelulaFromApi(
+        await adminService.criarCelula(dadosParaSalvar as Omit<Celula, 'id'>),
+      )
+      if (!novaCelula.id) {
+        showFeedback('Célula criada, mas não foi possível carregar o painel de membros.', 'error')
+        closeCellModal()
+        await loadCells(cellPagination.value.currentPage)
+        return
+      }
+      selectedCell.value = novaCelula
+      showFeedback('Célula criada. Agora você pode adicionar os membros.')
+      await loadCells(cellPagination.value.currentPage)
     }
-    showCellModal.value = false
-    await loadCells(cellPagination.value.currentPage)
   } catch (error: any) {
     console.error('Erro ao salvar célula:', error)
     const mensagemErro = error.errors?.[0]?.message || error.message || 'Erro ao salvar célula'
@@ -1615,7 +1636,7 @@ const handleSendSsoLink = async () => {
       :cell="selectedCell"
       :available-leaders="availableLeaders"
       :is-loading="isLoadingCell"
-      @close="showCellModal = false"
+      @close="closeCellModal"
       @save="handleSaveCell"
     />
   </div>

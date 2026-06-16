@@ -8,6 +8,8 @@ import SortableTableHeader from '../../components/admin/SortableTableHeader.vue'
 import { adminService } from '../../services/adminService'
 import type { Celula, Usuario } from '../../services/adminService'
 import { toggleSortState, type SortState } from '../../utils/tableSort'
+import { filterUsersForCellLeaderSelect } from '../../utils/cellLeaders'
+import { normalizeCelulaFromApi } from '../../utils/celula'
 import {
   PUBLICO_CELULA_OPTIONS,
   PUBLICO_CELULA_BADGE_CLASS,
@@ -81,6 +83,11 @@ const selectedCellForMembers = ref<{ id: number, nome: string } | null>(null)
 
 // Lista de líderes disponíveis
 const availableLeaders = ref<Usuario[]>([])
+
+function closeCellModal() {
+  showCellModal.value = false
+  selectedCell.value = undefined
+}
 
 // Estado para filtros de células
 const cellFilters = ref({
@@ -352,10 +359,7 @@ const showFeedback = (message: string, type: 'success' | 'error' = 'success') =>
 const loadAvailableLeaders = async () => {
   try {
     const response = await adminService.listarUsuarios(1, 100, ['LIDER', 'SUPERVISOR', 'ADMINISTRADOR', 'PASTOR'])
-    availableLeaders.value = response.usuarios.filter(u => 
-      u.status === 'ativo' && 
-      (u.cargo === 'LIDER' || u.cargo === 'SUPERVISOR' || u.cargo === 'ADMINISTRADOR' || u.cargo === 'PASTOR')
-    )
+    availableLeaders.value = filterUsersForCellLeaderSelect(response.usuarios)
   } catch (error) {
     console.error('Erro ao carregar líderes:', error)
     showFeedback('Erro ao carregar líderes disponíveis', 'error')
@@ -490,14 +494,26 @@ const handleSaveCell = async (cellData: Partial<Celula>) => {
     }
 
     if (selectedCell.value?.id) {
-      await adminService.atualizarCelula(selectedCell.value.id, dadosParaSalvar)
+      const atualizada = normalizeCelulaFromApi(
+        await adminService.atualizarCelula(selectedCell.value.id, dadosParaSalvar),
+      )
+      selectedCell.value = { ...selectedCell.value, ...atualizada }
       showFeedback('Célula atualizada com sucesso')
+      await loadCells(cellPagination.value.currentPage)
     } else {
-      await adminService.criarCelula(dadosParaSalvar as Omit<Celula, 'id'>)
-      showFeedback('Célula criada com sucesso')
+      const novaCelula = normalizeCelulaFromApi(
+        await adminService.criarCelula(dadosParaSalvar as Omit<Celula, 'id'>),
+      )
+      if (!novaCelula.id) {
+        showFeedback('Célula criada, mas não foi possível carregar o painel de membros.', 'error')
+        closeCellModal()
+        await loadCells(cellPagination.value.currentPage)
+        return
+      }
+      selectedCell.value = novaCelula
+      showFeedback('Célula criada. Agora você pode adicionar os membros.')
+      await loadCells(cellPagination.value.currentPage)
     }
-    showCellModal.value = false
-    await loadCells(cellPagination.value.currentPage)
   } catch (error: any) {
     console.error('Erro ao salvar célula:', error)
     const mensagemErro = error.errors?.[0]?.message || error.message || 'Erro ao salvar célula'
@@ -1308,7 +1324,7 @@ onUnmounted(() => {
       :cell="selectedCell"
       :available-leaders="availableLeaders"
       :is-loading="isLoadingCell"
-      @close="showCellModal = false"
+      @close="closeCellModal"
       @save="handleSaveCell"
     />
   </main>

@@ -49,6 +49,7 @@ watch(() => props.user, (newUser) => {
       cargo: newUser.cargo || 'LIDER'
     }
     enviarConvite.value = false // Em modo edit, não enviar convite
+    criarCelulaApos.value = false
   } else {
     form.value = {
       id: undefined,
@@ -57,12 +58,23 @@ watch(() => props.user, (newUser) => {
       cargo: 'LIDER'
     }
     enviarConvite.value = props.mode === 'create' // Resetar para padrão
+    criarCelulaApos.value = false
   }
 }, { immediate: true })
 
 // Resetar enviarConvite quando o modo mudar
 watch(() => props.mode, (newMode) => {
   enviarConvite.value = newMode === 'create'
+  if (newMode === 'create') {
+    criarCelulaApos.value = false
+  }
+})
+
+// Desmarcar criar célula se o cargo deixar de ser LIDER
+watch(() => form.value.cargo, (cargo) => {
+  if (cargo !== 'LIDER') {
+    criarCelulaApos.value = false
+  }
 })
 
 // Salvar usuário
@@ -209,7 +221,7 @@ const handleSubmit = () => {
               </div>
               <span class="text-sm text-left">
                 <span class="font-medium text-gray-800 block">Criar célula para este líder após salvar</span>
-                <span class="text-gray-600 mt-0.5 block">Abre o formulário de nova célula com o líder já selecionado.</span>
+                <span class="text-gray-600 mt-0.5 block">Abre o formulário de nova célula com o líder já selecionado e a lista de membros ao lado.</span>
               </span>
             </label>
           </div>
