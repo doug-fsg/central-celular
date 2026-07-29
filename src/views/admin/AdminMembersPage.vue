@@ -1,5 +1,8 @@
 <script setup lang="ts">
-import { ref, computed, watch, onMounted, onUnmounted } from 'vue'
+import { ref, computed, onMounted } from 'vue'
+import AdminListFilterBar from '../../components/admin/AdminListFilterBar.vue'
+import { useDebouncedWatch } from '../../composables/useDebouncedWatch'
+import { ADMIN_FILTER_SELECT_CLASS, type AdminFilterChip } from '../../constants/adminFilters'
 import MemberFrequencyModal from '../../components/MemberFrequencyModal.vue'
 import SortableTableHeader from '../../components/admin/SortableTableHeader.vue'
 import { adminService, type MembroCompleto } from '../../services/adminService'
@@ -60,22 +63,29 @@ const handleSort = (key: string) => {
   loadMembers(1)
 }
 
-const filterSelectClass =
-  'h-9 min-w-[8.5rem] cursor-pointer appearance-none rounded-lg border border-neutral-200 bg-neutral-50/80 pl-3 pr-8 text-sm text-neutral-700 transition-colors duration-200 hover:border-neutral-300 hover:bg-white focus:border-primary-500 focus:outline-none focus:ring-2 focus:ring-primary-500/20'
+const filterSelectClass = ADMIN_FILTER_SELECT_CLASS
 
-// Estado para filtros
 const searchTerm = ref('')
 const isFiltering = computed(() => searchTerm.value.trim() !== '')
 
-let searchDebounceTimer: ReturnType<typeof setTimeout> | null = null
-
-watch(searchTerm, () => {
-  if (searchDebounceTimer) clearTimeout(searchDebounceTimer)
-  searchDebounceTimer = setTimeout(() => {
-    searchDebounceTimer = null
-    loadMembers(1)
-  }, 300)
+const memberActiveFilterChips = computed((): AdminFilterChip[] => {
+  const term = searchTerm.value.trim()
+  return term ? [{ key: 'search', label: term }] : []
 })
+
+function clearMemberFilters() {
+  searchTerm.value = ''
+  loadMembers(1)
+}
+
+function removeMemberFilterChip(key: string) {
+  if (key === 'search') {
+    searchTerm.value = ''
+    loadMembers(1)
+  }
+}
+
+useDebouncedWatch(searchTerm, () => loadMembers(1))
 
 // Estado do modal de frequência
 const showFrequencyModal = ref(false)
@@ -211,10 +221,6 @@ const handlePageChange = (page: number) => {
 onMounted(() => {
   loadMembers()
 })
-
-onUnmounted(() => {
-  if (searchDebounceTimer) clearTimeout(searchDebounceTimer)
-})
 </script>
 
 <template>
@@ -226,41 +232,16 @@ onUnmounted(() => {
       </div>
     </div>
 
-    <!-- Filtros -->
-    <div class="bg-white shadow-sm rounded-xl border border-gray-100 p-4 sm:p-5 mb-4">
-      <div class="relative">
-        <div class="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none">
-          <svg class="h-5 w-5 text-gray-400" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor">
-            <path fill-rule="evenodd" d="M8 4a4 4 0 100 8 4 4 0 000-8zM2 8a6 6 0 1110.89 3.476l4.817 4.817a1 1 0 01-1.414 1.414l-4.816-4.816A6 6 0 012 8z" clip-rule="evenodd" />
-          </svg>
-        </div>
-        <input
-          type="text"
-          id="search"
-          v-model="searchTerm"
-          class="block w-full pl-12 pr-11 py-3 text-sm sm:text-base border border-gray-200 rounded-xl bg-gray-50 focus:bg-white focus:ring-2 focus:ring-primary-500 focus:border-primary-500 transition-all duration-200 placeholder:text-gray-400 text-gray-900"
-          placeholder="Buscar membros por nome, telefone, célula ou líder..."
-        >
-        <button
-          v-if="searchTerm"
-          @click="searchTerm = ''"
-          type="button"
-          class="absolute inset-y-0 right-0 pr-4 flex items-center text-gray-400 hover:text-gray-600 active:text-gray-700 transition-colors touch-manipulation"
-          aria-label="Limpar busca"
-        >
-          <svg class="h-5 w-5" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor">
-            <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clip-rule="evenodd" />
-          </svg>
-        </button>
-      </div>
-      <!-- Contador de resultados -->
-      <div v-if="isFiltering && members.length > 0" class="mt-3 text-xs sm:text-sm text-gray-600 flex items-center gap-1.5">
-        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
-        </svg>
-        <span>{{ pagination.total }} {{ pagination.total === 1 ? 'membro encontrado' : 'membros encontrados' }}</span>
-      </div>
-    </div>
+    <AdminListFilterBar
+      v-model="searchTerm"
+      section-label="Filtros da lista de membros"
+      input-id="member-search"
+      placeholder="Buscar membros por nome, telefone, célula ou líder…"
+      :loading="loading && !!searchTerm.trim()"
+      :chips="memberActiveFilterChips"
+      @remove-chip="removeMemberFilterChip"
+      @clear-all="clearMemberFilters"
+    />
 
     <SkeletonList v-if="loading" :rows="6" class="mt-4" />
 
@@ -280,9 +261,10 @@ onUnmounted(() => {
             : 'Comece criando células e adicionando membros a elas.' }}
         </p>
         <button
-          v-if="searchTerm"
-          @click="searchTerm = ''"
+          v-if="isFiltering"
+          type="button"
           class="mt-4 inline-flex items-center gap-2 px-4 py-2 text-sm font-medium text-primary-600 hover:text-primary-700 active:text-primary-800 transition-colors"
+          @click="clearMemberFilters"
         >
           <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />

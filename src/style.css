@@ -138,6 +138,181 @@ html {
   .container-layout {
     @apply max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6;
   }
+
+  /* Layout autenticado: sidebar fixa no desktop */
+  .app-layout--authenticated {
+    @apply min-h-screen;
+  }
+
+  @media (min-width: 640px) {
+    .app-layout--authenticated {
+      @apply pl-64;
+      transition: padding-left 0.2s ease;
+    }
+
+    .app-layout--authenticated.app-layout--sidebar-collapsed {
+      @apply pl-16;
+    }
+
+    .app-layout--authenticated .app-shell {
+      @apply min-h-screen;
+    }
+  }
+
+  .app-sidebar {
+    @apply fixed inset-y-0 left-0 z-30 flex w-64 flex-col border-r border-neutral-200 bg-white shadow-soft;
+    transition: width 0.2s ease;
+  }
+
+  .app-sidebar--collapsed {
+    @apply w-16;
+  }
+
+  .app-sidebar__inner {
+    @apply flex h-full min-h-0 flex-col;
+  }
+
+  .app-sidebar__header {
+    @apply flex shrink-0 items-center justify-between gap-2 border-b border-neutral-200 px-3 py-4;
+  }
+
+  .app-sidebar--collapsed .app-sidebar__header {
+    @apply flex-col px-2;
+  }
+
+  .app-sidebar__brand {
+    @apply flex min-w-0 items-center gap-3 no-underline;
+  }
+
+  .app-sidebar--collapsed .app-sidebar__brand {
+    @apply justify-center;
+  }
+
+  .app-sidebar__brand-text {
+    @apply truncate font-display text-lg font-bold tracking-tight text-neutral-800;
+  }
+
+  .app-sidebar__collapse-btn {
+    @apply flex size-8 shrink-0 items-center justify-center rounded-lg text-neutral-500 transition-colors;
+  }
+
+  @media (hover: hover) {
+    .app-sidebar__collapse-btn:hover {
+      @apply bg-neutral-100 text-neutral-700;
+    }
+  }
+
+  .app-sidebar__nav {
+    @apply flex flex-1 flex-col gap-1 overflow-y-auto px-3 py-4;
+  }
+
+  .app-sidebar--collapsed .app-sidebar__nav {
+    @apply px-2;
+  }
+
+  .app-sidebar__link {
+    @apply flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-colors no-underline;
+  }
+
+  .app-sidebar__link--collapsed {
+    @apply justify-center px-2;
+  }
+
+  .app-sidebar__link--active {
+    @apply bg-primary-50 text-primary-700;
+  }
+
+  .app-sidebar__link--inactive {
+    @apply text-neutral-600;
+  }
+
+  @media (hover: hover) {
+    .app-sidebar__link--inactive:hover {
+      @apply bg-neutral-100 text-neutral-800;
+    }
+  }
+
+  .app-sidebar__footer {
+    @apply flex shrink-0 flex-col gap-2 border-t border-neutral-200 p-3;
+  }
+
+  .app-sidebar--collapsed .app-sidebar__footer {
+    @apply p-2;
+  }
+
+  .app-sidebar__view-toggle {
+    @apply flex w-full items-center gap-2 rounded-lg border border-primary-200 bg-primary-50 px-3 py-2 text-sm font-medium text-primary-700 transition-colors;
+  }
+
+  .app-sidebar__view-toggle--collapsed {
+    @apply justify-center px-2;
+  }
+
+  @media (hover: hover) {
+    .app-sidebar__view-toggle:hover {
+      @apply bg-primary-100;
+    }
+  }
+
+  .app-sidebar__user {
+    @apply flex w-full items-center gap-3 rounded-lg px-2 py-2 text-left transition-colors;
+  }
+
+  .app-sidebar__user--collapsed {
+    @apply justify-center px-1;
+  }
+
+  .app-sidebar__user--active {
+    @apply bg-neutral-100;
+  }
+
+  @media (hover: hover) {
+    .app-sidebar__user:hover {
+      @apply bg-neutral-100;
+    }
+  }
+
+  .app-sidebar__avatar {
+    @apply flex size-9 items-center justify-center rounded-full bg-primary-100 text-sm font-bold text-primary-800;
+  }
+
+  .app-sidebar__menu {
+    @apply absolute bottom-full left-0 right-0 mb-2 overflow-hidden rounded-xl border border-neutral-200 bg-white py-1 shadow-card;
+  }
+
+  .app-sidebar__menu--collapsed {
+    @apply bottom-0 left-full right-auto mb-0 ml-2 w-52;
+  }
+
+  .app-sidebar__menu-item {
+    @apply flex w-full items-center gap-3 px-4 py-2.5 text-left text-sm text-neutral-700 transition-colors;
+  }
+
+  @media (hover: hover) {
+    .app-sidebar__menu-item:hover {
+      @apply bg-neutral-50;
+    }
+  }
+
+  .app-sidebar__menu-item--accent {
+    @apply font-medium text-violet-700;
+  }
+
+  @media (hover: hover) {
+    .app-sidebar__menu-item--accent:hover {
+      @apply bg-violet-50;
+    }
+  }
+
+  .app-sidebar__menu-item--danger {
+    @apply text-red-600;
+  }
+
+  @media (hover: hover) {
+    .app-sidebar__menu-item--danger:hover {
+      @apply bg-red-50;
+    }
+  }
   
   .section {
     @apply mb-8;
@@ -155,6 +330,12 @@ html {
     -webkit-backdrop-filter: blur(12px);
     box-shadow: 0 -4px 24px rgba(15, 23, 42, 0.06);
     padding-bottom: calc(0.5rem + env(safe-area-inset-bottom, 0px));
+  }
+
+  @media (min-width: 640px) {
+    .bottom-nav {
+      display: none !important;
+    }
   }
 
   .nav-item {

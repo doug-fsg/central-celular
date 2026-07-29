@@ -1,14 +1,14 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import { RouterLink } from 'vue-router'
-import type { DashboardCuidadoResponse } from '../../services/adminService'
-import { DASHBOARD_CUIDADO_COPY } from '../../constants/dashboardCuidado'
+import type { DashboardCuidadoResponse } from '../../../services/adminService'
+import { DASHBOARD_UNIFIED_COPY } from '../../../constants/dashboardUnified'
 import {
   coverageBarClass,
   coverageCardClass,
   coverageRowClass,
   resolveDashboardLimiares,
-} from '../../utils/dashboardCuidadoUi'
+} from '../../../utils/dashboardCuidadoUi'
 
 const props = defineProps<{
   celulas: DashboardCuidadoResponse['celulas']
@@ -32,29 +32,26 @@ function cardClass(pct: number, totalMembros: number) {
 </script>
 
 <template>
-  <section aria-labelledby="celulas-heading">
-    <h2 id="celulas-heading" class="mb-2 text-sm font-semibold text-neutral-800">
-      {{ DASHBOARD_CUIDADO_COPY.rankingHeading }}
+  <section
+    class="rounded-xl border border-neutral-200 bg-white p-5 shadow-sm lg:col-span-2"
+    aria-labelledby="celulas-heading"
+  >
+    <h2 id="celulas-heading" class="mb-4 text-sm font-semibold text-neutral-800">
+      {{ DASHBOARD_UNIFIED_COPY.sections.celulas }}
     </h2>
 
     <div v-if="loading" class="flex flex-col gap-3" aria-busy="true">
-      <div v-for="i in 4" :key="i" class="h-12 animate-pulse rounded-lg bg-neutral-100 sm:hidden" />
-      <div
-        v-for="i in 4"
-        :key="`d-${i}`"
-        class="hidden h-12 animate-pulse rounded-lg bg-neutral-100 sm:block"
-      />
+      <div v-for="i in 5" :key="i" class="h-12 animate-pulse rounded-lg bg-neutral-100" />
     </div>
 
     <div
       v-else-if="celulas.length === 0"
-      class="rounded-xl border border-neutral-200 bg-white p-8 text-center shadow-sm"
+      class="rounded-lg border border-neutral-100 bg-neutral-50 p-8 text-center"
     >
       <p class="text-sm text-neutral-600">Nenhuma célula ativa neste recorte.</p>
     </div>
 
     <template v-else>
-      <!-- Mobile cards -->
       <ul class="flex flex-col gap-2 sm:hidden">
         <li v-for="c in celulas" :key="c.celulaId">
           <RouterLink
@@ -65,7 +62,6 @@ function cardClass(pct: number, totalMembros: number) {
             <a
               :href="href"
               class="block touch-manipulation rounded-xl border p-4 active:scale-[0.99]"
-              style="-webkit-tap-highlight-color: rgba(244, 63, 94, 0.1)"
               :class="cardClass(c.percentualCobertura, c.totalMembros)"
               @click="(e) => navigate(e)"
             >
@@ -93,13 +89,13 @@ function cardClass(pct: number, totalMembros: number) {
         </li>
       </ul>
 
-      <!-- Desktop -->
-      <div class="hidden overflow-hidden rounded-xl border border-neutral-200 bg-white shadow-sm sm:block">
+      <div class="hidden overflow-hidden rounded-lg border border-neutral-100 sm:block">
         <table class="min-w-full text-sm">
           <thead class="bg-neutral-50 text-left text-xs font-semibold uppercase text-neutral-600">
             <tr>
-              <th class="px-4 py-3">Nome</th>
+              <th class="px-4 py-3">Célula</th>
               <th class="px-4 py-3">Líder</th>
+              <th class="px-4 py-3">Membros</th>
               <th class="px-4 py-3 w-48">Cobertura</th>
               <th class="px-4 py-3 text-right">Ação</th>
             </tr>
@@ -113,9 +109,10 @@ function cardClass(pct: number, totalMembros: number) {
             >
               <td class="px-4 py-3 font-medium text-neutral-900">{{ c.nome }}</td>
               <td class="px-4 py-3 text-neutral-600">{{ c.liderNome }}</td>
+              <td class="px-4 py-3 tabular-nums text-neutral-600">{{ c.totalMembros }}</td>
               <td class="px-4 py-3 align-middle">
                 <div class="flex items-center gap-3">
-                  <div class="min-w-[80px] flex-1 h-2 overflow-hidden rounded-full bg-neutral-200">
+                  <div class="h-2 min-w-[80px] flex-1 overflow-hidden rounded-full bg-neutral-200">
                     <div
                       class="h-2 rounded-full"
                       :class="barClass(c.percentualCobertura)"

@@ -88,6 +88,14 @@ async function issueTokens(user: {
 }
 
 export const authService = {
+  generateJwtToken(payload: {
+    userId: number;
+    accountId: number;
+    isSuperAdmin: boolean;
+  }): string {
+    return signAccessToken(payload);
+  },
+
   formatWhatsApp(whatsapp: string): string {
     return whatsappService.formatFullPhoneNumber(whatsapp);
   },

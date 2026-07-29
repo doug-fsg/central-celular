@@ -2,6 +2,7 @@ import { prisma } from '../lib/prisma';
 import {
   COBERTURA_BAIXA_PCT,
   LIMITE_FEED_MEMBROS,
+  MAX_ALERTAS_POR_TIPO_UI,
   MAX_CUIDADOS_POR_CONSOLIDADOR,
   SEMAFORO_CRITICO_LT,
   SEMAFORO_OK_GTE,
@@ -18,6 +19,7 @@ export interface DashboardCuidadoResponse {
     percentualCobertura: number;
     statusSemafaro: StatusSemafaro;
     consolidadoresSobrecarregados: number;
+    consolidadoresAtivos: number;
   };
   celulas: Array<{
     celulaId: number;
@@ -53,6 +55,45 @@ export interface DashboardCuidadoResponse {
   filtros: {
     liderId: number | null;
   };
+  limiares: {
+    coberturaBaixaPct: number;
+    semaforoOkGte: number;
+    semaforoCriticoLt: number;
+    limiteFeedMembros: number;
+    maxAlertasPorTipoUi: number;
+  };
+  totaisAlertas: {
+    membrosSemCuidador: number;
+    celulasBaixaCobertura: number;
+    consolidadoresSobrecarregados: number;
+  };
+  listas: {
+    membrosSemCuidador: Array<{
+      membroId: number;
+      nome: string;
+      celulaId: number;
+      celulaNome: string;
+    }>;
+    celulasBaixaCobertura: Array<{
+      celulaId: number;
+      nome: string;
+      percentualCobertura: number;
+      semCuidador: number;
+    }>;
+    membrosComCuidador: Array<{
+      membroId: number;
+      nome: string;
+      celulaId: number;
+      celulaNome: string;
+      cuidadorNome: string | null;
+    }>;
+    todosMembros: Array<{
+      membroId: number;
+      nome: string;
+      celulaId: number;
+      celulaNome: string;
+    }>;
+  };
 }
 
 function calcularStatusSemafaro(
@@ -80,6 +121,15 @@ interface RowQ2 {
   celula_nome: string;
 }
 
+interface RowMembroLista {
+  id: number;
+  nome: string;
+  celula_id: number;
+  celula_nome: string;
+  com_cuidador: boolean;
+  cuidador_nome: string | null;
+}
+
 interface RowQ3 {
   consolidador_id: number;
   consolidador_nome: string;
@@ -94,7 +144,7 @@ export async function montarDashboardCuidado(
 ): Promise<DashboardCuidadoResponse> {
   const lid = liderId ?? null;
 
-  const [rowsQ1, rowsQ2, rowsQ3] = await Promise.all([
+  const [rowsQ1, rowsQ2, rowsQ3, consolidadoresAtivos, rowsMembros] = await Promise.all([
     prisma.$queryRaw<RowQ1[]>`
       SELECT
         c.id AS celula_id,
@@ -142,6 +192,35 @@ export async function montarDashboardCuidado(
       GROUP BY ac.consolidador_id, mc.nome, c.id, c.nome
       HAVING COUNT(*) > ${MAX_CUIDADOS_POR_CONSOLIDADOR}
       ORDER BY qtd_cuidados DESC
+    `,
+    prisma.membro.count({
+      where: {
+        ehConsolidador: true,
+        ativo: true,
+        celula: {
+          accountId,
+          ativo: true,
+          ...(lid != null ? { liderId: lid } : {}),
+        },
+      },
+    }),
+    prisma.$queryRaw<RowMembroLista[]>`
+      SELECT
+        m.id,
+        m.nome,
+        c.id AS celula_id,
+        c.nome AS celula_nome,
+        (ac.id IS NOT NULL) AS com_cuidador,
+        mc.nome AS cuidador_nome
+      FROM membros m
+      INNER JOIN celulas c ON c.id = m.celula_id
+      LEFT JOIN atribuicoes_cuidado ac ON ac.membro_id = m.id
+      LEFT JOIN membros mc ON mc.id = ac.consolidador_id AND mc.ativo = true
+      WHERE c.account_id = ${accountId}
+        AND c.ativo = true
+        AND m.ativo = true
+        AND (${lid}::integer IS NULL OR c.lider_id = ${lid})
+      ORDER BY c.nome ASC, m.nome ASC
     `,
   ]);
 
@@ -206,6 +285,32 @@ export async function montarDashboardCuidado(
     celulaNome: r.celula_nome,
   }));
 
+  const todosMembros = rowsMembros.map((r) => ({
+    membroId: r.id,
+    nome: r.nome,
+    celulaId: r.celula_id,
+    celulaNome: r.celula_nome,
+  }));
+
+  const membrosComCuidador = rowsMembros
+    .filter((r) => r.com_cuidador)
+    .map((r) => ({
+      membroId: r.id,
+      nome: r.nome,
+      celulaId: r.celula_id,
+      celulaNome: r.celula_nome,
+      cuidadorNome: r.cuidador_nome,
+    }));
+
+  const membrosSemCuidadorLista = rowsMembros
+    .filter((r) => !r.com_cuidador)
+    .map((r) => ({
+      membroId: r.id,
+      nome: r.nome,
+      celulaId: r.celula_id,
+      celulaNome: r.celula_nome,
+    }));
+
   return {
     resumo: {
       totalCelulas: celulas.length,
@@ -215,6 +320,7 @@ export async function montarDashboardCuidado(
       percentualCobertura,
       statusSemafaro,
       consolidadoresSobrecarregados: qtdSobrecarga,
+      consolidadoresAtivos,
     },
     celulas: sortedCelulas,
     alertas: {
@@ -224,6 +330,24 @@ export async function montarDashboardCuidado(
     },
     filtros: {
       liderId: liderId ?? null,
+    },
+    limiares: {
+      coberturaBaixaPct: COBERTURA_BAIXA_PCT,
+      semaforoOkGte: SEMAFORO_OK_GTE,
+      semaforoCriticoLt: SEMAFORO_CRITICO_LT,
+      limiteFeedMembros: LIMITE_FEED_MEMBROS,
+      maxAlertasPorTipoUi: MAX_ALERTAS_POR_TIPO_UI,
+    },
+    totaisAlertas: {
+      membrosSemCuidador: semCuidador,
+      celulasBaixaCobertura: celulasBaixaCobertura.length,
+      consolidadoresSobrecarregados: consolidadoresSobrecarregados.length,
+    },
+    listas: {
+      membrosSemCuidador: membrosSemCuidadorLista,
+      celulasBaixaCobertura,
+      membrosComCuidador,
+      todosMembros,
     },
   };
 }

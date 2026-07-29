@@ -11,7 +11,10 @@ import {
 } from '../../utils/cellLeaders'
 import { normalizeCelulaFromApi } from '../../utils/celula'
 import { ssoLinkService } from '../../services/ssoLinkService'
+import AdminListFilterBar from '../../components/admin/AdminListFilterBar.vue'
+import AdminFilterSelect from '../../components/admin/AdminFilterSelect.vue'
 import AppIcon from '../../components/AppIcon.vue'
+import { ADMIN_FILTER_SELECT_CLASS, type AdminFilterChip } from '../../constants/adminFilters'
 import AdminUsersBulkBar from '../../components/admin/AdminUsersBulkBar.vue'
 import SortableTableHeader from '../../components/admin/SortableTableHeader.vue'
 import { toggleSortState, compareUsuarios, type SortState } from '../../utils/tableSort'
@@ -91,8 +94,36 @@ const handlePageSizeChange = () => {
   loadUsers(1)
 }
 
-const filterSelectClass =
-  'h-9 min-w-[8.5rem] cursor-pointer appearance-none rounded-lg border border-neutral-200 bg-neutral-50/80 pl-3 pr-8 text-sm text-neutral-700 transition-colors duration-200 hover:border-neutral-300 hover:bg-white focus:border-primary-500 focus:outline-none focus:ring-2 focus:ring-primary-500/20'
+const filterSelectClass = ADMIN_FILTER_SELECT_CLASS
+
+const USER_ROLE_LABELS: Record<string, string> = {
+  LIDER: 'Líder',
+  SUPERVISOR: 'Supervisor',
+  PASTOR: 'Pastor (admin da igreja)',
+}
+
+const userActiveFilterChips = computed((): AdminFilterChip[] => {
+  const chips: AdminFilterChip[] = []
+  const term = userSearchTerm.value.trim()
+  if (term) chips.push({ key: 'search', label: term })
+  if (userRoleFilter.value) {
+    chips.push({
+      key: 'role',
+      label: USER_ROLE_LABELS[userRoleFilter.value] ?? userRoleFilter.value,
+    })
+  }
+  return chips
+})
+
+function clearUserFilters() {
+  userSearchTerm.value = ''
+  userRoleFilter.value = ''
+}
+
+function removeUserFilterChip(key: string) {
+  if (key === 'search') userSearchTerm.value = ''
+  if (key === 'role') userRoleFilter.value = ''
+}
 
 const sortState = ref<SortState | null>(null)
 
@@ -769,31 +800,32 @@ const formatWhatsApp = (whatsapp: string | null | undefined): string => {
         Novo Usuário
       </button>
     </div>
+
+    <AdminListFilterBar
+      v-model="userSearchTerm"
+      section-label="Filtros da lista de usuários"
+      input-id="user-search"
+      placeholder="Buscar usuários por nome, WhatsApp ou cargo…"
+      :loading="loadingAllUsers && !!userSearchTerm.trim()"
+      :chips="userActiveFilterChips"
+      @remove-chip="removeUserFilterChip"
+      @clear-all="clearUserFilters"
+    >
+      <template #filters>
+        <AdminFilterSelect
+          id="user-role-filter"
+          v-model="userRoleFilter"
+          aria-label="Filtrar por cargo"
+        >
+          <option value="">Todos os cargos</option>
+          <option value="LIDER">Líder</option>
+          <option value="SUPERVISOR">Supervisor</option>
+          <option value="PASTOR">Pastor (admin da igreja)</option>
+        </AdminFilterSelect>
+      </template>
+    </AdminListFilterBar>
     
     <div class="bg-white shadow overflow-hidden sm:rounded-lg">
-      <!-- Filtros da lista de usuários -->
-      <div class="p-4 border-b border-gray-200 flex flex-row gap-3 items-center sm:justify-between">
-        <div class="flex-1">
-          <input
-            v-model="userSearchTerm"
-            type="text"
-            class="block w-full rounded-md border-gray-300 shadow-sm focus:border-primary-500 focus:ring-primary-500 text-sm"
-            placeholder="Pesquisar por nome, WhatsApp ou cargo"
-          />
-        </div>
-        <div class="flex-shrink-0">
-          <select
-            v-model="userRoleFilter"
-            class="block w-full rounded-md border-gray-300 shadow-sm focus:border-primary-500 focus:ring-primary-500 sm:text-sm"
-          >
-            <option value="">Todos</option>
-            <option value="LIDER">Líder</option>
-            <option value="SUPERVISOR">Supervisor</option>
-            <option value="PASTOR">Pastor (admin da igreja)</option>
-          </select>
-        </div>
-      </div>
-
       <AdminUsersBulkBar
         v-model:sheet-open="bulkSheetOpen"
         :selected-users="selectedUsersSnapshot"

@@ -1,6 +1,5 @@
 <script setup lang="ts">
 import { ref, onMounted } from 'vue'
-import Navbar from '../components/Navbar.vue'
 import { useUserStore } from '../stores/userStore'
 
 const userStore = useUserStore()
@@ -59,8 +58,6 @@ function getPerformanceColor(value: string) {
 
 <template>
   <div>
-    <Navbar />
-    
     <main class="max-w-7xl mx-auto py-6 sm:px-6 lg:px-8">
       <div class="px-4 sm:px-0">
         <h1 class="text-2xl font-bold text-gray-900">

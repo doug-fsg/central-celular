@@ -64,6 +64,7 @@ export interface DashboardCuidadoResponse {
     percentualCobertura: number;
     statusSemafaro: StatusSemafaro;
     consolidadoresSobrecarregados: number;
+    consolidadoresAtivos: number;
   };
   celulas: Array<{
     celulaId: number;
@@ -99,6 +100,62 @@ export interface DashboardCuidadoResponse {
   filtros: {
     liderId: number | null;
   };
+  limiares: {
+    coberturaBaixaPct: number;
+    semaforoOkGte: number;
+    semaforoCriticoLt: number;
+    limiteFeedMembros: number;
+    maxAlertasPorTipoUi: number;
+  };
+  totaisAlertas: {
+    membrosSemCuidador: number;
+    celulasBaixaCobertura: number;
+    consolidadoresSobrecarregados: number;
+  };
+  listas: {
+    membrosSemCuidador: Array<{
+      membroId: number;
+      nome: string;
+      celulaId: number;
+      celulaNome: string;
+    }>;
+    celulasBaixaCobertura: Array<{
+      celulaId: number;
+      nome: string;
+      percentualCobertura: number;
+      semCuidador: number;
+    }>;
+    membrosComCuidador: Array<{
+      membroId: number;
+      nome: string;
+      celulaId: number;
+      celulaNome: string;
+      cuidadorNome: string | null;
+    }>;
+    todosMembros: Array<{
+      membroId: number;
+      nome: string;
+      celulaId: number;
+      celulaNome: string;
+    }>;
+  };
+}
+
+/** Resposta GET /admin/dashboard-semana */
+export interface DashboardSemanaResponse {
+  periodo: { inicio: string; fim: string };
+  participacao: {
+    totalMembros: number;
+    culto: { presentes: number; total: number; percentual: number };
+    celula: { presentes: number; total: number; percentual: number };
+  };
+  relatorios: {
+    lideresTotal: number;
+    lideresPreencheram: number;
+    pendentes: number;
+    percentualAdesao: number;
+  };
+  filtros: { liderId: number | null };
 }
 
 export interface Usuario {
@@ -193,6 +250,22 @@ export const adminService = {
       url += `?liderId=${liderId}`;
     }
     return await api.get(url, opts?.signal ? { signal: opts.signal } : undefined);
+  },
+
+  async obterDashboardSemana(
+    dataInicio: string,
+    dataFim: string,
+    liderId?: number,
+    opts?: { signal?: AbortSignal },
+  ): Promise<DashboardSemanaResponse> {
+    const params = new URLSearchParams({ dataInicio, dataFim });
+    if (liderId != null && !Number.isNaN(liderId)) {
+      params.set('liderId', String(liderId));
+    }
+    return await api.get(
+      `/admin/dashboard-semana?${params}`,
+      opts?.signal ? { signal: opts.signal } : undefined,
+    );
   },
 
   // Listar usuários com paginação

@@ -13,6 +13,7 @@ import {
   reenviarConviteUsuario,
 } from '../controllers/usuarios.controller';
 import { obterDashboardCuidadoHandler } from '../controllers/dashboardCuidado.controller';
+import { obterDashboardSemanaHandler } from '../controllers/dashboardSemana.controller';
 import { deleteUsuarioAdmin } from '../controllers/adminUsers.controller';
 import {
   listarCelulas,
@@ -44,6 +45,7 @@ adminRouter.delete('/usuarios/:id', deleteUsuarioAdmin);
 
 // Dashboard agregado de rede de cuidado (pastoral)
 adminRouter.get('/dashboard-cuidado', obterDashboardCuidadoHandler);
+adminRouter.get('/dashboard-semana', obterDashboardSemanaHandler);
 
 // Rota para obter estatísticas
 adminRouter.get('/estatisticas', async (req, res) => {

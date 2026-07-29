@@ -1,5 +1,9 @@
 <script setup lang="ts">
-import { ref, computed, watch, onMounted, onUnmounted } from 'vue'
+import { ref, computed, onMounted, onUnmounted } from 'vue'
+import AdminListFilterBar from '../../components/admin/AdminListFilterBar.vue'
+import AdminFilterSelect from '../../components/admin/AdminFilterSelect.vue'
+import { useDebouncedWatch } from '../../composables/useDebouncedWatch'
+import { ADMIN_FILTER_SELECT_CLASS } from '../../constants/adminFilters'
 import { startOfWeek, endOfWeek, startOfMonth, endOfMonth, addWeeks } from 'date-fns'
 import CellModal from '../../components/CellModal.vue'
 import CellMembersModal from '../../components/CellMembersModal.vue'
@@ -186,17 +190,9 @@ const isFiltering = computed(
     cellFilters.value.publico !== ''
 )
 
-let searchDebounceTimer: ReturnType<typeof setTimeout> | null = null
-
-watch(
+useDebouncedWatch(
   () => cellFilters.value.searchTerm,
-  () => {
-    if (searchDebounceTimer) clearTimeout(searchDebounceTimer)
-    searchDebounceTimer = setTimeout(() => {
-      searchDebounceTimer = null
-      loadCells(1)
-    }, 300)
-  }
+  () => loadCells(1),
 )
 
 const clearFilters = () => {
@@ -206,8 +202,7 @@ const clearFilters = () => {
   loadCells(1)
 }
 
-const filterSelectClass =
-  'h-9 min-w-[8.5rem] cursor-pointer appearance-none rounded-lg border border-neutral-200 bg-neutral-50/80 pl-3 pr-8 text-sm text-neutral-700 transition-colors duration-200 hover:border-neutral-300 hover:bg-white focus:border-primary-500 focus:outline-none focus:ring-2 focus:ring-primary-500/20'
+const filterSelectClass = ADMIN_FILTER_SELECT_CLASS
 
 type ColumnKey =
   | 'publico'
@@ -284,7 +279,7 @@ const activeFilterChips = computed(() => {
   return chips
 })
 
-function removeFilterChip(key: 'search' | 'diaSemana' | 'publico') {
+function removeFilterChip(key: string) {
   if (key === 'search') cellFilters.value.searchTerm = ''
   if (key === 'diaSemana') cellFilters.value.diaSemana = ''
   if (key === 'publico') cellFilters.value.publico = ''
@@ -568,7 +563,6 @@ onMounted(() => {
 })
 
 onUnmounted(() => {
-  if (searchDebounceTimer) clearTimeout(searchDebounceTimer)
   document.removeEventListener('click', onDocumentClick)
 })
 </script>
@@ -603,125 +597,46 @@ onUnmounted(() => {
       </div>
     </div>
 
-    <!-- Filtros -->
-    <section
-      aria-label="Filtros da lista de células"
-      class="mb-4 overflow-hidden rounded-xl border border-neutral-200/90 bg-white shadow-sm"
+    <AdminListFilterBar
+      v-model="cellFilters.searchTerm"
+      section-label="Filtros da lista de células"
+      input-id="cell-search"
+      placeholder="Buscar células, líderes ou endereços…"
+      :loading="loadingCells"
+      :chips="activeFilterChips"
+      @remove-chip="removeFilterChip"
+      @clear-all="clearFilters"
     >
-      <div class="flex flex-col lg:flex-row lg:items-stretch">
-        <!-- Busca -->
-        <div
-          class="relative flex min-w-0 flex-1 items-center border-b border-neutral-100 lg:border-b-0 lg:border-r lg:border-neutral-100"
-          :aria-busy="loadingCells && !!cellFilters.searchTerm.trim()"
+      <template #filters>
+        <AdminFilterSelect
+          id="cell-dia-semana"
+          v-model="cellFilters.diaSemana"
+          aria-label="Filtrar por dia da semana"
+          @change="loadCells(1)"
         >
-          <AppIcon
-            name="search"
-            size="sm"
-            class="pointer-events-none absolute left-3.5 text-neutral-400"
-            aria-hidden="true"
-          />
-          <input
-            id="cell-search"
-            v-model="cellFilters.searchTerm"
-            type="search"
-            autocomplete="off"
-            spellcheck="false"
-            enterkeyhint="search"
-            class="h-11 w-full min-w-0 border-0 bg-transparent pl-10 pr-10 text-sm text-neutral-900 placeholder:text-neutral-400 focus:outline-none focus:ring-0"
-            placeholder="Buscar células, líderes ou endereços…"
-          >
-          <div class="absolute inset-y-0 right-0 flex items-center pr-3">
-            <span
-              v-if="loadingCells && cellFilters.searchTerm.trim()"
-              class="h-4 w-4 animate-spin rounded-full border-2 border-neutral-200 border-t-primary-600 motion-reduce:animate-none"
-              aria-hidden="true"
-            />
-            <button
-              v-else-if="cellFilters.searchTerm"
-              type="button"
-              class="rounded-md p-1 text-neutral-400 transition-colors hover:bg-neutral-100 hover:text-neutral-600 focus:outline-none focus-visible:ring-2 focus-visible:ring-primary-500"
-              aria-label="Limpar busca"
-              @click="cellFilters.searchTerm = ''"
-            >
-              <AppIcon name="close" size="sm" aria-hidden="true" />
-            </button>
-          </div>
-        </div>
+          <option value="">Todos os dias</option>
+          <option value="Segunda-feira">Segunda</option>
+          <option value="Terça-feira">Terça</option>
+          <option value="Quarta-feira">Quarta</option>
+          <option value="Quinta-feira">Quinta</option>
+          <option value="Sexta-feira">Sexta</option>
+          <option value="Sábado">Sábado</option>
+          <option value="Domingo">Domingo</option>
+        </AdminFilterSelect>
 
-        <!-- Selects compactos -->
-        <div class="flex flex-wrap items-center gap-2 px-3 py-2.5 lg:shrink-0">
-          <div class="relative">
-            <select
-              id="cell-dia-semana"
-              v-model="cellFilters.diaSemana"
-              :class="filterSelectClass"
-              aria-label="Filtrar por dia da semana"
-              @change="loadCells(1)"
-            >
-              <option value="">Todos os dias</option>
-              <option value="Segunda-feira">Segunda</option>
-              <option value="Terça-feira">Terça</option>
-              <option value="Quarta-feira">Quarta</option>
-              <option value="Quinta-feira">Quinta</option>
-              <option value="Sexta-feira">Sexta</option>
-              <option value="Sábado">Sábado</option>
-              <option value="Domingo">Domingo</option>
-            </select>
-            <div class="pointer-events-none absolute inset-y-0 right-2.5 flex items-center" aria-hidden="true">
-              <svg class="h-4 w-4 text-neutral-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7" />
-              </svg>
-            </div>
-          </div>
-
-          <div class="relative">
-            <select
-              id="cell-publico"
-              v-model="cellFilters.publico"
-              :class="filterSelectClass"
-              aria-label="Filtrar por público"
-              @change="loadCells(1)"
-            >
-              <option value="">Todos os públicos</option>
-              <option v-for="opt in PUBLICO_CELULA_OPTIONS" :key="opt.value" :value="opt.value">
-                {{ opt.label }}
-              </option>
-            </select>
-            <div class="pointer-events-none absolute inset-y-0 right-2.5 flex items-center" aria-hidden="true">
-              <svg class="h-4 w-4 text-neutral-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7" />
-              </svg>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      <!-- Chips de filtros ativos -->
-      <div
-        v-if="isFiltering"
-        class="flex flex-wrap items-center gap-2 border-t border-neutral-100 bg-neutral-50/70 px-3 py-2"
-      >
-        <span class="text-xs font-medium text-neutral-500">Filtros ativos:</span>
-        <button
-          v-for="chip in activeFilterChips"
-          :key="chip.key"
-          type="button"
-          class="inline-flex max-w-[14rem] items-center gap-1 rounded-full border border-neutral-200 bg-white py-1 pl-2.5 pr-1.5 text-xs font-medium text-neutral-700 shadow-sm transition-colors hover:border-neutral-300 hover:bg-neutral-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 cursor-pointer"
-          :aria-label="`Remover filtro ${chip.label}`"
-          @click="removeFilterChip(chip.key)"
+        <AdminFilterSelect
+          id="cell-publico"
+          v-model="cellFilters.publico"
+          aria-label="Filtrar por público"
+          @change="loadCells(1)"
         >
-          <span class="truncate">{{ chip.label }}</span>
-          <AppIcon name="close" size="xs" class="shrink-0 text-neutral-400" aria-hidden="true" />
-        </button>
-        <button
-          type="button"
-          class="ml-auto text-xs font-medium text-primary-600 transition-colors hover:text-primary-700 focus:outline-none focus-visible:underline cursor-pointer"
-          @click="clearFilters"
-        >
-          Limpar tudo
-        </button>
-      </div>
-    </section>
+          <option value="">Todos os públicos</option>
+          <option v-for="opt in PUBLICO_CELULA_OPTIONS" :key="opt.value" :value="opt.value">
+            {{ opt.label }}
+          </option>
+        </AdminFilterSelect>
+      </template>
+    </AdminListFilterBar>
 
     <!-- Totais + colunas (desktop) -->
     <div class="mb-3 flex items-center justify-between gap-3">

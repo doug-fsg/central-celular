@@ -12,6 +12,18 @@ export const DASHBOARD_CUIDADO_COPY = {
   },
   rankingHeading: 'Cobertura por célula',
   emptyAlerts: 'Nenhum alerta no momento.',
+  alertSections: {
+    membros: 'Membros sem cuidador',
+    celulas: 'Células com rede incompleta',
+    consolidadores: 'Consolidadores sobrecarregados',
+  },
+  verMais: (n: number) => `Ver mais ${n}`,
+  kpis: {
+    semCuidador: 'Sem cuidador',
+    cobertura: 'Cobertura',
+    celulasRisco: 'Células em risco',
+    sobrecarga: 'Sobrecarga',
+  },
   semafaroChip: {
     ok: 'Em dia',
     atencao: 'Atenção',

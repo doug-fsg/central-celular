@@ -4,7 +4,9 @@ import { useRouter } from 'vue-router'
 import type { DashboardCuidadoResponse } from '../../services/adminService'
 import AppIcon from '../AppIcon.vue'
 import { DASHBOARD_CUIDADO_COPY } from '../../constants/dashboardCuidado'
+import { hasAlertasPendentes, resolveDashboardLimiares } from '../../utils/dashboardCuidadoUi'
 import DashboardCuidadoHero from './DashboardCuidadoHero.vue'
+import DashboardCuidadoKpis from './DashboardCuidadoKpis.vue'
 import DashboardCuidadoAlertas from './DashboardCuidadoAlertas.vue'
 import DashboardCuidadoCelulas from './DashboardCuidadoCelulas.vue'
 
@@ -22,15 +24,28 @@ const router = useRouter()
 
 const resumo = computed(() => props.data?.resumo ?? null)
 const alertasPayload = computed(() => props.data?.alertas ?? null)
+const totaisAlertas = computed(() => {
+  if (props.data?.totaisAlertas) return props.data.totaisAlertas
+  const r = props.data?.resumo
+  const a = props.data?.alertas
+  if (!r || !a) return null
+  return {
+    membrosSemCuidador: r.semCuidador,
+    celulasBaixaCobertura: a.celulasBaixaCobertura.length,
+    consolidadoresSobrecarregados: a.consolidadoresSobrecarregados.length,
+  }
+})
+const limiares = computed(() => resolveDashboardLimiares(props.data?.limiares))
 const celulas = computed(() => props.data?.celulas ?? [])
 
 const showCelebration = computed(() => {
   const r = resumo.value
+  const t = totaisAlertas.value
   return !!(
     r &&
+    t &&
     r.totalMembros > 0 &&
-    r.percentualCobertura === 100 &&
-    r.consolidadoresSobrecarregados === 0 &&
+    !hasAlertasPendentes(t) &&
     r.statusSemafaro === 'ok'
   )
 })
@@ -40,32 +55,41 @@ const showCelebration = computed(() => {
   <div class="pb-28 sm:pb-10">
     <div
       v-if="error && !loading"
-      class="mb-4 rounded-xl border border-rose-200 bg-rose-50 p-4 flex flex-col sm:flex-row sm:items-center gap-3"
+      class="mb-4 flex flex-col gap-3 rounded-xl border border-rose-200 bg-rose-50 p-4 sm:flex-row sm:items-center"
     >
-      <p class="text-sm text-rose-900 flex-1">{{ error }}</p>
+      <p class="flex-1 text-sm text-rose-900">{{ error }}</p>
       <button
         type="button"
-        class="min-h-[48px] px-4 rounded-lg bg-rose-600 text-white font-medium text-sm touch-manipulation"
+        class="min-h-[48px] touch-manipulation rounded-lg bg-rose-600 px-4 text-sm font-medium text-white"
         @click="emit('retry')"
       >
         Tentar novamente
       </button>
     </div>
 
+    <DashboardCuidadoKpis
+      :resumo="resumo"
+      :totais-alertas="totaisAlertas"
+      :limiares="limiares"
+      :loading="loading"
+    />
+
     <!-- Desktop: KPI à esquerda, alertas à direita; mobile: empilhado -->
     <div
-      class="mb-6 rounded-xl border border-neutral-200 bg-white shadow-sm overflow-hidden flex flex-col lg:flex-row lg:items-stretch gap-0"
+      class="mb-6 flex flex-col gap-0 overflow-hidden rounded-xl border border-neutral-200 bg-white shadow-sm lg:flex-row lg:items-stretch"
     >
       <div
-        class="p-5 sm:p-6 lg:flex-1 lg:min-w-0 lg:border-r border-neutral-100 bg-gradient-to-br from-neutral-50 via-white to-primary-50/30"
+        class="border-neutral-100 bg-gradient-to-br from-neutral-50 via-white to-primary-50/30 p-5 sm:p-6 lg:min-w-0 lg:flex-1 lg:border-r"
       >
         <DashboardCuidadoHero :resumo="resumo" :loading="loading" />
       </div>
       <div
-        class="p-5 sm:p-6 lg:flex-1 lg:min-w-0 border-t lg:border-t-0 border-neutral-100 lg:max-h-[min(70vh,560px)] lg:overflow-y-auto"
+        class="border-t border-neutral-100 p-5 sm:p-6 lg:max-h-[min(70vh,560px)] lg:min-w-0 lg:flex-1 lg:overflow-y-auto lg:border-t-0"
       >
         <DashboardCuidadoAlertas
           :alertas="alertasPayload"
+          :totais-alertas="totaisAlertas"
+          :limiares="limiares"
           :loading="loading"
           :show-celebration="showCelebration"
         />
@@ -73,13 +97,13 @@ const showCelebration = computed(() => {
     </div>
 
     <!-- Atalhos -->
-    <div class="grid grid-cols-2 gap-3 mb-6">
+    <div class="mb-6 grid grid-cols-2 gap-3">
       <button
         type="button"
-        class="card p-4 text-left rounded-xl border border-neutral-200 active:scale-[0.98] touch-manipulation motion-reduce:transition-none transition-transform shadow-sm hover:border-primary-200"
+        class="card touch-manipulation rounded-xl border border-neutral-200 p-4 text-left shadow-sm transition-transform hover:border-primary-200 active:scale-[0.98] motion-reduce:transition-none"
         @click="router.push({ name: 'admin-cells' })"
       >
-        <div class="flex items-center gap-2 mb-2">
+        <div class="mb-2 flex items-center gap-2">
           <AppIcon name="grid" size="sm" class="text-primary-600" />
           <span class="text-sm font-semibold text-neutral-900">{{
             DASHBOARD_CUIDADO_COPY.shortcuts.celulas
@@ -89,39 +113,39 @@ const showCelebration = computed(() => {
       </button>
       <button
         type="button"
-        class="card p-4 text-left rounded-xl border border-neutral-200 active:scale-[0.98] touch-manipulation motion-reduce:transition-none transition-transform shadow-sm hover:border-primary-200"
-        @click="router.push({ name: 'admin-members' })"
+        class="card touch-manipulation rounded-xl border border-neutral-200 p-4 text-left shadow-sm transition-transform hover:border-primary-200 active:scale-[0.98] motion-reduce:transition-none"
+        @click="router.push({ name: 'admin-rede-cuidado' })"
       >
-        <div class="flex items-center gap-2 mb-2">
-          <AppIcon name="users" size="sm" class="text-primary-600" />
+        <div class="mb-2 flex items-center gap-2">
+          <AppIcon name="heart" size="sm" class="text-rose-600" />
           <span class="text-sm font-semibold text-neutral-900">{{
-            DASHBOARD_CUIDADO_COPY.shortcuts.membros
+            DASHBOARD_CUIDADO_COPY.ctaSticky
           }}</span>
         </div>
-        <p class="text-xs text-neutral-500">Lista de membros</p>
+        <p class="text-xs text-neutral-500">Atribuir cuidadores por célula</p>
       </button>
     </div>
 
-    <DashboardCuidadoCelulas :celulas="celulas" :loading="loading" />
+    <DashboardCuidadoCelulas :celulas="celulas" :limiares="limiares" :loading="loading" />
 
     <!-- Sticky mobile CTA -->
     <div
-      class="sm:hidden fixed left-0 right-0 z-20 px-4 pointer-events-none"
+      class="pointer-events-none fixed left-0 right-0 z-20 px-4 sm:hidden"
       style="bottom: calc(4.5rem + env(safe-area-inset-bottom, 0px))"
     >
       <button
         type="button"
-        class="pointer-events-auto w-full min-h-[48px] rounded-xl bg-rose-600 text-white font-semibold text-sm shadow-lg active:bg-rose-700 touch-manipulation"
+        class="pointer-events-auto min-h-[48px] w-full touch-manipulation rounded-xl bg-rose-600 text-sm font-semibold text-white shadow-lg active:bg-rose-700"
         @click="router.push({ name: 'admin-rede-cuidado' })"
       >
         {{ DASHBOARD_CUIDADO_COPY.ctaSticky }}
       </button>
     </div>
 
-    <div class="hidden sm:flex justify-end mt-6">
+    <div class="mt-6 hidden justify-end sm:flex">
       <button
         type="button"
-        class="min-h-[44px] px-5 rounded-xl bg-rose-600 text-white font-semibold text-sm hover:bg-rose-700 touch-manipulation"
+        class="min-h-[44px] touch-manipulation rounded-xl bg-rose-600 px-5 text-sm font-semibold text-white hover:bg-rose-700"
         @click="router.push({ name: 'admin-rede-cuidado' })"
       >
         {{ DASHBOARD_CUIDADO_COPY.ctaSticky }}
