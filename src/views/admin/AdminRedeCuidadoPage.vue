@@ -4,6 +4,7 @@ import { useRoute, useRouter } from 'vue-router'
 import { adminService, type Celula } from '../../services/adminService'
 import AppIcon from '../../components/AppIcon.vue'
 import RedeCuidadoPanel from '../../components/RedeCuidadoPanel.vue'
+import SkeletonList from '../../components/SkeletonList.vue'
 
 const route = useRoute()
 const router = useRouter()
@@ -74,7 +75,7 @@ watch(selectedCelulaId, (id) => {
         >
           Célula
         </label>
-        <div v-if="loading" class="text-sm text-neutral-500 py-2">Carregando células...</div>
+        <SkeletonList v-if="loading" :rows="2" :show-avatar="false" class="py-1" />
         <select
           v-else
           id="admin-rede-celula"

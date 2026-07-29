@@ -15,6 +15,7 @@ import AppIcon from '../../components/AppIcon.vue'
 import AdminUsersBulkBar from '../../components/admin/AdminUsersBulkBar.vue'
 import SortableTableHeader from '../../components/admin/SortableTableHeader.vue'
 import { toggleSortState, compareUsuarios, type SortState } from '../../utils/tableSort'
+import SkeletonList from '../../components/SkeletonList.vue'
 
 /** Mesmas regras do menu "Enviar link": só líder ativo (célula validada no backend). */
 function podeReceberLinkSso(user: Usuario): boolean {
@@ -807,9 +808,7 @@ const formatWhatsApp = (whatsapp: string | null | undefined): string => {
       />
 
       <!-- Loading -->
-      <div v-if="loading" class="p-8 text-center">
-        <div class="inline-block animate-spin rounded-full h-8 w-8 border-b-2 border-primary-600"></div>
-      </div>
+      <SkeletonList v-if="loading" :rows="5" class="p-4" />
       
       <!-- Conteúdo quando não está carregando -->
       <template v-else>

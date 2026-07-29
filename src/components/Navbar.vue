@@ -50,8 +50,7 @@ const navLinks = computed(() => {
   
   if (userStore.isPlatformOwner) {
     return [
-      { name: 'super-admin', label: 'Super Admin' },
-      { name: 'admin-dashboard', label: 'Igreja' },
+      { name: 'admin-dashboard', label: 'Dashboard' },
       { name: 'admin-users', label: 'Usuários' },
       { name: 'admin-cells', label: 'Células' },
       { name: 'admin-members', label: 'Membros' },
@@ -119,7 +118,7 @@ function toggleView() {
         <div class="flex">
           <div class="flex-shrink-0 flex items-center">
             <router-link 
-              :to="userStore.isPlatformOwner ? { name: 'super-admin' } : userStore.isChurchAdmin ? { name: 'admin-dashboard' } : { name: 'home' }" 
+              :to="userStore.isPlatformOwner || userStore.isChurchAdmin ? { name: 'admin-dashboard' } : { name: 'home' }" 
               class="flex items-center gap-2"
             >
               <img src="/src/assets/brand/logo-icon.png" alt="Aprisco" class="h-7 w-7" />
@@ -183,8 +182,18 @@ function toggleView() {
                   <span class="ml-1 text-gray-400">({{ leaderStore.stats.consecutiveOnTimeReports }}m)</span>
                 </div>
               </div>
-              <router-link :to="{ name: 'profile' }" class="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100" role="menuitem" tabindex="-1">Meu Perfil</router-link>
-              <router-link :to="{ name: 'configuracoes' }" class="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100" role="menuitem" tabindex="-1">Configurações</router-link>
+              <router-link
+                v-if="userStore.isPlatformOwner"
+                :to="{ name: 'super-admin' }"
+                class="block px-4 py-2 text-sm text-violet-700 hover:bg-violet-50 font-medium"
+                role="menuitem"
+                tabindex="-1"
+                @click="showDropdown = false"
+              >
+                Super Admin
+              </router-link>
+              <router-link :to="{ name: 'profile' }" class="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100" role="menuitem" tabindex="-1" @click="showDropdown = false">Meu Perfil</router-link>
+              <router-link :to="{ name: 'configuracoes' }" class="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100" role="menuitem" tabindex="-1" @click="showDropdown = false">Configurações</router-link>
               <button @click="handleLogout" class="w-full text-left block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100" role="menuitem" tabindex="-1">Sair</button>
             </div>
           </div>

@@ -30,6 +30,19 @@ export const whatsappController = {
     try {
       const { token } = req.params;
       const { status, phoneNumber } = req.body;
+      const accountId = req.user?.accountId;
+
+      if (!accountId) {
+        return res.status(401).json({ message: 'Conta não identificada' });
+      }
+
+      const existing = await whatsappService.getConnectionByToken(token);
+      if (!existing) {
+        return res.status(404).json({ message: 'Conexão não encontrada' });
+      }
+      if (existing.accountId !== accountId) {
+        return res.status(404).json({ message: 'Conexão não encontrada' });
+      }
 
       const connection = await whatsappService.updateConnectionStatus(token, {
         status,
@@ -65,9 +78,15 @@ export const whatsappController = {
   async checkConnection(req: Request, res: Response) {
     try {
       const { token } = req.params;
+      const accountId = req.user?.accountId;
+
+      if (!accountId) {
+        return res.status(401).json({ message: 'Conta não identificada' });
+      }
+
       const connection = await whatsappService.getConnectionByToken(token);
 
-      if (!connection) {
+      if (!connection || connection.accountId !== accountId) {
         return res.status(404).json({ message: 'Conexão não encontrada' });
       }
 

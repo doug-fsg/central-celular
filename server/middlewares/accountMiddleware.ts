@@ -1,6 +1,7 @@
 import { Request, Response, NextFunction, RequestHandler } from 'express';
-import jwt from 'jsonwebtoken';
 import { prisma } from '../lib/prisma';
+import { verifyAccessToken } from '../lib/jwt';
+import { fail } from '../lib/response';
 
 declare global {
   namespace Express {
@@ -18,60 +19,52 @@ export const accountMiddleware: RequestHandler = async (req: Request, res: Respo
   const authHeader = req.headers.authorization;
 
   if (!authHeader) {
-    return res.status(401).json({ error: 'Token não fornecido' });
+    return fail(res, 401, 'UNAUTHORIZED', 'Token não fornecido');
   }
 
   try {
     const [, token] = authHeader.split(' ');
-    // Mesmo fallback que auth.middleware e authService (evita 401 só em rotas com accountMiddleware)
-    const jwtSecret = process.env.JWT_SECRET || 'central-celular-secret';
-    const decoded = jwt.verify(token, jwtSecret) as {
-      userId: number;
-      accountId: number;
-      isSuperAdmin: boolean;
-    };
+    const decoded = verifyAccessToken(token);
 
-    // Verifica se a account está ativa
     const account = await prisma.account.findFirst({
       where: {
         id: decoded.accountId,
-        ativo: true
-      }
+        ativo: true,
+      },
     });
 
     if (!account) {
-      return res.status(401).json({ error: 'Account inativa ou não encontrada' });
+      return fail(res, 401, 'UNAUTHORIZED', 'Account inativa ou não encontrada');
     }
 
-    // Verifica se o usuário ainda está ativo
     const user = await prisma.usuario.findFirst({
       where: {
         id: decoded.userId,
         accountId: decoded.accountId,
-        ativo: true
-      }
+        ativo: true,
+      },
     });
 
     if (!user) {
-      return res.status(401).json({ error: 'Usuário inativo ou não encontrado' });
+      return fail(res, 401, 'UNAUTHORIZED', 'Usuário inativo ou não encontrado');
     }
 
     req.user = {
       id: decoded.userId,
       accountId: decoded.accountId,
-      isSuperAdmin: decoded.isSuperAdmin
+      isSuperAdmin: decoded.isSuperAdmin,
     };
 
     return next();
-  } catch (err) {
-    return res.status(401).json({ error: 'Token inválido' });
+  } catch {
+    return fail(res, 401, 'UNAUTHORIZED', 'Token inválido');
   }
 };
 
 export const superAdminMiddleware: RequestHandler = async (req: Request, res: Response, next: NextFunction) => {
   if (!req.user?.isSuperAdmin) {
-    return res.status(403).json({ error: 'Acesso permitido apenas para super administradores' });
+    return fail(res, 403, 'FORBIDDEN', 'Acesso permitido apenas para super administradores');
   }
 
   return next();
-}; 
+};

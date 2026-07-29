@@ -4,6 +4,21 @@ import { z } from 'zod';
 import bcrypt from 'bcryptjs';
 import { startOfWeek, endOfWeek, startOfMonth, endOfMonth, addWeeks, format } from 'date-fns';
 import { isPublicoCelula, PUBLICO_CELULA_LABELS, PUBLICO_CELULA_VALUES, type PublicoCelula } from '../constants/publicoCelula';
+import { getAccountId, assertCelulaBelongsToAccount } from '../lib/tenant';
+
+async function requireCelulaForAccount(req: Request, res: Response, celulaId: number) {
+  const accountId = getAccountId(req);
+  if (!accountId) {
+    res.status(401).json({ message: 'Conta não identificada' });
+    return null;
+  }
+  const check = await assertCelulaBelongsToAccount(celulaId, accountId);
+  if (!check.ok) {
+    res.status(404).json({ message: 'Célula não encontrada' });
+    return null;
+  }
+  return { accountId, celula: check.celula };
+}
 
 function calcularSemanasDoMes(referencia: Date): Array<{ inicio: Date; fim: Date }> {
   const inicioMes = startOfMonth(referencia);
@@ -508,16 +523,18 @@ export const criarCelula = async (req: Request, res: Response) => {
 export const atualizarCelula = async (req: Request, res: Response) => {
   try {
     const { id } = req.params;
-    const data = celulaSchema.parse(req.body);
+    const accountId = getAccountId(req);
+    if (!accountId) {
+      return res.status(401).json({ message: 'Conta não identificada' });
+    }
 
-    // Verificar se a célula existe
-    const celulaExistente = await prisma.celula.findUnique({
-      where: { id: Number(id) }
-    });
-
-    if (!celulaExistente) {
+    const celulaCheck = await assertCelulaBelongsToAccount(Number(id), accountId);
+    if (!celulaCheck.ok) {
       return res.status(404).json({ message: 'Célula não encontrada' });
     }
+
+    const data = celulaSchema.parse(req.body);
+    const celulaExistente = celulaCheck.celula;
 
     // Verificar se o líder existe
     const lider = await prisma.usuario.findUnique({
@@ -584,16 +601,17 @@ export const atualizarCelula = async (req: Request, res: Response) => {
 export const desativarCelula = async (req: Request, res: Response) => {
   try {
     const { id } = req.params;
-    const { ativo } = req.body;
+    const accountId = getAccountId(req);
+    if (!accountId) {
+      return res.status(401).json({ message: 'Conta não identificada' });
+    }
 
-    // Verificar se a célula existe
-    const celulaExistente = await prisma.celula.findUnique({
-      where: { id: Number(id) }
-    });
-
-    if (!celulaExistente) {
+    const celulaCheck = await assertCelulaBelongsToAccount(Number(id), accountId);
+    if (!celulaCheck.ok) {
       return res.status(404).json({ message: 'Célula não encontrada' });
     }
+
+    const { ativo } = req.body;
 
     const celulaAtualizada = await prisma.celula.update({
       where: { id: Number(id) },
@@ -615,13 +633,13 @@ export const deletarCelula = async (req: Request, res: Response) => {
   try {
     const { id } = req.params;
     const celulaId = Number(id);
+    const accountId = getAccountId(req);
+    if (!accountId) {
+      return res.status(401).json({ message: 'Conta não identificada' });
+    }
 
-    // Verificar se a célula existe
-    const celulaExistente = await prisma.celula.findUnique({
-      where: { id: celulaId }
-    });
-
-    if (!celulaExistente) {
+    const celulaCheck = await assertCelulaBelongsToAccount(celulaId, accountId);
+    if (!celulaCheck.ok) {
       return res.status(404).json({ message: 'Célula não encontrada' });
     }
 
@@ -647,7 +665,11 @@ export const deletarCelula = async (req: Request, res: Response) => {
 // Adicionar membro
 export const adicionarMembro = async (req: Request, res: Response) => {
   try {
-    const { id } = req.params; // ID da célula
+    const { id } = req.params;
+    const celulaId = Number(id);
+    const scope = await requireCelulaForAccount(req, res, celulaId);
+    if (!scope) return;
+
     console.log('[adicionarMembro] Dados recebidos:', req.body);
     
     const data = membroSchema.parse(req.body);
@@ -658,18 +680,9 @@ export const adicionarMembro = async (req: Request, res: Response) => {
       type: data.dataNascimento ? typeof data.dataNascimento : 'null/undefined'
     });
 
-    // Verificar se a célula existe
-    const celula = await prisma.celula.findUnique({
-      where: { id: Number(id) }
-    });
-
-    if (!celula) {
-      return res.status(404).json({ message: 'Célula não encontrada' });
-    }
-
     // Adicionar novo membro usando executeRaw para contornar o problema temporário com o modelo não reconhecido
     console.log('[adicionarMembro] Executando query SQL com params:', {
-      celulaId: Number(id),
+      celulaId,
       nome: data.nome,
       telefone: data.telefone,
       dataNascimento: data.dataNascimento,
@@ -722,6 +735,11 @@ export const moverMembro = async (req: Request, res: Response) => {
     const { id, membroId } = req.params;
     const celulaOrigemId = Number(id);
     const celulaDestinoId = Number(req.body.celulaDestinoId);
+    const accountId = getAccountId(req);
+
+    if (!accountId) {
+      return res.status(401).json({ message: 'Conta não identificada' });
+    }
 
     if (!celulaDestinoId || Number.isNaN(celulaDestinoId)) {
       return res.status(400).json({ message: 'Célula de destino inválida' });
@@ -731,21 +749,25 @@ export const moverMembro = async (req: Request, res: Response) => {
       return res.status(400).json({ message: 'A célula de destino deve ser diferente da atual' });
     }
 
-    const [membro, celulaDestino] = await Promise.all([
+    const [origemCheck, destinoCheck] = await Promise.all([
+      assertCelulaBelongsToAccount(celulaOrigemId, accountId),
+      assertCelulaBelongsToAccount(celulaDestinoId, accountId),
+    ]);
+
+    if (!origemCheck.ok || !destinoCheck.ok) {
+      return res.status(404).json({ message: 'Célula não encontrada' });
+    }
+
+    const [membro] = await Promise.all([
       prisma.$queryRaw<{ id: number }[]>`
         SELECT id FROM membros
         WHERE id = ${Number(membroId)} AND celula_id = ${celulaOrigemId} AND ativo = true
         LIMIT 1
       `,
-      prisma.celula.findUnique({ where: { id: celulaDestinoId } }),
     ]);
 
     if (!Array.isArray(membro) || membro.length === 0) {
       return res.status(404).json({ message: 'Membro não encontrado nesta célula' });
-    }
-
-    if (!celulaDestino) {
-      return res.status(404).json({ message: 'Célula de destino não encontrada' });
     }
 
     await prisma.$transaction(async (tx) => {
@@ -776,6 +798,8 @@ export const moverMembro = async (req: Request, res: Response) => {
 export const removerMembro = async (req: Request, res: Response) => {
   try {
     const { id, membroId } = req.params;
+    const scope = await requireCelulaForAccount(req, res, Number(id));
+    if (!scope) return;
 
     // Verificar se o membro existe na célula
     const membro = await prisma.$queryRaw`
@@ -812,6 +836,8 @@ export const toggleAtivoMembro = async (req: Request, res: Response) => {
   try {
     const { id, membroId } = req.params;
     const { ativo } = req.body;
+    const scope = await requireCelulaForAccount(req, res, Number(id));
+    if (!scope) return;
 
     if (typeof ativo !== 'boolean') {
       return res.status(400).json({ message: 'Valor inválido para ativo' });
@@ -850,6 +876,8 @@ export const atualizarStatusMembro = async (req: Request, res: Response) => {
   try {
     const { id, membroId } = req.params;
     const { ativo } = req.body;
+    const scope = await requireCelulaForAccount(req, res, Number(id));
+    if (!scope) return;
 
     if (typeof ativo !== 'boolean') {
       return res.status(400).json({ message: 'Status inválido' });
@@ -884,6 +912,8 @@ export const marcarComoConsolidador = async (req: Request, res: Response) => {
   try {
     const { id, membroId } = req.params;
     const { ehConsolidador } = req.body;
+    const scope = await requireCelulaForAccount(req, res, Number(id));
+    if (!scope) return;
 
     if (typeof ehConsolidador !== 'boolean') {
       return res.status(400).json({ message: 'Valor inválido' });
@@ -918,6 +948,8 @@ export const marcarComoCoLider = async (req: Request, res: Response) => {
   try {
     const { id, membroId } = req.params;
     const { ehCoLider } = req.body;
+    const scope = await requireCelulaForAccount(req, res, Number(id));
+    if (!scope) return;
 
     if (typeof ehCoLider !== 'boolean') {
       return res.status(400).json({ message: 'Valor inválido' });
@@ -952,6 +984,8 @@ export const marcarComoAnfitriao = async (req: Request, res: Response) => {
   try {
     const { id, membroId } = req.params;
     const { ehAnfitriao } = req.body;
+    const scope = await requireCelulaForAccount(req, res, Number(id));
+    if (!scope) return;
 
     if (typeof ehAnfitriao !== 'boolean') {
       return res.status(400).json({ message: 'Valor inválido' });
@@ -985,6 +1019,9 @@ export const marcarComoAnfitriao = async (req: Request, res: Response) => {
 export const atualizarMembro = async (req: Request, res: Response) => {
   try {
     const { id, membroId } = req.params;
+    const scope = await requireCelulaForAccount(req, res, Number(id));
+    if (!scope) return;
+
     console.log('[atualizarMembro] Dados recebidos:', req.body);
     
     const data = membroSchema.parse(req.body);
@@ -1043,9 +1080,11 @@ export const atualizarMembro = async (req: Request, res: Response) => {
 export const listarMembros = async (req: Request, res: Response) => {
   try {
     const { id } = req.params;
+    const scope = await requireCelulaForAccount(req, res, Number(id));
+    if (!scope) return;
 
-    const celula = await prisma.celula.findUnique({
-      where: { id: Number(id) },
+    const celula = await prisma.celula.findFirst({
+      where: { id: Number(id), accountId: scope.accountId },
       include: {
         membros: {
           where: { ativo: true },

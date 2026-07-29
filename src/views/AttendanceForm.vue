@@ -9,12 +9,19 @@ import PresenceTable from '../components/PresenceTable.vue'
 import WeekSelector from '../components/WeekSelector.vue'
 import Toast from '../components/Toast.vue'
 import ReportSummaryCard from '../components/ReportSummaryCard.vue'
-import ConfettiGenerator from 'confetti-js';
+import MobilePageHeader from '../components/MobilePageHeader.vue'
+import MobileStickyActionBar from '../components/MobileStickyActionBar.vue'
+import ReportConfirmSheet from '../components/ReportConfirmSheet.vue'
+import SuccessReportModal from '../components/SuccessReportModal.vue'
+import { usePlatform } from '../composables/usePlatform'
+import { useHaptic } from '../composables/useHaptic'
 
 const route = useRoute()
 const router = useRouter()
 const reportStore = useReportStore()
 const memberStore = useMemberStore()
+const { mobileShell } = usePlatform()
+const { tap, success: hapticSuccess, error: hapticError } = useHaptic()
 const toastMessage = ref('')
 const toastShow = ref(false)
 const toastType = ref<'success' | 'error' | 'warning' | 'info'>('info')
@@ -29,6 +36,9 @@ const currentWeek = ref(reportStore.currentWeek)
 const teveCelula = ref(true)
 const relatorioFinalizado = ref(false)
 const mostrarObservacoes = ref(false)
+const showConfirmSheet = ref(false)
+const showSuccessModal = ref(false)
+const relatorioDetalhado = ref<{ dataEnvio?: string } | null>(null)
 
 // Computed
 const podeEnviar = computed(() => {
@@ -50,6 +60,33 @@ const isCurrentReportWeek = computed(() => {
   return format(currentWeek.value.dataInicio, 'yyyy-MM-dd') === format(semanaPermitida.dataInicio, 'yyyy-MM-dd')
 });
 
+const presentesCelula = computed(() =>
+  members.value.filter(m => m.presencaCelula === STATUS_PRESENCA.PRESENTE).length
+)
+
+const presentesCulto = computed(() =>
+  members.value.filter(m => m.presencaCulto === STATUS_PRESENCA.PRESENTE).length
+)
+
+const progressPercent = computed(() => {
+  if (members.value.length === 0) return 0
+  const marcados = members.value.filter(m =>
+    m.presencaCulto === STATUS_PRESENCA.PRESENTE ||
+    (teveCelula.value && m.presencaCelula === STATUS_PRESENCA.PRESENTE)
+  ).length
+  return Math.round((marcados / members.value.length) * 100)
+})
+
+const progressLabel = computed(() => {
+  const culto = `${presentesCulto.value} no culto`
+  if (!teveCelula.value) return culto
+  return `${presentesCelula.value} na célula · ${culto}`
+})
+
+const pageSubtitle = computed(() =>
+  formatarPeriodo(currentWeek.value.dataInicio, currentWeek.value.dataFim)
+)
+
 // Métodos
 const formatarPeriodo = (dataInicio: Date | string, dataFim: Date | string) => {
   const inicio = typeof dataInicio === 'string' ? new Date(dataInicio) : dataInicio
@@ -58,10 +95,8 @@ const formatarPeriodo = (dataInicio: Date | string, dataFim: Date | string) => {
 }
 
 const handleWeekChange = (week: any) => {
-  // Atualizar a semana atual
+  tap()
   currentWeek.value = week;
-  
-  // Recarregar o relatório para a nova semana
   loadOrCreateReport();
 }
 
@@ -118,15 +153,15 @@ const loadOrCreateReport = async () => {
       
       // Se o relatório já foi enviado, buscar detalhes completos
       if (relatorioFinalizado.value) {
-        const relatorioDetalhado = await relatorioService.obterRelatorio(relatorioExistente.id);
-        // Atualizar os membros com as presenças do relatório
+        const relatorioDetalhadoResp = await relatorioService.obterRelatorio(relatorioExistente.id);
+        relatorioDetalhado.value = relatorioDetalhadoResp
         await memberStore.carregarMembros();
         members.value = memberStore.members.map(membro => {
           const membroId = Number(membro.id);
-          const presencaCelula = relatorioDetalhado.presencas.find(
+          const presencaCelula = relatorioDetalhadoResp.presencas.find(
             p => p.membroId === membroId && p.tipo === TIPO_EVENTO.CELULA
           );
-          const presencaCulto = relatorioDetalhado.presencas.find(
+          const presencaCulto = relatorioDetalhadoResp.presencas.find(
             p => p.membroId === membroId && p.tipo === TIPO_EVENTO.CULTO
           );
           
@@ -180,13 +215,23 @@ const salvarRascunho = async () => {
   }
 }
 
+const solicitarEnvio = () => {
+  if (!podeEnviar.value || loading.value) return
+  tap()
+  showConfirmSheet.value = true
+}
+
+const cancelarEnvio = () => {
+  showConfirmSheet.value = false
+}
+
 const enviarRelatorio = async () => {
   try {
     loading.value = true;
     error.value = null;
+    showConfirmSheet.value = false
 
     if (!relatorioId.value) {
-      // Criar novo relatório
       const novoRelatorio = await relatorioService.criarRelatorio({
         celulaId: memberStore.celulaId,
         dataInicio: currentWeek.value.dataInicio,
@@ -197,115 +242,24 @@ const enviarRelatorio = async () => {
       });
       relatorioId.value = novoRelatorio.id;
     } else {
-      // Atualizar relatório existente
       await relatorioService.atualizarRelatorio(relatorioId.value, {
         teveCelula: teveCelula.value,
         observacoes: observacoes.value
       });
     }
 
-    // Enviar o relatório
     await relatorioService.enviarRelatorio(relatorioId.value);
-    
-    // Mostrar mensagem de sucesso com animação
-    showSuccessAnimation();
-    
-    // Atualizar estado do relatório
+
+    hapticSuccess()
+    showSuccessModal.value = true
     relatorioFinalizado.value = true;
-  } catch (error) {
-    console.error('Erro ao enviar relatório:', error);
+  } catch (err) {
+    console.error('Erro ao enviar relatório:', err);
+    hapticError()
     showToast('Erro ao enviar relatório. Tente novamente.', 'error');
   } finally {
     loading.value = false;
   }
-};
-
-// Função para mostrar animação de sucesso
-const showSuccessAnimation = () => {
-  // Criar o modal de sucesso
-  const modalDiv = document.createElement('div');
-  modalDiv.style.cssText = `
-    position: fixed;
-    top: 0;
-    left: 0;
-    width: 100%;
-    height: 100%;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    background-color: rgba(0, 0, 0, 0.5);
-    z-index: 9999;
-  `;
-  
-  // Criar o conteúdo do modal
-  const modalContent = document.createElement('div');
-  modalContent.style.cssText = `
-    background: white;
-    padding: 2rem;
-    border-radius: 1rem;
-    text-align: center;
-    box-shadow: 0 10px 25px rgba(0, 0, 0, 0.1);
-    position: relative;
-    width: 90%;
-    max-width: 400px;
-  `;
-  
-  // Adicionar o emoji e texto
-  modalContent.innerHTML = `
-    <div style="font-size: 4rem; margin-bottom: 1rem">🎉</div>
-    <div style="font-size: 1.5rem; font-weight: bold; margin-bottom: 0.5rem">Relatório Enviado!</div>
-    <div style="color: #666; margin-bottom: 1.5rem">Obrigado por manter seus relatórios em dia</div>
-  `;
-  
-  // Adicionar botão de fechar
-  const closeButton = document.createElement('button');
-  closeButton.textContent = 'Fechar';
-  closeButton.style.cssText = `
-    background: #6366f1;
-    color: white;
-    border: none;
-    padding: 0.75rem 2rem;
-    border-radius: 0.5rem;
-    font-weight: 500;
-    cursor: pointer;
-    transition: background-color 0.2s;
-  `;
-  closeButton.onmouseover = () => closeButton.style.backgroundColor = '#4f46e5';
-  closeButton.onmouseout = () => closeButton.style.backgroundColor = '#6366f1';
-  closeButton.onclick = () => modalDiv.remove();
-  
-  modalContent.appendChild(closeButton);
-  modalDiv.appendChild(modalContent);
-  document.body.appendChild(modalDiv);
-  
-  // Criar elemento de confete
-  const confettiCanvas = document.createElement('canvas');
-  confettiCanvas.id = 'success-confetti';
-  confettiCanvas.style.cssText = 'position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none;';
-  modalDiv.appendChild(confettiCanvas);
-  
-  // Configurar e iniciar animação de confete
-  const confettiSettings = {
-    target: 'success-confetti',
-    max: 150,
-    size: 2,
-    animate: true,
-    props: ['circle', 'square', 'triangle', 'line'],
-    colors: [[165, 104, 246], [230, 61, 135], [0, 199, 228], [253, 214, 126]],
-    clock: 25,
-    rotate: true,
-    start_from_edge: false,
-    respawn: true
-  };
-  const confetti = new ConfettiGenerator(confettiSettings);
-  confetti.render();
-  
-  // Remover o modal após 5 segundos se o usuário não fechar
-  setTimeout(() => {
-    if (document.body.contains(modalDiv)) {
-      modalDiv.remove();
-    }
-  }, 5000);
 };
 
 // Método para mostrar toast
@@ -348,8 +302,17 @@ watch(teveCelula, async (newValue) => {
 </script>
 
 <template>
-  <div class="min-h-screen bg-gray-50">
-    <main class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+  <div class="min-h-screen bg-gray-50" :class="{ 'mobile-page': mobileShell }">
+    <MobilePageHeader
+      v-if="mobileShell"
+      title="Frequência"
+      :subtitle="pageSubtitle"
+    />
+
+    <main
+      class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4 sm:py-8"
+      :class="{ 'mobile-page__content': mobileShell && !relatorioFinalizado }"
+    >
       <!-- Seletor de semana -->
       <div class="mb-6">
         <WeekSelector @weekChange="handleWeekChange" />
@@ -474,20 +437,20 @@ watch(teveCelula, async (newValue) => {
               v-model="observacoes"
               rows="3"
               :disabled="relatorioFinalizado"
-              class="w-full px-4 py-2 rounded-xl border border-gray-200 focus:ring-2 focus:ring-primary-500 focus:border-transparent"
+              class="w-full px-4 py-2 rounded-xl border border-gray-200 focus:ring-2 focus:ring-primary-500 focus:border-transparent text-base"
               :class="{ 'bg-gray-50 opacity-80 cursor-not-allowed': relatorioFinalizado }"
               placeholder="Adicione observações sobre a célula ou culto desta semana..."
             ></textarea>
           </div>
         </div>
         
-        <!-- Botão de enviar -->
-        <div class="mt-6" v-if="!relatorioFinalizado">
+        <!-- Botão de enviar (desktop) -->
+        <div class="mt-6 hidden sm:block" v-if="!relatorioFinalizado">
           <button 
-            @click="enviarRelatorio"
-            :disabled="!podeEnviar"
-            class="w-full py-4 bg-primary-600 text-white rounded-xl font-medium text-lg shadow-sm hover:bg-primary-700 transition-colors duration-200"
-            :class="{ 'opacity-50 cursor-not-allowed': !podeEnviar }"
+            @click="solicitarEnvio"
+            :disabled="!podeEnviar || loading"
+            class="w-full py-4 bg-primary-600 text-white rounded-xl font-medium text-lg shadow-sm hover:bg-primary-700 transition-colors duration-200 active:scale-[0.99]"
+            :class="{ 'opacity-50 cursor-not-allowed': !podeEnviar || loading }"
           >
             {{ isCurrentReportWeek ? 'Enviar Relatório' : 'Não é possível enviar relatório de semanas anteriores' }}
           </button>
@@ -517,6 +480,33 @@ watch(teveCelula, async (newValue) => {
         @close="toastShow = false"
       />
     </main>
+
+    <MobileStickyActionBar
+      v-if="mobileShell && !relatorioFinalizado && !loading && !error"
+      :label="isCurrentReportWeek ? 'Enviar relatório' : 'Semana anterior'"
+      :disabled="!podeEnviar"
+      :loading="loading"
+      :progress-label="progressLabel"
+      :progress-percent="progressPercent"
+      :hint="!isCurrentReportWeek ? 'Apenas a semana atual pode ser enviada' : undefined"
+      @click="solicitarEnvio"
+    />
+
+    <ReportConfirmSheet
+      :open="showConfirmSheet"
+      title="Enviar relatório?"
+      :description="`Confirma o envio da semana ${pageSubtitle}? Depois do envio não será possível editar.`"
+      confirm-label="Sim, enviar"
+      cancel-label="Revisar presenças"
+      :loading="loading"
+      @confirm="enviarRelatorio"
+      @cancel="cancelarEnvio"
+    />
+
+    <SuccessReportModal
+      :open="showSuccessModal"
+      @close="showSuccessModal = false"
+    />
   </div>
 </template>
 

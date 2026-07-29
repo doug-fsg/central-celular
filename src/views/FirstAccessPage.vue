@@ -28,6 +28,7 @@ const usuario = ref<{
   cargo: string
   dataNascimento?: string
 } | null>(null)
+const setupToken = ref('')
 
 const passwordInput = reactive({
   senha: '',
@@ -66,6 +67,7 @@ async function validateToken() {
     const response = await api.verifyInviteToken(token)
     if (response.success && response.usuario) {
       usuario.value = response.usuario
+      setupToken.value = response.setupToken
     } else {
       error.value = response.message || 'Convite inválido'
       inviteErrorKind.value = 'invite'
@@ -113,6 +115,7 @@ async function createPassword() {
       usuario.value.whatsapp,
       usuario.value.nome,
       passwordInput.senha,
+      setupToken.value,
       usuario.value.dataNascimento
     )
 

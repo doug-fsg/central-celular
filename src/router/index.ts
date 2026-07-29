@@ -1,21 +1,23 @@
 import type { RouteLocationNormalized, NavigationGuardNext } from 'vue-router'
-import { createRouter, createWebHistory } from 'vue-router'
+import { createRouter } from 'vue-router'
+import { createRouterHistory } from './createRouterHistory'
 import { useUserStore } from '../stores/userStore'
 import { useNavigationLoadingStore } from '../stores/navigationLoadingStore'
 import { ssoLinkService } from '../services/ssoLinkService'
 import celulaService from '../services/celulaService'
 import api from '../services/api'
 import { isInstalledPwaDisplayMode } from '../utils/pwa'
+import { isMobileShell } from '../utils/platform'
 
 const router = createRouter({
-  history: createWebHistory(),
+  history: createRouterHistory(),
   routes: [
     {
       path: '/',
       name: 'home',
       component: () => import('../views/LandingPage.vue'),
       beforeEnter: (to, from, next) => {
-        if (!isInstalledPwaDisplayMode()) {
+        if (!isMobileShell()) {
           next()
           return
         }
@@ -25,7 +27,7 @@ const router = createRouter({
           return
         }
         if (userStore.isPlatformOwner) {
-          next({ name: 'super-admin', replace: true })
+          next({ name: 'admin-dashboard', replace: true })
           return
         }
         if (
@@ -292,7 +294,7 @@ router.beforeEach(async (to: RouteLocationNormalized, from: RouteLocationNormali
   // Verifica se a rota é só para visitantes (login, registro)
   if (to.meta.requiresGuest && userStore.isLoggedIn) {
     if (userStore.isPlatformOwner) {
-      return next({ name: 'super-admin' })
+      return next({ name: 'admin-dashboard' })
     }
     if (userStore.isAdmin && !(userStore.canToggleView && userStore.currentView === 'cell')) {
       return next({ name: 'admin-dashboard' })

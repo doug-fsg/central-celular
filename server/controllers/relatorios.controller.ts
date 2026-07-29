@@ -1,8 +1,12 @@
 import { Request, Response } from 'express';
-import { PrismaClient } from '@prisma/client';
 import { startOfWeek, format } from 'date-fns';
-
-const prisma = new PrismaClient();
+import { prisma } from '../lib/prisma';
+import {
+  getAccountId,
+  assertCelulaBelongsToAccount,
+  assertRelatorioBelongsToAccount,
+} from '../lib/tenant';
+import { relatorioService } from '../services/relatorioService';
 
 type RelatorioComPresencas = {
   dataInicio: Date;
@@ -65,64 +69,28 @@ interface AuthRequest extends Request {
 // Listar relatórios com base em célula e período
 export const listarRelatorios = async (req: Request, res: Response) => {
     try {
+        const accountId = getAccountId(req);
+        if (!accountId) {
+            return res.status(401).json({ message: 'Conta não identificada' });
+        }
+
         const { celulaId, dataInicio, dataFim, evento } = req.query;
 
         if (!celulaId || !dataInicio || !dataFim) {
             return res.status(400).json({ message: 'Parâmetros celulaId, dataInicio e dataFim são obrigatórios' });
         }
 
-        const inicio = new Date(dataInicio as string);
-        const fim = new Date(dataFim as string);
+        const celulaCheck = await assertCelulaBelongsToAccount(Number(celulaId), accountId);
+        if (!celulaCheck.ok) {
+            return res.status(404).json({ message: 'Célula não encontrada' });
+        }
 
-        const whereClause = {
+        const relatoriosComContagem = await relatorioService.listarComContagens({
             celulaId: Number(celulaId),
-            dataInicio: {
-                gte: inicio,
-            },
-            dataFim: {
-                lte: fim,
-            },
-            ...(evento !== undefined ? { evento: Number(evento) } : {}),
-        };
-
-        const relatorios = await prisma.relatorio.findMany({
-            where: whereClause,
-            include: {
-                celula: { select: { nome: true } },
-                _count: { select: { presencas: true } },
-            },
-            orderBy: { dataInicio: 'asc' },
+            dataInicio: new Date(dataInicio as string),
+            dataFim: new Date(dataFim as string),
+            evento: evento !== undefined ? Number(evento) : undefined,
         });
-
-        const relatoriosComContagem = await Promise.all(
-            relatorios.map(async (rel) => {
-                // Contagens por tipo (0 = célula, 1 = culto)
-                const [
-                  presentesCelula,
-                  totalCelula,
-                  presentesCulto,
-                  totalCulto,
-                ] = await Promise.all([
-                  prisma.presenca.count({ where: { relatorioId: rel.id, status: 1, tipo: 0 } }),
-                  prisma.presenca.count({ where: { relatorioId: rel.id,             tipo: 0 } }),
-                  prisma.presenca.count({ where: { relatorioId: rel.id, status: 1, tipo: 1 } }),
-                  prisma.presenca.count({ where: { relatorioId: rel.id,             tipo: 1 } }),
-                ]);
-
-                const { _count, ...resto } = rel;
-                return {
-                    ...resto,
-                    // Mantém campos antigos para compatibilidade
-                    presentes: presentesCelula + presentesCulto,
-                    total: _count.presencas,
-                    // Novos campos específicos por tipo
-                    presentesCelula,
-                    totalCelula,
-                    presentesCulto,
-                    totalCulto,
-                };
-            })
-        );
 
         res.json(relatoriosComContagem);
     } catch (error) {
@@ -134,7 +102,17 @@ export const listarRelatorios = async (req: Request, res: Response) => {
 // Obter um único relatório por ID
 export const obterRelatorio = async (req: Request, res: Response) => {
   try {
+    const accountId = getAccountId(req);
+    if (!accountId) {
+      return res.status(401).json({ message: 'Conta não identificada' });
+    }
+
     const { id } = req.params;
+    const relatorioCheck = await assertRelatorioBelongsToAccount(Number(id), accountId);
+    if (!relatorioCheck.ok) {
+      return res.status(404).json({ message: 'Relatório não encontrado' });
+    }
+
     const relatorio = await prisma.relatorio.findUnique({
       where: { id: Number(id) },
       include: {
@@ -175,7 +153,17 @@ export const obterRelatorio = async (req: Request, res: Response) => {
 // Criar um novo relatório
 export const criarRelatorio = async (req: Request, res: Response) => {
   try {
+    const accountId = getAccountId(req);
+    if (!accountId) {
+      return res.status(401).json({ message: 'Conta não identificada' });
+    }
+
     const { celulaId, dataInicio, dataFim, evento, teveCelula, observacoes } = req.body;
+
+    const celulaCheck = await assertCelulaBelongsToAccount(Number(celulaId), accountId);
+    if (!celulaCheck.ok) {
+      return res.status(404).json({ message: 'Célula não encontrada' });
+    }
 
     const inicio = new Date(dataInicio);
     const fim = new Date(dataFim);
@@ -215,7 +203,17 @@ export const criarRelatorio = async (req: Request, res: Response) => {
 // Atualizar observações de um relatório
 export const atualizarRelatorio = async (req: Request, res: Response) => {
   try {
+    const accountId = getAccountId(req);
+    if (!accountId) {
+      return res.status(401).json({ message: 'Conta não identificada' });
+    }
+
     const { id } = req.params;
+    const relatorioCheck = await assertRelatorioBelongsToAccount(Number(id), accountId);
+    if (!relatorioCheck.ok) {
+      return res.status(404).json({ message: 'Relatório não encontrado' });
+    }
+
     const { observacoes, teveCelula } = req.body;
     
     const relatorioAtualizado = await prisma.relatorio.update({
@@ -236,22 +234,38 @@ export const atualizarRelatorio = async (req: Request, res: Response) => {
 // Registrar ou atualizar presença de um membro
 export const registrarPresenca = async (req: Request, res: Response) => {
   try {
-    const { id } = req.params; // Pegar o ID do relatório da URL
+    const accountId = getAccountId(req);
+    if (!accountId) {
+      return res.status(401).json({ message: 'Conta não identificada' });
+    }
+
+    const { id } = req.params;
+    const relatorioCheck = await assertRelatorioBelongsToAccount(Number(id), accountId);
+    if (!relatorioCheck.ok) {
+      return res.status(404).json({ message: 'Relatório não encontrado' });
+    }
+
     const { membroId, status, tipo = 0 } = req.body;
 
-    // Validar tipo
     const tipoNum = Number(tipo);
     if (tipoNum !== 0 && tipoNum !== 1) {
       return res.status(400).json({ message: 'Tipo de presença inválido. Use 0 para célula ou 1 para culto.' });
     }
 
-    // Verificar se o relatório existe
-    const relatorio = await prisma.relatorio.findUnique({
-      where: { id: Number(id) }
+    if (membroId === undefined || status === undefined) {
+      return res.status(400).json({ message: 'membroId e status são obrigatórios' });
+    }
+
+    const membro = await prisma.membro.findFirst({
+      where: {
+        id: Number(membroId),
+        celulaId: relatorioCheck.relatorio.celulaId,
+        ativo: true,
+      },
     });
 
-    if (!relatorio) {
-      return res.status(404).json({ message: 'Relatório não encontrado' });
+    if (!membro) {
+      return res.status(404).json({ message: 'Membro não encontrado nesta célula' });
     }
 
     // Usar INSERT ... ON CONFLICT para garantir a atomicidade da operação (evita duplicatas)
@@ -273,16 +287,35 @@ export const registrarPresenca = async (req: Request, res: Response) => {
 // Marcar todos os membros de um relatório com um status (presente/ausente)
 export const marcarTodosMembros = async (req: Request, res: Response) => {
   try {
+    const accountId = getAccountId(req);
+    if (!accountId) {
+      return res.status(401).json({ message: 'Conta não identificada' });
+    }
+
     const { id } = req.params;
-    const { status } = req.body;
+    const relatorioCheck = await assertRelatorioBelongsToAccount(Number(id), accountId);
+    if (!relatorioCheck.ok) {
+      return res.status(404).json({ message: 'Relatório não encontrado' });
+    }
+
+    const { status, tipo } = req.body;
+
+    if (status === undefined) {
+      return res.status(400).json({ message: 'status é obrigatório' });
+    }
 
     const relatorio = await prisma.relatorio.findUnique({
       where: { id: Number(id) },
-      select: { celula: { select: { membros: { where: { ativo: true } } } } },
+      select: { evento: true, celula: { select: { membros: { where: { ativo: true } } } } },
     });
 
     if (!relatorio) {
       return res.status(404).json({ message: 'Relatório não encontrado' });
+    }
+
+    const tipoPresenca = tipo !== undefined ? Number(tipo) : relatorio.evento;
+    if (tipoPresenca !== 0 && tipoPresenca !== 1) {
+      return res.status(400).json({ message: 'Tipo de presença inválido' });
     }
 
     const membros = relatorio.celula.membros;
@@ -293,7 +326,7 @@ export const marcarTodosMembros = async (req: Request, res: Response) => {
                 relatorioId_membroId_tipo: {
                     relatorioId: Number(id),
                     membroId: membro.id,
-                    tipo: 0, // Célula por padrão
+                    tipo: tipoPresenca,
                 },
             },
             update: { status: Number(status) },
@@ -301,7 +334,7 @@ export const marcarTodosMembros = async (req: Request, res: Response) => {
                 relatorioId: Number(id),
                 membroId: membro.id,
                 status: Number(status),
-                tipo: 0, // Célula por padrão
+                tipo: tipoPresenca,
             },
         })
     );
@@ -318,12 +351,21 @@ export const marcarTodosMembros = async (req: Request, res: Response) => {
 // Enviar o relatório (mudar status para "enviado")
 export const enviarRelatorio = async (req: Request, res: Response) => {
   try {
+    const accountId = getAccountId(req);
+    if (!accountId) {
+      return res.status(401).json({ message: 'Conta não identificada' });
+    }
+
     const { id } = req.params;
+    const relatorioCheck = await assertRelatorioBelongsToAccount(Number(id), accountId);
+    if (!relatorioCheck.ok) {
+      return res.status(404).json({ message: 'Relatório não encontrado' });
+    }
 
     const relatorio = await prisma.relatorio.findUnique({
       where: { id: Number(id) },
       include: {
-        presencas: { select: { membroId: true } },
+        presencas: { select: { membroId: true, tipo: true } },
         celula: { select: { membros: { where: { ativo: true }, select: { id: true } } } },
       },
     });
@@ -332,12 +374,17 @@ export const enviarRelatorio = async (req: Request, res: Response) => {
       return res.status(404).json({ message: 'Relatório não encontrado' });
     }
 
-    if (relatorio.status === 1) { // 1 = Enviado
+    if (relatorio.status === 1) {
       return res.status(400).json({ message: 'Este relatório já foi enviado' });
     }
 
+    const tipoEsperado = relatorio.evento;
     const membrosAtivosIds = new Set(relatorio.celula.membros.map(m => m.id));
-    const membrosComPresencaIds = new Set(relatorio.presencas.map(p => p.membroId));
+    const membrosComPresencaIds = new Set(
+      relatorio.presencas
+        .filter((p) => p.tipo === tipoEsperado)
+        .map((p) => p.membroId),
+    );
 
     const membrosSemPresenca = [...membrosAtivosIds].filter(id => !membrosComPresencaIds.has(id));
     
@@ -347,7 +394,8 @@ export const enviarRelatorio = async (req: Request, res: Response) => {
           data: {
             relatorioId: Number(id),
             membroId: membroId,
-            status: 0, // Ausente
+            status: 0,
+            tipo: tipoEsperado,
           },
         })
       );
@@ -372,10 +420,22 @@ export const enviarRelatorio = async (req: Request, res: Response) => {
 // Obter relatório de frequência por data (Célula x Culto)
 export const obterFrequenciaPorData = async (req: Request, res: Response) => {
   try {
+    const accountId = getAccountId(req);
+    if (!accountId) {
+      return res.status(401).json({ message: 'Conta não identificada' });
+    }
+
     const { dataInicio, dataFim, celulaId } = req.query;
 
     if (!dataInicio || !dataFim) {
       return res.status(400).json({ message: 'Parâmetros dataInicio e dataFim são obrigatórios' });
+    }
+
+    if (celulaId) {
+      const celulaCheck = await assertCelulaBelongsToAccount(Number(celulaId), accountId);
+      if (!celulaCheck.ok) {
+        return res.status(404).json({ message: 'Célula não encontrada' });
+      }
     }
 
     const inicio = new Date(dataInicio as string);
@@ -458,10 +518,20 @@ export const obterFrequenciaPorData = async (req: Request, res: Response) => {
 // Obter estatísticas de uma célula
 export const obterEstatisticas = async (req: Request, res: Response) => {
   try {
+    const accountId = getAccountId(req);
+    if (!accountId) {
+      return res.status(401).json({ message: 'Conta não identificada' });
+    }
+
     const { celulaId } = req.params;
 
+    const celulaCheck = await assertCelulaBelongsToAccount(Number(celulaId), accountId);
+    if (!celulaCheck.ok) {
+      return res.status(404).json({ message: 'Célula não encontrada' });
+    }
+
     const celula = await prisma.celula.findUnique({
-      where: { id: Number(celulaId) },
+      where: { id: Number(celulaId), accountId },
       include: { _count: { select: { membros: { where: { ativo: true } } } } },
     });
 
@@ -566,13 +636,22 @@ export const obterEstatisticas = async (req: Request, res: Response) => {
 // Obter últimos relatórios de um membro específico
 export const obterFrequenciaMembro = async (req: Request, res: Response) => {
   try {
+    const accountId = getAccountId(req);
+    if (!accountId) {
+      return res.status(401).json({ message: 'Conta não identificada' });
+    }
+
     const { membroId, celulaId } = req.params;
 
     if (!membroId || !celulaId) {
       return res.status(400).json({ message: 'Parâmetros membroId e celulaId são obrigatórios' });
     }
 
-    // Buscar os últimos 4 relatórios enviados da célula (de ambos os tipos)
+    const celulaCheck = await assertCelulaBelongsToAccount(Number(celulaId), accountId);
+    if (!celulaCheck.ok) {
+      return res.status(404).json({ message: 'Célula não encontrada' });
+    }
+
     const relatorios = await prisma.relatorio.findMany({
       where: {
         celulaId: Number(celulaId),

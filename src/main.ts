@@ -8,8 +8,11 @@ import AppIcon from './components/AppIcon.vue'
 import vFadeIn from './directives/fadeInDirective'
 import VueApexCharts from 'vue3-apexcharts'
 import { useUserStore } from './stores/userStore'
+import { markMobileShellClass } from './utils/platform'
+import { hideNativeSplash, initNativeShell } from './capacitor/initNativeShell'
 
-// Verificar se o servidor backend está respondendo (rota correta no backend: /api/health)
+markMobileShellClass()
+
 api.get('/health')
   .then(() => console.log('✅ API conectada com sucesso'))
   .catch(err => console.warn('⚠️ API offline ou inacessível', err))
@@ -35,6 +38,8 @@ function hideMobilePwaSplash(): void {
 }
 
 async function bootstrap(): Promise<void> {
+  await initNativeShell()
+
   const app = createApp(App)
   const pinia = createPinia()
   app.use(pinia)
@@ -46,7 +51,10 @@ async function bootstrap(): Promise<void> {
   app.mount('#app')
 
   void router.isReady().then(() => {
-    requestAnimationFrame(() => hideMobilePwaSplash())
+    requestAnimationFrame(() => {
+      hideMobilePwaSplash()
+      void hideNativeSplash()
+    })
   })
 }
 

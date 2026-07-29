@@ -17,6 +17,7 @@ const loading = ref(false)
 const error = ref('')
 const success = ref('')
 const otpVerified = ref(false)
+const setupToken = ref('')
 const phoneError = ref<string | null>(null)
 
 // Step 1: Informar WhatsApp
@@ -59,8 +60,8 @@ const validateOtp = () => {
     return false
   }
   
-  if (otpInput.code.length !== 4) {
-    error.value = 'O código deve ter 4 dígitos'
+  if (otpInput.code.length !== 6) {
+    error.value = 'O código deve ter 6 dígitos'
     return false
   }
   
@@ -136,6 +137,7 @@ const verifyOtp = async () => {
     if (response.success) {
       success.value = response.message
       otpVerified.value = true
+      setupToken.value = response.setupToken
       currentStep.value = 3
     } else {
       error.value = response.message
@@ -161,6 +163,7 @@ const createPassword = async () => {
       whatsappInput.whatsapp, 
       passwordInput.nome, 
       passwordInput.senha,
+      setupToken.value,
       passwordInput.dataNascimento || undefined
     )
     
@@ -284,10 +287,10 @@ const goBack = () => {
             id="otp"
             v-model="otpInput.code"
             type="text"
-            placeholder="Digite o código de 4 dígitos"
+            placeholder="Digite o código de 6 dígitos"
             class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-primary-500 focus:border-primary-500"
             :disabled="loading"
-            maxlength="4"
+            maxlength="6"
           />
           <p class="mt-1 text-xs text-gray-500">
             Enviamos um código para o seu WhatsApp.

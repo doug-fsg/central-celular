@@ -1,7 +1,7 @@
 import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
 import { useMemberStore } from './memberStore'
-import api, { getJwtPayload, setTokenGetter } from '../services/api'
+import api, { getJwtPayload, setTokenGetter, setRefreshTokenGetter, setOnTokensRefreshed } from '../services/api'
 import celulaService from '../services/celulaService'
 
 export interface UserProfile {
@@ -28,6 +28,7 @@ export const useUserStore = defineStore('user', () => {
   // Estado
   const user = ref<UserProfile | null>(null);
   const token = ref<string | null>(localStorage.getItem('token'));
+  const refreshToken = ref<string | null>(localStorage.getItem('refreshToken'));
   const loading = ref(false);
 
   // Getters
@@ -138,6 +139,15 @@ export const useUserStore = defineStore('user', () => {
     setUser(updated);
   }
 
+  function setRefreshToken(newRefreshToken: string | null) {
+    refreshToken.value = newRefreshToken;
+    if (newRefreshToken) {
+      localStorage.setItem('refreshToken', newRefreshToken);
+    } else {
+      localStorage.removeItem('refreshToken');
+    }
+  }
+
   function setToken(newToken: string | null) {
     token.value = newToken;
     if (newToken) {
@@ -163,9 +173,13 @@ export const useUserStore = defineStore('user', () => {
       loading.value = true;
       const response = await api.login(loginData.whatsapp, loginData.senha);
       console.log('[UserStore] Resposta da API recebida:', response);
-      console.log('[UserStore] Usuário logado:', response.usuario);
-      setToken(response.token);
-      setUser(response.usuario, response.token);
+      const accessToken = response.data?.accessToken ?? response.token;
+      const newRefresh = response.data?.refreshToken ?? response.refreshToken ?? null;
+      const usuario = response.data?.user ?? response.usuario;
+      console.log('[UserStore] Usuário logado:', usuario);
+      setToken(accessToken);
+      if (newRefresh) setRefreshToken(newRefresh);
+      setUser(usuario, accessToken);
       
       // Inicializar stores após login
       console.log('[UserStore] Inicializando stores dependentes...');
@@ -173,13 +187,13 @@ export const useUserStore = defineStore('user', () => {
       await memberStore.carregarMembros();
       
       // Se for admin/pastor, buscar células do usuário
-      if (response.usuario.cargo === 'PASTOR' || response.usuario.isSuperAdmin) {
+      if (usuario.cargo === 'PASTOR' || usuario.isSuperAdmin) {
         await checkUserCell();
       }
       
       console.log('[UserStore] Login concluído com sucesso');
-      console.log('[UserStore] Cargo do usuário:', response.usuario.cargo);
-      console.log('[UserStore] É líder?:', response.usuario.cargo?.toUpperCase() === 'LIDER');
+      console.log('[UserStore] Cargo do usuário:', usuario.cargo);
+      console.log('[UserStore] É líder?:', usuario.cargo?.toUpperCase() === 'LIDER');
       return true;
     } catch (error) {
       console.error('[UserStore] Erro no login:', error);
@@ -215,25 +229,51 @@ export const useUserStore = defineStore('user', () => {
   }
 
   async function logout() {
+    const currentRefresh = refreshToken.value;
+    if (currentRefresh) {
+      try {
+        await api.logout(currentRefresh);
+      } catch {
+        // ignore network errors on logout
+      }
+    }
     setUser(null);
     setToken(null);
+    setRefreshToken(null);
   }
 
   async function loadUserFromStorage() {
     const storedUser = localStorage.getItem('usuario');
     const storedToken = localStorage.getItem('token');
+    const storedRefresh = localStorage.getItem('refreshToken');
     
     if (storedUser && storedToken) {
-      // Validar se o token não está expirado antes de carregar
       if (api.isTokenExpired(storedToken)) {
+        if (storedRefresh) {
+          try {
+            const refreshed = await api.refresh(storedRefresh);
+            const accessToken = refreshed.data?.accessToken ?? refreshed.accessToken ?? refreshed.token;
+            const newRefresh = refreshed.data?.refreshToken ?? refreshed.refreshToken ?? storedRefresh;
+            if (accessToken) {
+              setToken(accessToken);
+              setRefreshToken(newRefresh);
+              setUser(JSON.parse(storedUser) as UserProfile, accessToken);
+              return;
+            }
+          } catch {
+            // fall through
+          }
+        }
         console.log('[UserStore] Token expirado no localStorage, limpando sessão');
         setUser(null);
         setToken(null);
+        setRefreshToken(null);
         return;
       }
       
       const userData = JSON.parse(storedUser) as UserProfile;
       setToken(storedToken);
+      if (storedRefresh) setRefreshToken(storedRefresh);
       setUser(userData, storedToken);
       
       // Se for admin/pastor, buscar células do usuário
@@ -249,11 +289,16 @@ export const useUserStore = defineStore('user', () => {
       console.log('[UserStore] Recebido evento de token inválido, limpando sessão');
       setUser(null);
       setToken(null);
+      setRefreshToken(null);
     });
   }
   
-  // Registrar getter do token no api.ts
   setTokenGetter(() => token.value);
+  setRefreshTokenGetter(() => refreshToken.value);
+  setOnTokensRefreshed((accessToken, newRefreshToken) => {
+    setToken(accessToken);
+    setRefreshToken(newRefreshToken);
+  });
 
   return {
     user,

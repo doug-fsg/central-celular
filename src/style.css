@@ -149,8 +149,11 @@ html {
 
   /* Estilo para a barra de navegação inferior (apenas móvel) */
   .bottom-nav {
-    @apply fixed bottom-0 left-0 right-0 bg-white shadow-soft flex justify-around items-center py-2 z-10 border-t border-gray-200;
-    /* Padding extra para o home indicator do iPhone */
+    @apply fixed bottom-0 left-0 right-0 flex justify-around items-center py-2 z-20 border-t border-gray-200/80;
+    background: rgba(255, 255, 255, 0.92);
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+    box-shadow: 0 -4px 24px rgba(15, 23, 42, 0.06);
     padding-bottom: calc(0.5rem + env(safe-area-inset-bottom, 0px));
   }
 
@@ -216,6 +219,102 @@ html {
   .modal-dialog-panel {
     @apply w-full transform overflow-hidden rounded-2xl border border-gray-200/90
            bg-white text-left shadow-xl transition-all;
+  }
+
+  /* Shell mobile (PWA instalado ou Capacitor) */
+  html.is-mobile-shell {
+    -webkit-tap-highlight-color: transparent;
+  }
+
+  html.is-native-shell body {
+    overscroll-behavior-y: none;
+  }
+
+  .app-shell--mobile {
+    min-height: 100dvh;
+    padding-top: env(safe-area-inset-top, 0px);
+  }
+
+  .mobile-page-header {
+    @apply sticky top-0 z-10 border-b border-gray-200/80 px-4 py-3;
+    background: rgba(249, 250, 251, 0.92);
+    backdrop-filter: blur(10px);
+    -webkit-backdrop-filter: blur(10px);
+    padding-top: max(0.75rem, env(safe-area-inset-top, 0px));
+  }
+
+  .mobile-page-header__title {
+    @apply text-lg font-bold text-gray-900 tracking-tight;
+  }
+
+  .mobile-page-header__subtitle {
+    @apply text-sm text-gray-500;
+  }
+
+  .mobile-page__content {
+    padding-bottom: calc(9.5rem + env(safe-area-inset-bottom, 0px));
+  }
+
+  .mobile-sticky-action-bar {
+    @apply fixed left-0 right-0 z-30 px-4 pt-3 pb-3 border-t border-gray-200/70;
+    bottom: calc(3.75rem + env(safe-area-inset-bottom, 0px));
+    background: rgba(255, 255, 255, 0.94);
+    backdrop-filter: blur(14px);
+    -webkit-backdrop-filter: blur(14px);
+    box-shadow: 0 -8px 30px rgba(15, 23, 42, 0.08);
+  }
+
+  .mobile-sticky-action-bar__button {
+    @apply w-full py-3.5 rounded-xl bg-primary-600 text-white font-semibold text-base shadow-sm;
+    @apply active:scale-[0.98] transition-transform disabled:opacity-50 disabled:cursor-not-allowed;
+  }
+
+  .bottom-sheet-panel {
+    @apply rounded-t-3xl bg-white px-5 pt-3 pb-8 shadow-2xl;
+    padding-bottom: calc(2rem + env(safe-area-inset-bottom, 0px));
+  }
+
+  .bottom-sheet-handle {
+    @apply mx-auto mb-4 h-1 w-10 rounded-full bg-gray-300;
+  }
+
+  /* Inputs 16px evitam zoom automático no iOS */
+  html.is-mobile-shell input,
+  html.is-mobile-shell textarea,
+  html.is-mobile-shell select {
+    font-size: 16px;
+  }
+
+  .mobile-offline-banner {
+    @apply fixed left-0 right-0 z-[45] px-4 py-2 text-center text-xs font-medium text-white;
+    top: env(safe-area-inset-top, 0px);
+    background: rgba(185, 28, 28, 0.95);
+    backdrop-filter: blur(8px);
+  }
+
+  .mobile-offline-banner--shell {
+    top: 0;
+    padding-top: max(0.5rem, env(safe-area-inset-top, 0px));
+  }
+
+  .mobile-offline-banner__dot {
+    @apply inline-block h-2 w-2 rounded-full bg-white mr-2 align-middle;
+    animation: offline-pulse 1.2s ease-in-out infinite;
+  }
+
+  @keyframes offline-pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.4; }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .skeleton-list,
+    .animate-pulse {
+      animation: none;
+    }
+    .mobile-offline-banner__dot {
+      animation: none;
+    }
   }
 }
 

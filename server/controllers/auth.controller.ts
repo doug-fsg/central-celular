@@ -1,12 +1,14 @@
 import { Request, Response } from 'express';
 import { prisma } from '../lib/prisma';
 import bcrypt from 'bcryptjs';
-import jwt from 'jsonwebtoken';
 import { z } from 'zod';
 import { authService } from '../services/authService';
 import { passwordResetService } from '../services/passwordResetService';
 import { otpService } from '../services/otpService';
-import { whatsappService } from '../services/whatsappService';
+import { ok, fail } from '../lib/response';
+import { signAccessToken } from '../lib/jwt';
+import { getJwtSecret } from '../lib/env';
+import jwt from 'jsonwebtoken';
 
 // Schema de validação para login
 const loginSchema = z.object({
@@ -23,7 +25,7 @@ const requestOtpSchema = z.object({
 // Schema para verificação de OTP
 const verifyOtpSchema = z.object({
   whatsapp: z.string().min(8, 'Número de WhatsApp inválido'),
-  code: z.string().length(4, 'Código deve ter 4 dígitos')
+  code: z.string().length(6, 'Código deve ter 6 dígitos'),
 });
 
 // Schema para criação de senha
@@ -31,12 +33,21 @@ const createPasswordSchema = z.object({
   whatsapp: z.string().min(8, 'Número de WhatsApp inválido'),
   nome: z.string().min(3, 'Nome deve ter pelo menos 3 caracteres'),
   senha: z.string().min(6, 'Senha deve ter pelo menos 6 caracteres'),
+  setupToken: z.string().min(1, 'Token de verificação obrigatório'),
   dataNascimento: z.string().optional().refine((val) => {
     if (!val) return true;
     const date = new Date(val);
     const hoje = new Date();
     return date <= hoje;
   }, { message: 'A data de nascimento não pode ser no futuro' }),
+});
+
+const refreshSchema = z.object({
+  refreshToken: z.string().min(1),
+});
+
+const logoutSchema = z.object({
+  refreshToken: z.string().min(1),
 });
 
 // Schema para solicitação de reset de senha
@@ -64,13 +75,6 @@ const registroSchema = z.object({
   accountId: z.number().optional()
 });
 
-// Função auxiliar para gerar token JWT
-const gerarToken = (userId: number): string => {
-  const secret = process.env.JWT_SECRET || 'central-celular-secret';
-  console.log('Gerando token JWT com secret:', secret ? 'Secret disponível' : 'Secret NÃO disponível');
-  return jwt.sign({ id: userId }, secret, { expiresIn: '7d' });
-};
-
 // Controller de autenticação
 export const authController = {
   // Login com email/whatsapp e senha
@@ -92,8 +96,17 @@ export const authController = {
           senha,
           accountId
         });
-        
-        return res.json(result);
+
+        return res.json({
+          success: true,
+          data: {
+            accessToken: result.accessToken,
+            refreshToken: result.refreshToken,
+            user: result.usuario,
+          },
+          token: result.token,
+          usuario: result.usuario,
+        });
       } catch (error: any) {
         console.error('Erro no login:', error);
         return res.status(401).json({ message: error.message || 'Credenciais inválidas' });
@@ -186,7 +199,7 @@ export const authController = {
         return res.status(400).json({ errors: validatedData.error.errors });
       }
       
-      const { whatsapp, nome, senha, dataNascimento } = validatedData.data;
+      const { whatsapp, nome, senha, dataNascimento, setupToken } = validatedData.data;
       
       // Buscar account padrão
       const defaultAccount = await prisma.account.findFirst({
@@ -205,12 +218,25 @@ export const authController = {
           nome,
           senha,
           dataNascimento: dataNascimento || undefined,
-          accountId: defaultAccount.id
+          accountId: defaultAccount.id,
+          setupToken,
         });
         
-        return res.status(201).json(result);
+        return res.status(201).json({
+          success: true,
+          data: {
+            accessToken: result.accessToken,
+            refreshToken: result.refreshToken,
+            user: result.usuario,
+          },
+          token: result.token,
+          usuario: result.usuario,
+        });
       } catch (error: any) {
         console.error('Erro ao criar usuário:', error);
+        if (error.message?.includes('Token') || error.message?.includes('configuração')) {
+          return fail(res, 403, 'FORBIDDEN', error.message || 'Verificação necessária');
+        }
         return res.status(400).json({ message: error.message || 'Erro ao criar usuário' });
       }
     } catch (error) {
@@ -305,17 +331,13 @@ export const authController = {
       });
 
       // Gerar token
-      const jwtSecret = process.env.JWT_SECRET || 'central-celular-secret';
+      const jwtSecret = getJwtSecret();
       
-      const token = jwt.sign(
-        {
-          userId: novoUsuario.id,
-          accountId: novoUsuario.accountId,
-          isSuperAdmin: novoUsuario.isSuperAdmin
-        },
-        jwtSecret,
-        { expiresIn: '7d' }
-      );
+      const token = signAccessToken({
+        userId: novoUsuario.id,
+        accountId: novoUsuario.accountId,
+        isSuperAdmin: novoUsuario.isSuperAdmin,
+      });
 
       // Retornar dados do usuário (sem a senha) e token
       const { senha: _, ...usuarioSemSenha } = novoUsuario;
@@ -554,9 +576,15 @@ export const authController = {
 
       console.log('[AuthController] Token de convite válido para usuário:', usuario.nome);
 
+      const setupToken = authService.createSetupTokenForInvite(
+        whatsappNormalizado,
+        defaultAccount.id,
+      );
+
       return res.json({
         success: true,
         message: 'Token válido',
+        setupToken,
         usuario: {
           id: usuario.id,
           nome: usuario.nome,
@@ -568,6 +596,43 @@ export const authController = {
     } catch (error) {
       console.error('Erro ao verificar token de convite:', error);
       return res.status(500).json({ message: 'Erro ao processar requisição' });
+    }
+  },
+
+  async refresh(req: Request, res: Response) {
+    try {
+      const parsed = refreshSchema.safeParse(req.body);
+      if (!parsed.success) {
+        return fail(res, 400, 'VALIDATION_ERROR', 'Dados inválidos', parsed.error.errors);
+      }
+
+      const result = await authService.refresh(parsed.data.refreshToken);
+      return res.json({
+        success: true,
+        data: {
+          accessToken: result.accessToken,
+          refreshToken: result.refreshToken,
+          user: result.usuario,
+        },
+        token: result.token,
+        usuario: result.usuario,
+      });
+    } catch (error: any) {
+      return fail(res, 401, 'UNAUTHORIZED', error.message || 'Refresh token inválido');
+    }
+  },
+
+  async logout(req: Request, res: Response) {
+    try {
+      const parsed = logoutSchema.safeParse(req.body);
+      if (!parsed.success) {
+        return fail(res, 400, 'VALIDATION_ERROR', 'Dados inválidos', parsed.error.errors);
+      }
+
+      await authService.logout(parsed.data.refreshToken);
+      return res.status(204).send();
+    } catch (error) {
+      return fail(res, 500, 'INTERNAL_ERROR', 'Erro ao encerrar sessão');
     }
   }
 }; 

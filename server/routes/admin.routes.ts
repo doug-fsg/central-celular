@@ -13,6 +13,7 @@ import {
   reenviarConviteUsuario,
 } from '../controllers/usuarios.controller';
 import { obterDashboardCuidadoHandler } from '../controllers/dashboardCuidado.controller';
+import { deleteUsuarioAdmin } from '../controllers/adminUsers.controller';
 import {
   listarCelulas,
   statusRelatoriosCelulas,
@@ -39,74 +40,7 @@ adminRouter.get('/usuarios/:id', obterUsuario);
 adminRouter.post('/usuarios', criarUsuario);
 adminRouter.put('/usuarios/:id', atualizarUsuario);
 adminRouter.patch('/usuarios/:id/status', ativarDesativarUsuario);
-adminRouter.delete('/usuarios/:id', async (req, res) => {
-  try {
-    const { id } = req.params;
-    const userId = Number(id)
-
-    // Verificar se usuário existe
-    const usuario = await prisma.usuario.findUnique({
-      where: { id: userId },
-      select: { id: true, nome: true, cargo: true }
-    });
-
-    if (!usuario) {
-      return res.status(404).json({ message: 'Usuário não encontrado' });
-    }
-
-    // Não permitir excluir o próprio usuário
-    if (usuario.id === (req as any).usuario.id) {
-      return res.status(400).json({ message: 'Não é possível excluir o próprio usuário' });
-    }
-
-    await prisma.$transaction(async (tx) => {
-      // 1) Se for co-líder, remover referência de coLiderId
-      await tx.celula.updateMany({
-        where: { coLiderId: userId },
-        data: { coLiderId: null }
-      })
-
-      // 2) Se for supervisor de células, remover referência de supervisorId
-      await tx.celula.updateMany({
-        where: { supervisorId: userId },
-        data: { supervisorId: null }
-      })
-
-      // 3) Se for líder de célula, deletar celulas e dados relacionados
-      const celulasLideradas = await tx.celula.findMany({
-        where: { liderId: userId },
-        select: { id: true }
-      })
-
-      if (celulasLideradas.length > 0) {
-        const celulaIds = celulasLideradas.map(c => c.id)
-
-        // Deletar relatórios (presenças cairão por cascade via onDelete: Cascade em Presenca.relatorio)
-        await tx.relatorio.deleteMany({ where: { celulaId: { in: celulaIds } } })
-
-        // Deletar membros
-        await tx.membro.deleteMany({ where: { celulaId: { in: celulaIds } } })
-
-        // Deletar células
-        await tx.celula.deleteMany({ where: { id: { in: celulaIds } } })
-      }
-
-      // 4) Apagar relacionamentos diretos do usuário
-      await tx.notificacao.deleteMany({ where: { usuarioId: userId } })
-      await tx.conquista.deleteMany({ where: { usuarioId: userId } })
-      await tx.ssoLink.deleteMany({ where: { usuarioId: userId } })
-      await tx.usuarioConfig.deleteMany({ where: { usuarioId: userId } })
-
-      // 5) Excluir usuário
-      await tx.usuario.delete({ where: { id: userId } })
-    })
-
-    res.json({ message: 'Usuário excluído com sucesso' });
-  } catch (error) {
-    console.error('Erro ao excluir usuário:', error);
-    res.status(500).json({ message: 'Erro ao excluir usuário' });
-  }
-});
+adminRouter.delete('/usuarios/:id', deleteUsuarioAdmin);
 
 // Dashboard agregado de rede de cuidado (pastoral)
 adminRouter.get('/dashboard-cuidado', obterDashboardCuidadoHandler);
@@ -239,17 +173,18 @@ adminRouter.get('/estatisticas', async (req, res) => {
       }),
       
       // Presença total período atual (filtrar por líder se fornecido)
-      prisma.presenca.findMany({
+      prisma.presenca.groupBy({
+        by: ['tipo', 'status'],
         where: {
           relatorio: {
             dataEnvio: {
               gte: dataInicio,
-              lte: hoje
+              lte: hoje,
             },
             celula: celulaScope,
-          }
+          },
         },
-        select: { tipo: true, status: true },
+        _count: { _all: true },
       }),
       
       // Novos membros no período atual (filtrar por líder se fornecido)
@@ -275,17 +210,18 @@ adminRouter.get('/estatisticas', async (req, res) => {
       }),
 
       // Presenças período anterior (filtrar por líder se fornecido)
-      prisma.presenca.findMany({
+      prisma.presenca.groupBy({
+        by: ['tipo', 'status'],
         where: {
           relatorio: {
             dataEnvio: {
               gte: periodoAnteriorInicio,
-              lte: periodoAnteriorFim
+              lte: periodoAnteriorFim,
             },
             celula: celulaScope,
-          }
+          },
         },
-        select: { tipo: true, status: true },
+        _count: { _all: true },
       }),
 
       // Células por região
@@ -368,10 +304,15 @@ adminRouter.get('/estatisticas', async (req, res) => {
     ]);
 
     // Calcular estatísticas do período atual (% presenças por tipo, Prisma modelo Presenca)
-    const totCel = presencas.filter((p: { tipo: number }) => p.tipo === 0).length;
-    const presCel = presencas.filter((p: { tipo: number; status: number }) => p.tipo === 0 && p.status === 1).length;
-    const totCult = presencas.filter((p: { tipo: number }) => p.tipo === 1).length;
-    const presCult = presencas.filter((p: { tipo: number; status: number }) => p.tipo === 1 && p.status === 1).length;
+    const countByTipoStatus = (rows: Array<{ tipo: number; status: number; _count: { _all: number } }>, tipo: number, status?: number) =>
+      rows
+        .filter((p) => p.tipo === tipo && (status === undefined || p.status === status))
+        .reduce((sum, p) => sum + p._count._all, 0);
+
+    const totCel = countByTipoStatus(presencas, 0);
+    const presCel = countByTipoStatus(presencas, 0, 1);
+    const totCult = countByTipoStatus(presencas, 1);
+    const presCult = countByTipoStatus(presencas, 1, 1);
 
     const pctCel = totCel > 0 ? Math.round((presCel / totCel) * 100) : 0;
     const pctCult = totCult > 0 ? Math.round((presCult / totCult) * 100) : 0;
@@ -379,10 +320,10 @@ adminRouter.get('/estatisticas', async (req, res) => {
     const mediaFrequencia = denomAtual > 0 ? Math.round(((presCel + presCult) / denomAtual) * 100) : 0;
 
     // Período anterior
-    const totCelAnt = presencasAnteriores.filter((p: { tipo: number }) => p.tipo === 0).length;
-    const presCelAnt = presencasAnteriores.filter((p: { tipo: number; status: number }) => p.tipo === 0 && p.status === 1).length;
-    const totCultAnt = presencasAnteriores.filter((p: { tipo: number }) => p.tipo === 1).length;
-    const presCultAnt = presencasAnteriores.filter((p: { tipo: number; status: number }) => p.tipo === 1 && p.status === 1).length;
+    const totCelAnt = countByTipoStatus(presencasAnteriores, 0);
+    const presCelAnt = countByTipoStatus(presencasAnteriores, 0, 1);
+    const totCultAnt = countByTipoStatus(presencasAnteriores, 1);
+    const presCultAnt = countByTipoStatus(presencasAnteriores, 1, 1);
 
     const pctCelAnt = totCelAnt > 0 ? Math.round((presCelAnt / totCelAnt) * 100) : 0;
     const pctCultAnt = totCultAnt > 0 ? Math.round((presCultAnt / totCultAnt) * 100) : 0;

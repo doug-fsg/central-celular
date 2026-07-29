@@ -4,6 +4,7 @@ import bcrypt from 'bcryptjs';
 import { z } from 'zod';
 import { otpService } from '../services/otpService';
 import { CARGO, isPlatformOwner } from '../lib/roles';
+import { getAccountId, getUserId, assertUsuarioBelongsToAccount } from '../lib/tenant';
 
 function resolveIsSuperAdminForCargo(
   cargo: string,
@@ -238,9 +239,19 @@ export const listarUsuarios = async (req: Request, res: Response) => {
 export const obterUsuario = async (req: Request, res: Response) => {
   try {
     const { id } = req.params;
-    
-    const usuario = await prisma.usuario.findUnique({
-      where: { id: Number(id) },
+    const accountId = getAccountId(req);
+
+    if (!accountId) {
+      return res.status(401).json({ message: 'Conta não identificada' });
+    }
+
+    const userCheck = await assertUsuarioBelongsToAccount(Number(id), accountId);
+    if (!userCheck.ok) {
+      return res.status(404).json({ message: 'Usuário não encontrado' });
+    }
+
+    const usuario = await prisma.usuario.findFirst({
+      where: { id: Number(id), accountId },
       select: {
         id: true,
         nome: true,
@@ -248,13 +259,9 @@ export const obterUsuario = async (req: Request, res: Response) => {
         cargo: true,
         ativo: true,
         createdAt: true,
-        updatedAt: true
-      }
+        updatedAt: true,
+      },
     });
-
-    if (!usuario) {
-      return res.status(404).json({ message: 'Usuário não encontrado' });
-    }
 
     res.json(usuario);
   } catch (error) {
@@ -676,15 +683,24 @@ export const alterarSenha = async (req: Request, res: Response) => {
   try {
     const { id } = req.params;
     const { senhaAtual, novaSenha } = alterarSenhaSchema.parse(req.body);
+    const accountId = getAccountId(req);
+    const requestUserId = getUserId(req);
 
-    // Verificar se usuário existe
-    const usuario = await prisma.usuario.findUnique({ 
-      where: { id: Number(id) } 
-    });
-    
-    if (!usuario) {
+    if (!accountId || !requestUserId) {
+      return res.status(401).json({ message: 'Não autenticado' });
+    }
+
+    const targetId = Number(id);
+    if (targetId !== requestUserId) {
+      return res.status(403).json({ message: 'Você só pode alterar sua própria senha' });
+    }
+
+    const userCheck = await assertUsuarioBelongsToAccount(targetId, accountId);
+    if (!userCheck.ok) {
       return res.status(404).json({ message: 'Usuário não encontrado' });
     }
+
+    const usuario = userCheck.usuario;
 
     // Verificar a senha atual
     const senhaValida = await bcrypt.compare(senhaAtual, usuario.senha);
@@ -717,23 +733,25 @@ export const alterarSenha = async (req: Request, res: Response) => {
 export const listarCelularesUsuario = async (req: Request, res: Response) => {
   try {
     const { id } = req.params;
-    
-    // Verificar se usuário existe
-    const usuario = await prisma.usuario.findUnique({ 
-      where: { id: Number(id) } 
-    });
-    
-    if (!usuario) {
+    const accountId = getAccountId(req);
+
+    if (!accountId) {
+      return res.status(401).json({ message: 'Conta não identificada' });
+    }
+
+    const userCheck = await assertUsuarioBelongsToAccount(Number(id), accountId);
+    if (!userCheck.ok) {
       return res.status(404).json({ message: 'Usuário não encontrado' });
     }
 
     // Buscar celulas onde o usuário é líder ou colíder
     const celulas = await prisma.celula.findMany({
       where: {
+        accountId,
         OR: [
           { liderId: Number(id) },
-          { coLiderId: Number(id) }
-        ]
+          { coLiderId: Number(id) },
+        ],
       },
       include: {
         lider: {

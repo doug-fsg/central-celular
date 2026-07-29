@@ -46,16 +46,5 @@ export function initJobs() {
   ssoLinkJob.start();
   console.log('[Jobs] Job de envio de links SSO agendado para execução às 9h de segunda-feira');
   
-  // Executar imediatamente para teste (apenas em ambiente de desenvolvimento)
-  if (process.env.NODE_ENV === 'development') {
-    console.log('[Jobs] Ambiente de desenvolvimento detectado, executando jobs para teste...');
-    verificarAniversariantes().catch(err => {
-      console.error('[Jobs] Erro ao executar job de aniversariantes para teste:', err);
-    });
-    
-    // Não executamos o job de links SSO automaticamente em desenvolvimento
-    // para evitar envio acidental de mensagens
-  }
-  
   console.log('[Jobs] Todos os jobs foram inicializados');
 } 

@@ -5,6 +5,7 @@ import {
   criarRelatorio,
   atualizarRelatorio,
   registrarPresenca,
+  marcarTodosMembros,
   obterEstatisticas,
   enviarRelatorio,
   obterFrequenciaPorData,
@@ -26,6 +27,7 @@ router.get('/:id', obterRelatorio);
 router.post('/', criarRelatorio);
 router.put('/:id', atualizarRelatorio);
 router.post('/:id/enviar', enviarRelatorio);
+router.post('/:id/presencas/todos', marcarTodosMembros);
 router.post('/:id/presencas', registrarPresenca);
 
 export default router; 

@@ -1,0 +1,112 @@
+openapi: 3.0.3
+info:
+  title: Aprisco API
+  version: 0.2.0
+  description: REST API Express + Prisma (auth e relatórios)
+servers:
+  - url: http://localhost:3000/api
+paths:
+  /auth/login:
+    post:
+      summary: Login com WhatsApp e senha
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [whatsapp, senha]
+              properties:
+                whatsapp: { type: string }
+                senha: { type: string }
+      responses:
+        '200':
+          description: Login ok
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success: { type: boolean }
+                  data:
+                    type: object
+                    properties:
+                      accessToken: { type: string }
+                      refreshToken: { type: string }
+                      user: { type: object }
+        '401':
+          description: Credenciais inválidas
+  /auth/refresh:
+    post:
+      summary: Renovar access token
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [refreshToken]
+              properties:
+                refreshToken: { type: string }
+      responses:
+        '200':
+          description: Tokens renovados
+        '401':
+          description: Refresh inválido
+  /auth/logout:
+    post:
+      summary: Revogar refresh token
+      responses:
+        '204':
+          description: Logout ok
+  /auth/request-otp:
+    post:
+      summary: Solicitar OTP de primeiro acesso
+  /auth/verify-otp:
+    post:
+      summary: Verificar OTP e obter setupToken
+  /auth/create-password:
+    post:
+      summary: Criar senha após OTP ou convite
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [whatsapp, nome, senha, setupToken]
+              properties:
+                whatsapp: { type: string }
+                nome: { type: string }
+                senha: { type: string }
+                setupToken: { type: string }
+  /relatorios:
+    get:
+      summary: Listar relatórios por célula e período
+      parameters:
+        - in: query
+          name: celulaId
+          required: true
+          schema: { type: integer }
+        - in: query
+          name: dataInicio
+          required: true
+          schema: { type: string, format: date }
+        - in: query
+          name: dataFim
+          required: true
+          schema: { type: string, format: date }
+      responses:
+        '200':
+          description: Lista de relatórios
+        '404':
+          description: Célula não encontrada (tenant)
+  /health:
+    get:
+      summary: Liveness
+  /health/ready:
+    get:
+      summary: Readiness (inclui DB)
+  /devices/register:
+    post:
+      summary: Registrar token de push (Capacitor)

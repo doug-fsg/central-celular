@@ -5,6 +5,7 @@ import SortableTableHeader from '../../components/admin/SortableTableHeader.vue'
 import { adminService, type MembroCompleto } from '../../services/adminService'
 import relatorioService from '../../services/relatorioService'
 import { toggleSortState, type SortState } from '../../utils/tableSort'
+import SkeletonList from '../../components/SkeletonList.vue'
 
 // Estado para os dados
 const loading = ref(false)
@@ -261,9 +262,7 @@ onUnmounted(() => {
       </div>
     </div>
 
-    <div v-if="loading" class="flex justify-center items-center py-12">
-      <div class="animate-spin rounded-full h-8 w-8 border-b-2 border-primary-600"></div>
-    </div>
+    <SkeletonList v-if="loading" :rows="6" class="mt-4" />
 
     <div v-else-if="members.length === 0" class="bg-white shadow-sm rounded-xl border border-gray-100 overflow-hidden p-8 sm:p-12">
       <div class="text-center">

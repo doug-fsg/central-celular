@@ -20,6 +20,7 @@ const formData = reactive({
   senha: '',
   confirmSenha: ''
 })
+const setupToken = ref('')
 
 // Solicitar código OTP
 const enviarCodigo = async () => {
@@ -58,8 +59,8 @@ const enviarCodigo = async () => {
 const verificarCodigo = async () => {
   error.value = ''
   
-  if (!formData.codigo.trim() || formData.codigo.length !== 4) {
-    error.value = 'Digite o código de 4 dígitos'
+  if (!formData.codigo.trim() || formData.codigo.length !== 6) {
+    error.value = 'Digite o código de 6 dígitos'
     return
   }
   
@@ -70,6 +71,7 @@ const verificarCodigo = async () => {
     
     if (response.success) {
       success.value = response.message || 'Código verificado!'
+      setupToken.value = response.setupToken
       currentStep.value = 3
     } else {
       error.value = response.message || 'Código inválido'
@@ -107,6 +109,7 @@ const finalizarCadastro = async () => {
       formData.whatsapp,
       formData.nome,
       formData.senha,
+      setupToken.value,
       formData.dataNascimento || undefined
     )
     
@@ -220,7 +223,7 @@ const onWhatsAppInput = (e: Event) => {
                 placeholder="0000"
                 class="w-full px-4 py-4 text-center text-3xl font-bold tracking-widest bg-neutral-900 border border-neutral-700 text-white placeholder-neutral-500 rounded-md focus:outline-none focus:ring-2 focus:ring-white focus:border-white transition-all"
                 :disabled="loading"
-                maxlength="4"
+                maxlength="6"
                 autocomplete="one-time-code"
               />
               <p class="text-xs text-neutral-500 text-center mt-3">

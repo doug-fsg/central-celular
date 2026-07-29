@@ -1,30 +1,35 @@
 <script setup lang="ts">
-import { computed } from 'vue';
-import { useRoute } from 'vue-router';
-import Navbar from './components/Navbar.vue';
-import BottomNavbar from './components/BottomNavbar.vue';
-import PageRouteLoader from './components/PageRouteLoader.vue';
+import { computed } from 'vue'
+import { useRoute } from 'vue-router'
+import Navbar from './components/Navbar.vue'
+import BottomNavbar from './components/BottomNavbar.vue'
+import PageRouteLoader from './components/PageRouteLoader.vue'
+import MobileOfflineBanner from './components/MobileOfflineBanner.vue'
+import { usePlatform } from './composables/usePlatform'
 
-const route = useRoute();
+const route = useRoute()
+const { mobileShell } = usePlatform()
 
-// Lista de rotas onde não queremos mostrar a navegação (landing page, login, etc.)
-/** Rotas sem Navbar / barra inferior (telas públicas de foco único). */
-const publicRoutes = ['home', 'login', 'gileade', 'first-access', 'reset-password'];
+const publicRoutes = ['home', 'login', 'gileade', 'first-access', 'reset-password']
 
-// Verificamos se estamos em uma rota autenticada onde devemos mostrar o menu
 const showNavigation = computed(() => {
-  return !publicRoutes.includes(route.name as string);
-});
+  return !publicRoutes.includes(route.name as string)
+})
 </script>
 
 <template>
+  <MobileOfflineBanner />
+
   <PageRouteLoader />
 
-  <!-- Barra de navegação superior (visível em telas maiores) -->
   <Navbar v-if="showNavigation" class="hidden sm:block" />
 
-  <router-view />
-  
-  <!-- Barra de navegação inferior (visível apenas em dispositivos móveis) -->
+  <div
+    class="app-shell"
+    :class="{ 'app-shell--mobile': mobileShell && showNavigation }"
+  >
+    <router-view />
+  </div>
+
   <BottomNavbar v-if="showNavigation" class="sm:hidden" />
 </template>

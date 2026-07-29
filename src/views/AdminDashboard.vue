@@ -12,6 +12,7 @@ import CellMembersModal from '../components/CellMembersModal.vue'
 import { ssoLinkService } from '../services/ssoLinkService'
 import FrequencyChart from '../components/FrequencyChart.vue'
 import AppIcon from '../components/AppIcon.vue'
+import SkeletonStatsGrid from '../components/SkeletonStatsGrid.vue'
 import {
   ensureUserInLeaderList,
   filterUsersForCellLeaderSelect,
@@ -877,17 +878,7 @@ const handleSendSsoLink = async () => {
       </div>
       
       <!-- Loading -->
-      <div v-if="loading" class="mt-6">
-            <div class="animate-pulse flex space-x-4">
-              <div class="flex-1 space-y-4 py-1">
-                <div class="h-4 bg-gray-200 rounded w-3/4"></div>
-            <div class="space-y-2">
-              <div class="h-4 bg-gray-200 rounded"></div>
-              <div class="h-4 bg-gray-200 rounded w-5/6"></div>
-            </div>
-          </div>
-        </div>
-              </div>
+      <SkeletonStatsGrid v-if="loading" class="mt-6" />
 
       <!-- Conteúdo -->
       <div v-else class="mt-6">
@@ -1386,9 +1377,7 @@ const handleSendSsoLink = async () => {
             </div>
           </div>
 
-          <div v-if="loading" class="flex justify-center items-center py-12">
-            <div class="animate-spin rounded-full h-8 w-8 border-b-2 border-primary-600"></div>
-          </div>
+          <SkeletonList v-if="loading" :rows="4" class="py-4" />
 
           <div v-else-if="filteredCells.length === 0" class="bg-white shadow overflow-hidden sm:rounded-lg p-6 text-center text-gray-500">
             {{ cells.length === 0 ? 'Nenhuma célula encontrada' : 'Nenhuma célula corresponde aos filtros aplicados' }}

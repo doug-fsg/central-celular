@@ -8,7 +8,7 @@ const userStore = useUserStore()
 
 function goToApp() {
   if (userStore.isLoggedIn) {
-    if (userStore.isPlatformOwner) router.push({ name: 'super-admin' })
+    if (userStore.isPlatformOwner) router.push({ name: 'admin-dashboard' })
     else if (userStore.isChurchAdmin) router.push({ name: 'admin-dashboard' })
     else if (userStore.isSupervisor) router.push({ name: 'supervisor-dashboard' })
     else router.push({ name: 'dashboard' })

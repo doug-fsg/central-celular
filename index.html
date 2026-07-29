@@ -24,6 +24,7 @@
         box-sizing: border-box;
       }
       @media (max-width: 767px) {
+        html.is-mobile-shell #app-splash,
         html.is-pwa-shell #app-splash {
           display: flex;
           position: fixed;
@@ -42,6 +43,7 @@
           -webkit-font-smoothing: antialiased;
           transition: opacity 0.35s ease, visibility 0.35s ease;
         }
+        html.is-mobile-shell #app-splash.app-splash--out,
         html.is-pwa-shell #app-splash.app-splash--out {
           opacity: 0;
           visibility: hidden;
@@ -86,7 +88,9 @@
             (window.matchMedia && window.matchMedia('(display-mode: fullscreen)').matches) ||
             (window.matchMedia && window.matchMedia('(display-mode: minimal-ui)').matches) ||
             (typeof navigator !== 'undefined' && navigator.standalone === true)
-          if (narrow && installed) document.documentElement.classList.add('is-pwa-shell')
+          if (narrow && installed) {
+            document.documentElement.classList.add('is-pwa-shell', 'is-mobile-shell')
+          }
         } catch (e) {}
       })()
     </script>

@@ -1,8 +1,16 @@
+import crypto from 'crypto';
 import { prisma } from '../lib/prisma';
 import bcrypt from 'bcryptjs';
-import jwt from 'jsonwebtoken';
 import { otpService } from './otpService';
 import { whatsappService } from './whatsappService';
+import {
+  signAccessToken,
+  signRefreshToken,
+  signSetupToken,
+  verifyRefreshToken,
+  verifySetupToken,
+} from '../lib/jwt';
+import { otpLockout } from '../lib/otpLockout';
 
 interface LoginData {
   whatsapp: string;
@@ -10,9 +18,10 @@ interface LoginData {
   accountId?: number;
 }
 
-interface LoginResult {
-  user?: any;
-  usuario?: any;
+export interface AuthTokensResult {
+  accessToken: string;
+  refreshToken: string;
+  usuario: Record<string, unknown>;
   token: string;
 }
 
@@ -25,6 +34,7 @@ interface RequestOtpResult {
 interface VerifyOtpResult {
   success: boolean;
   message: string;
+  setupToken?: string;
 }
 
 interface CreatePasswordData {
@@ -33,364 +43,347 @@ interface CreatePasswordData {
   nome: string;
   dataNascimento?: string;
   accountId: number;
+  setupToken: string;
+}
+
+function hashToken(token: string): string {
+  return crypto.createHash('sha256').update(token).digest('hex');
+}
+
+function normalizeWhatsAppDigits(whatsapp: string): string {
+  const digits = whatsapp.replace(/\D/g, '');
+  if (digits.startsWith('55') && (digits.length === 12 || digits.length === 13)) {
+    return digits;
+  }
+  if (digits.length <= 11) {
+    return `55${digits}`;
+  }
+  return digits;
+}
+
+async function issueTokens(user: {
+  id: number;
+  accountId: number;
+  isSuperAdmin: boolean;
+}): Promise<{ accessToken: string; refreshToken: string }> {
+  const payload = {
+    userId: user.id,
+    accountId: user.accountId,
+    isSuperAdmin: user.isSuperAdmin || false,
+  };
+  const accessToken = signAccessToken(payload);
+  const refreshToken = signRefreshToken(payload);
+  const tokenHash = hashToken(refreshToken);
+  const expiresAt = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
+
+  await prisma.refreshToken.create({
+    data: {
+      usuarioId: user.id,
+      tokenHash,
+      expiresAt,
+    },
+  });
+
+  return { accessToken, refreshToken };
 }
 
 export const authService = {
-  // Função para padronizar o formato do número
   formatWhatsApp(whatsapp: string): string {
-    // Usa a nova função de formatação do whatsappService
     return whatsappService.formatFullPhoneNumber(whatsapp);
   },
 
-  // Gerar um token JWT
-  generateJwtToken({ userId, accountId, isSuperAdmin }: { userId: number; accountId: number; isSuperAdmin: boolean }): string {
-    const jwtSecret = process.env.JWT_SECRET || 'central-celular-secret';
-    return jwt.sign(
-      { userId, accountId, isSuperAdmin },
-      jwtSecret,
-      { expiresIn: '7d' }
-    );
-  },
-
-  async login({ whatsapp, senha, accountId }: LoginData): Promise<LoginResult> {
-    console.log(`[AuthService] Iniciando login - WhatsApp: ${whatsapp}, AccountId: ${accountId || 'não fornecido'}`);
-    
-    // Normalização conservadora (mesma usada ao criar usuário)
-    const digits = whatsapp.replace(/\D/g, '');
-    const whatsappNormalizado = digits.startsWith('55') && (digits.length === 12 || digits.length === 13)
-      ? digits
-      : digits.length <= 11
-        ? `55${digits}`
-        : digits;
-    
-    // Busca flexível: tentar com o número normalizado e também com variação do 9
+  async login({ whatsapp, senha, accountId }: LoginData): Promise<AuthTokensResult> {
+    const whatsappNormalizado = normalizeWhatsAppDigits(whatsapp);
     const whatsappVariacoes = [whatsappNormalizado];
-    
-    // Se tem 12 dígitos, tentar também com 13 (adicionando 9 após DDD)
+
     if (whatsappNormalizado.length === 12 && whatsappNormalizado.startsWith('55')) {
       const ddd = whatsappNormalizado.substring(2, 4);
       const numero = whatsappNormalizado.substring(4);
       whatsappVariacoes.push(`55${ddd}9${numero}`);
     }
-    
-    // Se tem 13 dígitos, tentar também com 12 (removendo 9 após DDD)
+
     if (whatsappNormalizado.length === 13 && whatsappNormalizado.startsWith('55')) {
       const ddd = whatsappNormalizado.substring(2, 4);
-      const numero = whatsappNormalizado.substring(5); // Pula o 9
+      const numero = whatsappNormalizado.substring(5);
       whatsappVariacoes.push(`55${ddd}${numero}`);
     }
-    
-    console.log('[AuthService] Buscando usuário com variações:', whatsappVariacoes);
-    
+
     const user = await prisma.usuario.findFirst({
       where: {
         whatsapp: { in: whatsappVariacoes },
         ...(accountId ? { accountId } : {}),
-        ativo: true
+        ativo: true,
       },
       include: {
         account: {
-          select: {
-            id: true,
-            nome: true,
-            ativo: true
-          }
-        }
-      }
+          select: { id: true, nome: true, ativo: true },
+        },
+      },
     });
 
-    if (!user) {
-      console.log('[AuthService] Usuário não encontrado');
-      throw new Error('Usuário não encontrado');
+    if (!user || !user.senha) {
+      throw new Error('Credenciais inválidas');
     }
 
-    console.log(`[AuthService] Usuário encontrado: ID=${user.id}, AccountID=${user.accountId}`);
-
     if (!user.account.ativo) {
-      console.log('[AuthService] Account inativa');
       throw new Error('Account inativa');
     }
 
-    console.log('[AuthService] Verificando senha');
     const isValidPassword = await bcrypt.compare(senha, user.senha);
-
     if (!isValidPassword) {
-      console.log('[AuthService] Senha inválida');
-      throw new Error('Senha inválida');
+      throw new Error('Credenciais inválidas');
     }
 
-    console.log('[AuthService] Gerando token JWT');
-    const token = this.generateJwtToken({
-      userId: user.id,
-      accountId: user.accountId,
-      isSuperAdmin: user.isSuperAdmin || false
-    });
-
-    console.log('[AuthService] Token gerado com sucesso');
-    
-    // Formatar resposta para ser compatível com o formato antigo
+    const { accessToken, refreshToken } = await issueTokens(user);
     const { senha: _, ...userWithoutPassword } = user;
-    
+
     return {
+      accessToken,
+      refreshToken,
+      token: accessToken,
       usuario: userWithoutPassword,
-      token
     };
   },
-  
-  // Solicitar código OTP para primeiro acesso
+
   async requestOtp(whatsapp: string): Promise<RequestOtpResult> {
     try {
-      console.log(`[AuthService] Iniciando solicitação de OTP para WhatsApp: ${whatsapp}`);
-      
-      // Validar formato do número de WhatsApp (formato E.164)
       if (!/^\+\d{10,15}$/.test(whatsapp)) {
-        console.log(`[AuthService] WhatsApp inválido (não está no formato E.164): ${whatsapp}`);
-        return { 
-          success: false, 
-          message: 'Número de WhatsApp inválido. Use o formato internacional (+XXXXXXXXXXX).' 
-        };
-      }
-      
-      // Formatar o número
-      const whatsappFormatado = this.formatWhatsApp(whatsapp);
-      
-      // Buscar a primeira account ativa
-      console.log('[AuthService] Buscando account ativa...');
-      const defaultAccount = await prisma.account.findFirst({
-        where: { ativo: true },
-        orderBy: { id: 'asc' }
-      });
-      
-      console.log('[AuthService] Account encontrada:', defaultAccount);
-      
-      if (!defaultAccount) {
-        console.log('[AuthService] Nenhuma account ativa encontrada');
-        return { 
-          success: false, 
-          message: 'Não foi possível encontrar uma conta ativa' 
+        return {
+          success: false,
+          message: 'Número de WhatsApp inválido. Use o formato internacional (+XXXXXXXXXXX).',
         };
       }
 
-      // Verificar se o usuário existe e não tem senha
-      console.log(`[AuthService] Buscando usuário com WhatsApp ${whatsappFormatado} na account ${defaultAccount.id}`);
-      const existingUser = await prisma.usuario.findFirst({
-        where: { 
-          whatsapp: whatsappFormatado,
-          accountId: defaultAccount.id,
-          OR: [
-            { senha: null },
-            { senha: '' }
-          ]
-        }
-      });
-      
-      console.log('[AuthService] Usuário encontrado:', existingUser);
-      
-      if (!existingUser) {
-        // Vamos verificar se o usuário existe mas já tem senha
-        const userWithPassword = await prisma.usuario.findFirst({
-          where: { 
-            whatsapp: whatsappFormatado,
-            accountId: defaultAccount.id,
-            NOT: {
-              OR: [
-                { senha: null },
-                { senha: '' }
-              ]
-            }
-          }
-        });
-        
-        console.log('[AuthService] Usuário com senha encontrado:', userWithPassword);
-        
-        if (userWithPassword) {
-          console.log('[AuthService] Usuário já possui senha cadastrada');
-          return { 
-            success: false, 
-            message: 'Este número já possui senha cadastrada. Por favor, faça login normalmente.' 
-          };
-        } else {
-          console.log('[AuthService] Usuário não encontrado na account');
-          return { 
-            success: false, 
-            message: 'Número de WhatsApp não encontrado. Entre em contato com o administrador.' 
-          };
-        }
-      }
-      
-      // Gerar e enviar o código OTP
-      console.log('[AuthService] Gerando código OTP...');
-      const { code, expiresAt } = await otpService.createOtp({
-        whatsapp: whatsappFormatado,
-        accountId: defaultAccount.id
-      });
-      
-      // Enviar o código via WhatsApp
-      console.log('[AuthService] Enviando código via WhatsApp...');
-      const sent = await otpService.sendOtpWhatsApp(whatsappFormatado, code, defaultAccount.id);
-      
-      if (!sent) {
-        console.log('[AuthService] Falha ao enviar código via WhatsApp');
-        return {
-          success: false,
-          message: 'Não foi possível enviar o código via WhatsApp. Tente novamente.'
-        };
-      }
-      
-      console.log('[AuthService] Código enviado com sucesso');
-      return {
-        success: true,
-        message: 'Código enviado com sucesso',
-        expiresAt
-      };
-    } catch (error) {
-      console.error('[AuthService] Erro ao solicitar OTP:', error);
-      return {
-        success: false,
-        message: 'Erro ao processar solicitação. Tente novamente.'
-      };
-    }
-  },
-  
-  // Verificar código OTP
-  async verifyOtp(whatsapp: string, code: string): Promise<VerifyOtpResult> {
-    try {
-      console.log(`[AuthService] Verificando OTP para WhatsApp: ${whatsapp}, Código: ${code}`);
-      
-      // Formatar o número
       const whatsappFormatado = this.formatWhatsApp(whatsapp);
-      
-      // Buscar a primeira account ativa
       const defaultAccount = await prisma.account.findFirst({
         where: { ativo: true },
-        orderBy: { id: 'asc' }
+        orderBy: { id: 'asc' },
       });
-      
+
       if (!defaultAccount) {
-        console.log('[AuthService] Nenhuma account ativa encontrada');
+        return { success: false, message: 'Não foi possível encontrar uma conta ativa' };
+      }
+
+      if (otpLockout.isLocked(whatsappFormatado, defaultAccount.id)) {
         return {
           success: false,
-          message: 'Não foi possível encontrar uma conta ativa'
+          message: 'Muitas tentativas. Aguarde 15 minutos e tente novamente.',
         };
       }
-      
-      // Verificar o código OTP
+
+      const existingUser = await prisma.usuario.findFirst({
+        where: {
+          whatsapp: whatsappFormatado,
+          accountId: defaultAccount.id,
+          OR: [{ senha: null }, { senha: '' }],
+        },
+      });
+
+      if (!existingUser) {
+        const userWithPassword = await prisma.usuario.findFirst({
+          where: {
+            whatsapp: whatsappFormatado,
+            accountId: defaultAccount.id,
+            NOT: { OR: [{ senha: null }, { senha: '' }] },
+          },
+        });
+
+        if (userWithPassword) {
+          return {
+            success: false,
+            message: 'Este número já possui senha cadastrada. Por favor, faça login normalmente.',
+          };
+        }
+
+        return {
+          success: false,
+          message: 'Número de WhatsApp não encontrado. Entre em contato com o administrador.',
+        };
+      }
+
+      const { code, expiresAt } = await otpService.createOtp({
+        whatsapp: whatsappFormatado,
+        accountId: defaultAccount.id,
+      });
+
+      const sent = await otpService.sendOtpWhatsApp(whatsappFormatado, code, defaultAccount.id);
+      if (!sent) {
+        return {
+          success: false,
+          message: 'Não foi possível enviar o código via WhatsApp. Tente novamente.',
+        };
+      }
+
+      return { success: true, message: 'Código enviado com sucesso', expiresAt };
+    } catch (error) {
+      console.error('[AuthService] Erro ao solicitar OTP:', error);
+      return { success: false, message: 'Erro ao processar solicitação. Tente novamente.' };
+    }
+  },
+
+  async verifyOtp(whatsapp: string, code: string): Promise<VerifyOtpResult> {
+    try {
+      const whatsappFormatado = this.formatWhatsApp(whatsapp);
+      const defaultAccount = await prisma.account.findFirst({
+        where: { ativo: true },
+        orderBy: { id: 'asc' },
+      });
+
+      if (!defaultAccount) {
+        return { success: false, message: 'Não foi possível encontrar uma conta ativa' };
+      }
+
+      if (otpLockout.isLocked(whatsappFormatado, defaultAccount.id)) {
+        return {
+          success: false,
+          message: 'Muitas tentativas. Aguarde 15 minutos e tente novamente.',
+        };
+      }
+
       const isValid = await otpService.verifyOtp(whatsappFormatado, code, defaultAccount.id);
-      
       if (!isValid) {
-        console.log('[AuthService] Código OTP inválido');
-        return {
-          success: false,
-          message: 'Código inválido ou expirado'
-        };
+        otpLockout.recordFailure(whatsappFormatado, defaultAccount.id);
+        return { success: false, message: 'Código inválido ou expirado' };
       }
-      
-      console.log('[AuthService] Código OTP verificado com sucesso');
+
+      otpLockout.reset(whatsappFormatado, defaultAccount.id);
+      const setupToken = signSetupToken({
+        purpose: 'setup-password',
+        whatsapp: whatsappFormatado,
+        accountId: defaultAccount.id,
+      });
+
       return {
         success: true,
-        message: 'Código verificado com sucesso'
+        message: 'Código verificado com sucesso',
+        setupToken,
       };
     } catch (error) {
       console.error('[AuthService] Erro ao verificar OTP:', error);
-      return {
-        success: false,
-        message: 'Erro ao verificar código. Tente novamente.'
-      };
+      return { success: false, message: 'Erro ao verificar código. Tente novamente.' };
     }
   },
-  
-  // Criar senha após verificação de OTP
-  async createPassword({ whatsapp, senha, nome, dataNascimento, accountId }: CreatePasswordData): Promise<LoginResult> {
-    try {
-      console.log(`[AuthService] Definindo senha para usuário com WhatsApp: ${whatsapp}`);
-      
-      // Normalização conservadora: mesma lógica usada ao criar usuário
-      const digits = whatsapp.replace(/\D/g, '');
-      const whatsappFormatado = digits.startsWith('55') && (digits.length === 12 || digits.length === 13)
-        ? digits
-        : digits.length <= 11
-          ? `55${digits}`
-          : digits;
-      
-      console.log(`[AuthService] WhatsApp normalizado: ${whatsappFormatado}`);
-      
-      // Verificar se o usuário existe e não tem senha
-      const existingUser = await prisma.usuario.findFirst({
-        where: { 
-          whatsapp: whatsappFormatado,
-          accountId,
-          OR: [
-            { senha: null },
-            { senha: '' }
-          ]
-        }
-      });
-      
-      if (!existingUser) {
-        console.log('[AuthService] Usuário não encontrado ou já possui senha');
-        throw new Error('Usuário não encontrado ou já possui senha cadastrada');
-      }
-      
-      // Hash da senha
-      const hashedPassword = await bcrypt.hash(senha, 10);
-      
-      // Preparar dados para atualização (ativo após senha definida)
-      const updateData: {
-        senha: string;
-        nome: string;
-        ativo: boolean;
-        dataNascimento?: Date;
-      } = {
-        senha: hashedPassword,
-        nome: nome,
-        ativo: true
-      };
-      
-      // Adicionar data de nascimento se fornecida
-      if (dataNascimento) {
-        updateData.dataNascimento = new Date(dataNascimento);
-      }
-      
-      // Atualizar o usuário com a nova senha
-      const updatedUser = await prisma.usuario.update({
-        where: { id: existingUser.id },
-        data: updateData,
-        include: {
-          account: {
-            select: {
-              id: true,
-              nome: true,
-              ativo: true
-            }
-          }
-        }
-      });
-      
-      // Gerar token JWT
-      const jwtSecret = process.env.JWT_SECRET || 'central-celular-secret';
-      
-      const token = jwt.sign(
-        {
-          userId: updatedUser.id,
-          accountId: updatedUser.accountId,
-          isSuperAdmin: updatedUser.isSuperAdmin
-        },
-        jwtSecret,
-        {
-          expiresIn: '7d'
-        }
-      );
-      
-      // Remover senha do objeto de resposta
-      const { senha: _, ...userWithoutPassword } = updatedUser;
-      
-      return {
-        usuario: userWithoutPassword,
-        token
-      };
-    } catch (error) {
-      console.error('[AuthService] Erro ao definir senha:', error);
-      throw error;
+
+  createSetupTokenForInvite(whatsapp: string, accountId: number): string {
+    return signSetupToken({
+      purpose: 'setup-password',
+      whatsapp,
+      accountId,
+    });
+  },
+
+  async createPassword({
+    whatsapp,
+    senha,
+    nome,
+    dataNascimento,
+    accountId,
+    setupToken,
+  }: CreatePasswordData): Promise<AuthTokensResult> {
+    const setup = verifySetupToken(setupToken);
+    const whatsappFormatado = normalizeWhatsAppDigits(whatsapp);
+
+    if (setup.accountId !== accountId) {
+      throw new Error('Token de configuração inválido');
     }
-  }
-}; 
+
+    if (setup.whatsapp !== whatsappFormatado && setup.whatsapp !== this.formatWhatsApp(whatsapp)) {
+      throw new Error('Token de configuração inválido para este WhatsApp');
+    }
+
+    const existingUser = await prisma.usuario.findFirst({
+      where: {
+        whatsapp: whatsappFormatado,
+        accountId,
+        OR: [{ senha: null }, { senha: '' }],
+      },
+    });
+
+    if (!existingUser) {
+      throw new Error('Usuário não encontrado ou já possui senha cadastrada');
+    }
+
+    const hashedPassword = await bcrypt.hash(senha, 10);
+    const updateData: {
+      senha: string;
+      nome: string;
+      ativo: boolean;
+      dataNascimento?: Date;
+    } = {
+      senha: hashedPassword,
+      nome,
+      ativo: true,
+    };
+
+    if (dataNascimento) {
+      updateData.dataNascimento = new Date(dataNascimento);
+    }
+
+    const updatedUser = await prisma.usuario.update({
+      where: { id: existingUser.id },
+      data: updateData,
+      include: {
+        account: { select: { id: true, nome: true, ativo: true } },
+      },
+    });
+
+    const { accessToken, refreshToken } = await issueTokens(updatedUser);
+    const { senha: _, ...userWithoutPassword } = updatedUser;
+
+    return {
+      accessToken,
+      refreshToken,
+      token: accessToken,
+      usuario: userWithoutPassword,
+    };
+  },
+
+  async refresh(refreshToken: string): Promise<AuthTokensResult> {
+    const decoded = verifyRefreshToken(refreshToken);
+    const tokenHash = hashToken(refreshToken);
+
+    const stored = await prisma.refreshToken.findFirst({
+      where: {
+        tokenHash,
+        usuarioId: decoded.userId,
+        revokedAt: null,
+        expiresAt: { gt: new Date() },
+      },
+    });
+
+    if (!stored) {
+      throw new Error('Refresh token inválido');
+    }
+
+    const user = await prisma.usuario.findFirst({
+      where: { id: decoded.userId, accountId: decoded.accountId, ativo: true },
+      include: { account: { select: { id: true, nome: true, ativo: true } } },
+    });
+
+    if (!user || !user.account.ativo) {
+      throw new Error('Usuário inválido');
+    }
+
+    await prisma.refreshToken.update({
+      where: { id: stored.id },
+      data: { revokedAt: new Date() },
+    });
+
+    const tokens = await issueTokens(user);
+    const { senha: _, ...userWithoutPassword } = user;
+
+    return {
+      ...tokens,
+      token: tokens.accessToken,
+      usuario: userWithoutPassword,
+    };
+  },
+
+  async logout(refreshToken: string): Promise<void> {
+    const tokenHash = hashToken(refreshToken);
+    await prisma.refreshToken.updateMany({
+      where: { tokenHash, revokedAt: null },
+      data: { revokedAt: new Date() },
+    });
+  },
+};

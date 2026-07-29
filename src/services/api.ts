@@ -1,24 +1,5 @@
 // Configurações da API
-// Preferir mesma origem no browser para evitar Mixed Content e CORS
-const inferSameOriginApi = () => {
-  if (typeof window !== 'undefined' && window.location && window.location.origin) {
-    return `${window.location.origin}/api`;
-  }
-  return 'http://localhost:3000/api';
-};
-
-// Em produção (VPS), build com VITE_API_URL=localhost quebra no browser do usuário.
-// Se o site não está em localhost, usa a mesma origem + /api (nginx faz proxy).
-function resolveApiBase(): string {
-  const fromEnv = import.meta.env.VITE_API_URL as string | undefined;
-  if (typeof window !== 'undefined' && fromEnv && /localhost|127\.0\.0\.1/i.test(fromEnv)) {
-    const h = window.location.hostname;
-    if (h !== 'localhost' && h !== '127.0.0.1') {
-      return inferSameOriginApi();
-    }
-  }
-  return fromEnv || inferSameOriginApi();
-}
+import { resolveApiBase } from './resolveApiBase';
 
 const RAW_API_URL = resolveApiBase();
 const API_URL = RAW_API_URL.endsWith('/api')
@@ -27,10 +8,20 @@ const API_URL = RAW_API_URL.endsWith('/api')
 
 // Função para obter o token atual (será injetada pelo userStore)
 let getTokenFn: (() => string | null) | null = null;
+let getRefreshTokenFn: (() => string | null) | null = null;
+let onTokensRefreshedFn: ((accessToken: string, refreshToken: string) => void) | null = null;
 
 // Função para definir o getter do token (chamada pelo userStore na inicialização)
 export const setTokenGetter = (fn: () => string | null) => {
   getTokenFn = fn;
+};
+
+export const setRefreshTokenGetter = (fn: () => string | null) => {
+  getRefreshTokenFn = fn;
+};
+
+export const setOnTokensRefreshed = (fn: (accessToken: string, refreshToken: string) => void) => {
+  onTokensRefreshedFn = fn;
 };
 
 /** Lê o payload do JWT (sem validar assinatura). */
@@ -119,6 +110,30 @@ const fetchApi = async (
       // Interceptor para erros 401 (Token inválido/expirado)
       if (response.status === 401 && includeToken) {
         const hadToken = !!(getTokenFn && getTokenFn());
+        const refreshToken = getRefreshTokenFn ? getRefreshTokenFn() : null;
+
+        if (hadToken && refreshToken && !endpoint.includes('/auth/refresh')) {
+          try {
+            const refreshRes = await fetch(`${API_URL}/auth/refresh`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ refreshToken }),
+            });
+
+            if (refreshRes.ok) {
+              const refreshData = await refreshRes.json();
+              const newAccess = refreshData.data?.accessToken ?? refreshData.accessToken ?? refreshData.token;
+              const newRefresh = refreshData.data?.refreshToken ?? refreshData.refreshToken ?? refreshToken;
+              if (newAccess && onTokensRefreshedFn) {
+                onTokensRefreshedFn(newAccess, newRefresh);
+                return fetchApi(endpoint, method, data, includeToken, reqExtras);
+              }
+            }
+          } catch {
+            // fall through to logout flow
+          }
+        }
+
         if (!hadToken) {
           // Requisição autenticada sem token (race no bootstrap) — não derrubar sessão
           console.warn('[API] 401 sem token no cliente:', endpoint);
@@ -197,8 +212,15 @@ const api = {
     const data = await fetchApi('/auth/login', 'POST', { whatsapp: normalized, senha }, false);
     
     console.log('[API] Login bem-sucedido, retornando dados');
-    // Não salva sessão aqui - userStore vai fazer isso
     return data;
+  },
+
+  async refresh(refreshToken: string) {
+    return fetchApi('/auth/refresh', 'POST', { refreshToken }, false);
+  },
+
+  async logout(refreshToken: string) {
+    return fetchApi('/auth/logout', 'POST', { refreshToken }, false);
   },
 
   async requestOtp(whatsapp: string) {
@@ -222,27 +244,36 @@ const api = {
     return fetchApi(`/auth/verify-invite/${token}`, 'GET', undefined, false);
   },
 
-  async createPassword(whatsapp: string, nome: string, senha: string, dataNascimento?: string) {
+  async createPassword(
+    whatsapp: string,
+    nome: string,
+    senha: string,
+    setupToken: string,
+    dataNascimento?: string,
+  ) {
     console.log('[API] Criando senha para:', whatsapp, 'nome:', nome);
-    // Normalização conservadora: remover caracteres não numéricos e garantir prefixo 55
     const digits = whatsapp.replace(/\D/g, '');
     const normalized = digits.startsWith('55') && (digits.length === 12 || digits.length === 13)
       ? digits
       : digits.length <= 11
         ? `55${digits}`
         : digits;
-    console.log('[API] Normalizando para criação de senha:', { original: whatsapp, digits, normalized });
-    const payload: { whatsapp: string; nome: string; senha: string; dataNascimento?: string } = { 
-      whatsapp: normalized, 
-      nome, 
-      senha 
+    const payload: {
+      whatsapp: string;
+      nome: string;
+      senha: string;
+      setupToken: string;
+      dataNascimento?: string;
+    } = {
+      whatsapp: normalized,
+      nome,
+      senha,
+      setupToken,
     };
     if (dataNascimento) {
       payload.dataNascimento = dataNascimento;
     }
-    const data = await fetchApi('/auth/create-password', 'POST', payload, false);
-    // Não salva sessão aqui - userStore vai fazer isso
-    return data;
+    return fetchApi('/auth/create-password', 'POST', payload, false);
   },
 
   async verificarToken() {
