@@ -3,24 +3,37 @@ import { ref, reactive, computed } from 'vue'
 import { useUserStore } from '../stores/userStore'
 import { useLeaderStore } from '../stores/leaderStore'
 import api from '../services/api'
+import avatarService from '../services/avatarService'
+import { usePlatform } from '../composables/usePlatform'
+import ProfileAvatar from '../components/ProfileAvatar.vue'
+import AppIcon from '../components/AppIcon.vue'
 
 const userStore = useUserStore()
 const leaderStore = useLeaderStore()
+const { native } = usePlatform()
 
-// Formulário com os dados do usuário
 const form = reactive({
-  nome: userStore.user?.nome || ''
+  nome: userStore.user?.nome || '',
 })
 
-// Estados para controle da UI
-defineProps<{}>()
 const isSaving = ref(false)
 const showSuccess = ref(false)
 const errorMessage = ref('')
 
-// Medalha (consistente com o dashboard)
+const fileInputRef = ref<HTMLInputElement | null>(null)
+const avatarUploading = ref(false)
+const avatarError = ref('')
+
 const leaderBadge = computed(() => leaderStore.leaderBadge)
-const badgeEmoji = computed(() => leaderBadge.value === 'gold' ? '🥇' : leaderBadge.value === 'silver' ? '🥈' : leaderBadge.value === 'bronze' ? '🥉' : '')
+const badgeEmoji = computed(() =>
+  leaderBadge.value === 'gold'
+    ? '🥇'
+    : leaderBadge.value === 'silver'
+    ? '🥈'
+    : leaderBadge.value === 'bronze'
+    ? '🥉'
+    : ''
+)
 const badgeLabel = computed(() => {
   if (leaderBadge.value === 'gold') return 'Ouro'
   if (leaderBadge.value === 'silver') return 'Prata'
@@ -28,20 +41,17 @@ const badgeLabel = computed(() => {
   return ''
 })
 
-// Salvar alterações do perfil
+const currentAvatarUrl = computed(() => userStore.user?.avatarUrl ?? null)
+
 const saveProfile = async () => {
   isSaving.value = true
   errorMessage.value = ''
   showSuccess.value = false
-  
+
   try {
-    // Atualiza o store com as novas informações (backend pode ser adicionado depois)
     if (userStore.user) {
-      userStore.updateProfile({
-        nome: form.nome
-      })
+      userStore.updateProfile({ nome: form.nome })
     }
-    
     showSuccess.value = true
     setTimeout(() => {
       showSuccess.value = false
@@ -54,11 +64,98 @@ const saveProfile = async () => {
   }
 }
 
-// Alterar senha
+async function fileToBase64(file: File): Promise<{ imageData: string; mimeType: string }> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader()
+    reader.onload = () => {
+      const result = String(reader.result ?? '')
+      resolve({ imageData: result, mimeType: file.type || 'image/jpeg' })
+    }
+    reader.onerror = () => reject(reader.error ?? new Error('Falha ao ler arquivo'))
+    reader.readAsDataURL(file)
+  })
+}
+
+async function uploadAvatarPayload(payload: { imageData: string; mimeType: string }) {
+  avatarError.value = ''
+  avatarUploading.value = true
+  try {
+    const result = await avatarService.upload(payload)
+    userStore.updateProfile({ avatarUrl: result.avatarUrl })
+  } catch (err: any) {
+    avatarError.value = err?.message || 'Erro ao enviar foto'
+  } finally {
+    avatarUploading.value = false
+  }
+}
+
+function pickFromWeb() {
+  fileInputRef.value?.click()
+}
+
+async function onFileSelected(event: Event) {
+  const input = event.target as HTMLInputElement
+  const file = input.files?.[0]
+  input.value = ''
+  if (!file) return
+  if (!file.type.startsWith('image/')) {
+    avatarError.value = 'Selecione um arquivo de imagem'
+    return
+  }
+  const payload = await fileToBase64(file)
+  await uploadAvatarPayload(payload)
+}
+
+async function pickFromNative() {
+  try {
+    const { Camera, CameraResultType, CameraSource } = await import('@capacitor/camera')
+    const photo = await Camera.getPhoto({
+      quality: 80,
+      allowEditing: true,
+      resultType: CameraResultType.DataUrl,
+      source: CameraSource.Prompt,
+      width: 512,
+      height: 512,
+    })
+    if (!photo?.dataUrl) {
+      avatarError.value = 'Não foi possível obter a foto'
+      return
+    }
+    const mimeType = photo.format ? `image/${photo.format}` : 'image/jpeg'
+    await uploadAvatarPayload({ imageData: photo.dataUrl, mimeType })
+  } catch (err: any) {
+    if (err?.message && /cancel/i.test(err.message)) return
+    console.error('[Profile] Erro ao capturar foto:', err)
+    avatarError.value = err?.message || 'Erro ao capturar foto'
+  }
+}
+
+async function handlePickPhoto() {
+  if (native.value) {
+    await pickFromNative()
+  } else {
+    pickFromWeb()
+  }
+}
+
+async function handleRemovePhoto() {
+  if (!currentAvatarUrl.value) return
+  avatarError.value = ''
+  avatarUploading.value = true
+  try {
+    await avatarService.remover()
+    userStore.updateProfile({ avatarUrl: null })
+  } catch (err: any) {
+    avatarError.value = err?.message || 'Erro ao remover foto'
+  } finally {
+    avatarUploading.value = false
+  }
+}
+
 const passwordForm = reactive({
   senhaAtual: '',
   novaSenha: '',
-  confirmarSenha: ''
+  confirmarSenha: '',
 })
 const changingPassword = ref(false)
 const passwordError = ref('')
@@ -105,14 +202,14 @@ const alterarSenha = async () => {
           <div class="px-4 py-5 sm:px-6 flex items-center justify-between">
             <div>
               <h3 class="text-lg leading-6 font-medium text-gray-900">Meu Perfil</h3>
-              <p class="mt-1 max-w-2xl text-sm text-gray-500">Atualize seu nome e senha</p>
+              <p class="mt-1 max-w-2xl text-sm text-gray-500">Atualize sua foto, nome e senha</p>
             </div>
             <div v-if="badgeEmoji" class="flex items-center text-sm text-gray-600">
               <span class="text-xl mr-2">{{ badgeEmoji }}</span>
               <span class="font-medium">Medalha {{ badgeLabel }}</span>
             </div>
           </div>
-          
+
           <!-- Alertas -->
           <div v-if="showSuccess" class="mx-4 mb-4 p-4 rounded-md bg-green-50 border border-green-200">
             <p class="text-sm text-green-700">Perfil atualizado com sucesso!</p>
@@ -120,7 +217,53 @@ const alterarSenha = async () => {
           <div v-if="errorMessage" class="mx-4 mb-4 p-4 rounded-md bg-red-50 border border-red-200">
             <p class="text-sm text-red-700">{{ errorMessage }}</p>
           </div>
-          
+
+          <!-- Avatar -->
+          <div class="border-t border-gray-200 px-4 py-5 sm:px-6">
+            <div class="flex items-center gap-4">
+              <ProfileAvatar
+                :name="userStore.user?.nome"
+                :avatar-url="currentAvatarUrl"
+                size="xl"
+              />
+              <div class="min-w-0 flex-1">
+                <p class="text-sm font-medium text-gray-800">Foto de perfil</p>
+                <p class="text-xs text-gray-500 mt-0.5">
+                  JPEG, PNG ou WebP até 3 MB.
+                </p>
+                <div class="mt-3 flex flex-wrap gap-2">
+                  <button
+                    type="button"
+                    class="inline-flex items-center gap-1.5 px-3 py-2 text-sm font-medium rounded-lg bg-primary-600 hover:bg-primary-700 text-white disabled:opacity-60"
+                    :disabled="avatarUploading"
+                    @click="handlePickPhoto"
+                  >
+                    <AppIcon name="edit" size="sm" />
+                    {{ avatarUploading ? 'Enviando...' : currentAvatarUrl ? 'Alterar foto' : 'Adicionar foto' }}
+                  </button>
+                  <button
+                    v-if="currentAvatarUrl"
+                    type="button"
+                    class="inline-flex items-center gap-1.5 px-3 py-2 text-sm font-medium rounded-lg bg-red-50 hover:bg-red-100 text-red-600 disabled:opacity-60"
+                    :disabled="avatarUploading"
+                    @click="handleRemovePhoto"
+                  >
+                    <AppIcon name="delete" size="sm" />
+                    Remover
+                  </button>
+                </div>
+                <p v-if="avatarError" class="mt-2 text-xs text-red-600">{{ avatarError }}</p>
+              </div>
+            </div>
+            <input
+              ref="fileInputRef"
+              type="file"
+              accept="image/*"
+              class="hidden"
+              @change="onFileSelected"
+            />
+          </div>
+
           <div class="border-t border-gray-200 px-4 py-5 sm:p-6">
             <form @submit.prevent="saveProfile" class="space-y-6">
               <div>
@@ -135,7 +278,7 @@ const alterarSenha = async () => {
                   />
                 </div>
               </div>
-              
+
               <div>
                 <button
                   type="submit"
@@ -156,7 +299,7 @@ const alterarSenha = async () => {
               </div>
             </form>
           </div>
-          
+
           <!-- Alterar senha -->
           <div class="border-t border-gray-200 px-4 py-5 sm:px-6">
             <h3 class="text-lg leading-6 font-medium text-gray-900 mb-4">Alterar Senha</h3>
@@ -186,4 +329,4 @@ const alterarSenha = async () => {
       </div>
     </main>
   </div>
-</template> 
+</template>

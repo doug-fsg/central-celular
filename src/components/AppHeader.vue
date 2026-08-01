@@ -19,7 +19,6 @@ const navItems = [
   { name: 'dashboard', label: 'Início', icon: 'home' },
   { name: 'minha-celula', label: 'Minha Célula', icon: 'users' },
   { name: 'attendance', label: 'Frequência', icon: 'calendar' },
-  { name: 'reports', label: 'Relatórios', icon: 'chart-bar' }
 ]
 
 function navigateTo(routeName: string) {

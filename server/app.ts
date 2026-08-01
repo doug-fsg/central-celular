@@ -1,4 +1,5 @@
 import express from 'express';
+import path from 'path';
 import helmet from 'helmet';
 import cors from 'cors';
 import morgan from 'morgan';
@@ -11,6 +12,8 @@ import { globalLimiter } from './middlewares/rateLimit.middleware';
 import { notFoundMiddleware, errorHandlerMiddleware } from './middlewares/errorHandler.middleware';
 import { ok } from './lib/response';
 import { prisma } from './lib/prisma';
+
+const UPLOADS_DIR = path.resolve(process.cwd(), 'server', 'uploads');
 
 export function createApp() {
   const app = express();
@@ -40,6 +43,14 @@ export function createApp() {
       });
     }
   });
+
+  app.use(
+    '/uploads',
+    express.static(UPLOADS_DIR, {
+      maxAge: '7d',
+      fallthrough: true,
+    })
+  );
 
   app.use('/', router);
   app.use('/api/admin', adminRouter);

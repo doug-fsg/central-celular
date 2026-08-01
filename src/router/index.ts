@@ -142,9 +142,7 @@ const router = createRouter({
     },
     {
       path: '/reports',
-      name: 'reports',
-      component: () => import('../views/Reports.vue'),
-      meta: { requiresAuth: true, requiresLeader: true, requiresOnboarding: true },
+      redirect: { name: 'dashboard' },
     },
     {
       path: '/profile',

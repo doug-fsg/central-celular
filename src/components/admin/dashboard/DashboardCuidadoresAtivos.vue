@@ -5,6 +5,7 @@ import { DASHBOARD_UNIFIED_COPY } from '../../../constants/dashboardUnified'
 defineProps<{
   total: number
   loading: boolean
+  redeRoute?: string
 }>()
 </script>
 
@@ -26,7 +27,7 @@ defineProps<{
       <p class="text-4xl font-bold tabular-nums text-neutral-900">{{ total }}</p>
       <p class="mt-2 text-xs text-neutral-500">{{ DASHBOARD_UNIFIED_COPY.cuidadores.hint }}</p>
       <RouterLink
-        :to="{ name: 'admin-rede-cuidado' }"
+        :to="{ name: redeRoute ?? 'admin-rede-cuidado' }"
         class="mt-6 inline-flex text-sm font-semibold text-primary-600 hover:text-primary-700"
       >
         {{ DASHBOARD_UNIFIED_COPY.cuidadores.verRede }} →

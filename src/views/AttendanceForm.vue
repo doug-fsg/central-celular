@@ -464,10 +464,10 @@ watch(teveCelula, async (newValue) => {
         <!-- Botão de voltar quando finalizado -->
         <div class="mt-6" v-else>
           <button 
-            @click="router.push('/reports')"
+            @click="router.push({ name: 'dashboard' })"
             class="w-full py-4 bg-gray-100 text-gray-700 rounded-xl font-medium text-lg shadow-sm hover:bg-gray-200 transition-colors duration-200"
           >
-            Voltar para Relatórios
+            Voltar para o início
           </button>
         </div>
       </div>

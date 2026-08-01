@@ -44,7 +44,6 @@ const navLinks = computed(() => {
       { name: 'dashboard', label: 'Início' },
       { name: 'minha-celula', label: 'Minha Célula' },
       { name: 'attendance', label: 'Frequência' },
-      { name: 'reports', label: 'Relatórios' }
     ]
   }
   
@@ -69,14 +68,12 @@ const navLinks = computed(() => {
   } else if (userStore.isSupervisor) {
     return [
       { name: 'supervisor-dashboard', label: 'Início' },
-      { name: 'reports', label: 'Relatórios' }
     ]
   } else {
     return [
       { name: 'dashboard', label: 'Início' },
       { name: 'minha-celula', label: 'Minha Célula' },
       { name: 'attendance', label: 'Frequência' },
-      { name: 'reports', label: 'Relatórios' }
     ]
   }
 })

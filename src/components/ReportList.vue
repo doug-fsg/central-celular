@@ -69,7 +69,7 @@
         
         <div class="mt-4 flex justify-end">
           <router-link 
-            :to="{ name: 'reports', params: { id: relatorio.id } }"
+            :to="{ name: 'attendance' }"
             class="text-blue-500 hover:text-blue-700 text-sm"
           >
             {{ relatorio.status === STATUS_RELATORIO.ENVIADO ? 'Visualizar' : 'Editar' }}

@@ -14,6 +14,7 @@ export interface UserProfile {
   accountId: number;
   celulaId: number | null;
   isSuperAdmin?: boolean;
+  avatarUrl?: string | null;
 }
 
 export interface SsoUser {

@@ -5,17 +5,39 @@ import { useMemberStore, type Member } from '../stores/memberStore'
 import { useUserStore } from '../stores/userStore'
 import { useRedeCuidadoStore } from '../stores/redeCuidadoStore'
 import AppIcon from '../components/AppIcon.vue'
-import MemberNotesModal from '../components/MemberNotesModal.vue'
+import MemberDetailModal from '../components/MemberDetailModal.vue'
+import MobilePageHeader from '../components/MobilePageHeader.vue'
+import MobileStickyActionBar from '../components/MobileStickyActionBar.vue'
+import { usePlatform } from '../composables/usePlatform'
+import { useHaptic } from '../composables/useHaptic'
 import { Dialog, DialogPanel, DialogTitle, TransitionRoot, TransitionChild } from '@headlessui/vue'
 
 const router = useRouter()
 const memberStore = useMemberStore()
 const userStore = useUserStore()
 const redeCuidadoStore = useRedeCuidadoStore()
+const { mobileShell } = usePlatform()
+const { tap } = useHaptic()
 const showAddForm = ref(false)
 const activeTab = ref('all')
+const searchQuery = ref('')
+const showDetailModal = ref(false)
+const selectedMember = ref<Member | null>(null)
 
-// (removido estado legado de novo membro)
+const filterChips = [
+  { key: 'all', label: 'Todos' },
+  { key: 'consolidators', label: 'Consolidadores' },
+  { key: 'birthdays', label: 'Aniversários' },
+] as const
+
+const pageSubtitle = computed(() =>
+  `${memberStore.getAllMembers.length} membro(s) cadastrado(s)`
+)
+
+function handleAddMember() {
+  tap()
+  toggleAddForm()
+}
 
 // Verifica se tem uma célula selecionada
 const hasCelula = computed(() => !!memberStore.celulaId)
@@ -91,6 +113,48 @@ const displayedMembers = computed(() => {
       return memberStore.getAllMembers
   }
 })
+
+const filteredMembers = computed(() => {
+  const q = searchQuery.value.trim().toLowerCase()
+  if (!q) return displayedMembers.value
+  return displayedMembers.value.filter((m) =>
+    m.name.toLowerCase().includes(q) ||
+    (m.telefone?.includes(q) ?? false)
+  )
+})
+
+function openMemberDetail(member: Member) {
+  tap()
+  selectedMember.value = member
+  showDetailModal.value = true
+}
+
+function closeMemberDetail() {
+  showDetailModal.value = false
+  selectedMember.value = null
+}
+
+function handleDetailEdit(member: Member) {
+  showDetailModal.value = false
+  startEditing(member)
+}
+
+function handleDetailDelete(member: Member) {
+  showDetailModal.value = false
+  confirmDelete(member)
+}
+
+function handleDetailToggle(member: Member) {
+  memberStore.toggleMemberActive(member.id)
+}
+
+function handleDetailSaveNotes(payload: { memberId: string; observacoes: string }) {
+  memberStore.updateMember(payload.memberId, { observacoes: payload.observacoes })
+  const current = selectedMember.value
+  if (current && current.id === payload.memberId) {
+    selectedMember.value = { ...current, observacoes: payload.observacoes }
+  }
+}
 
 // removido addMember antigo (não utilizado)
 
@@ -222,10 +286,6 @@ function cancelDelete() {
   memberToDelete.value = null
 }
 
-function recarregarMembros() {
-  memberStore.carregarMembros()
-}
-
 function getAge(birthDate: string): number {
   const today = new Date();
   const birth = new Date(birthDate);
@@ -274,24 +334,6 @@ const convertDateToISO = (dateStr: string): string | undefined => {
   return `${ano}-${mes}-${dia}`
 }
 
-// Notes modal state
-const showNotesModal = ref(false)
-const selectedForNotes = ref<Member | null>(null)
-
-function openNotes(member: Member) {
-  selectedForNotes.value = member
-  showNotesModal.value = true
-}
-
-function closeNotes() {
-  showNotesModal.value = false
-  selectedForNotes.value = null
-}
-
-function saveNotes(payload: { memberId: string; observacoes: string }) {
-  memberStore.updateMember(payload.memberId, { observacoes: payload.observacoes })
-}
-
 async function handleSubmit() {
   try {
     await memberStore.addMember({
@@ -308,11 +350,23 @@ async function handleSubmit() {
 </script>
 
 <template>
-  <div class="min-h-screen bg-neutral-50">
-    <main class="container-layout">
+  <div
+    class="min-h-screen bg-neutral-50"
+    :class="{ 'mobile-page': mobileShell, 'pb-28 sm:pb-0': mobileShell }"
+  >
+    <MobilePageHeader
+      v-if="mobileShell"
+      title="Minha Célula"
+      :subtitle="pageSubtitle"
+    />
+
+    <main
+      class="container-layout"
+      :class="{ 'mobile-page__content': mobileShell }"
+    >
       
-      <!-- Cabeçalho da Página -->
-      <div class="flex flex-col md:flex-row md:items-center md:justify-between mb-5">
+      <!-- Cabeçalho da Página (desktop) -->
+      <div v-if="!mobileShell" class="flex flex-col md:flex-row md:items-center md:justify-between mb-5">
         <div>
           <h1 class="text-xl font-bold text-neutral-800">Minha Célula</h1>
           <p class="mt-1 text-xs text-neutral-500">
@@ -320,21 +374,13 @@ async function handleSubmit() {
           </p>
         </div>
         <div class="flex items-center gap-2 mt-3 md:mt-0">
-          <button 
-            @click="recarregarMembros"
-            class="inline-flex items-center px-3 py-1.5 text-sm font-medium rounded-md text-neutral-700 bg-white hover:bg-neutral-50 border border-neutral-300 transition-colors"
-          >
-            <AppIcon name="refresh" size="sm" class="mr-1.5" />
-            Atualizar
-          </button>
           <button
             @click="router.push({ name: 'rede-cuidado' })"
-            class="inline-flex items-center px-3 py-1.5 text-sm font-medium rounded-md text-primary-700 bg-primary-50 hover:bg-primary-100 border border-primary-200 transition-colors flex-shrink-0"
+            class="inline-flex items-center px-3 py-1.5 text-sm font-medium rounded-md text-neutral-700 bg-white hover:bg-neutral-50 border border-neutral-300 transition-colors flex-shrink-0"
             title="Rede de cuidado"
           >
             <AppIcon name="heart" size="sm" class="mr-1.5" />
-            <span class="hidden sm:inline">Rede de Cuidado</span>
-            <span class="sm:hidden">Rede</span>
+            <span>Rede de cuidado</span>
             <span
               v-if="redeCuidadoStore.rede && redeCuidadoStore.rede.stats.totalSemCuidador > 0"
               class="ml-1.5 inline-flex items-center justify-center w-4 h-4 text-xs font-bold text-white bg-amber-500 rounded-full"
@@ -352,8 +398,39 @@ async function handleSubmit() {
         </div>
       </div>
       
-      <!-- Resumo Estatístico -->
-      <div class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-3 mb-6">
+      <!-- Busca (mobile-first) -->
+      <div class="mb-4">
+        <div class="relative">
+          <AppIcon name="search" size="sm" class="absolute left-3 top-1/2 -translate-y-1/2 text-neutral-400" />
+          <input
+            v-model="searchQuery"
+            type="search"
+            placeholder="Buscar membro..."
+            class="w-full rounded-xl border border-neutral-200 bg-white py-3 pl-10 pr-4 text-base text-neutral-900 shadow-sm placeholder:text-neutral-400 focus:border-primary-300 focus:outline-none focus:ring-2 focus:ring-primary-100"
+          />
+        </div>
+      </div>
+
+      <!-- Alerta rede de cuidado (mobile) -->
+      <button
+        v-if="mobileShell && redeCuidadoStore.rede && redeCuidadoStore.rede.stats.totalSemCuidador > 0"
+        type="button"
+        class="mb-4 flex w-full touch-manipulation items-center gap-3 rounded-xl border border-amber-200 bg-amber-50 p-3 text-left active:scale-[0.99]"
+        @click="router.push({ name: 'rede-cuidado' })"
+      >
+        <div class="flex size-9 shrink-0 items-center justify-center rounded-full bg-amber-100 text-amber-700">
+          <AppIcon name="heart" size="sm" />
+        </div>
+        <div class="min-w-0 flex-1">
+          <p class="text-sm font-semibold text-amber-900">
+            {{ redeCuidadoStore.rede.stats.totalSemCuidador }} sem cuidador
+          </p>
+          <p class="text-xs text-amber-700">Toque para organizar a rede de cuidado</p>
+        </div>
+      </button>
+      
+      <!-- Resumo Estatístico (desktop) -->
+      <div class="mb-6 hidden sm:grid sm:grid-cols-3 lg:grid-cols-4 gap-3">
         <div class="card p-3 flex flex-col items-center justify-center">
           <span class="text-xl font-bold text-neutral-800">{{ stats.active }}</span>
           <span class="text-xs text-neutral-500 mt-1">Membros Ativos</span>
@@ -368,7 +445,7 @@ async function handleSubmit() {
         </div>
         <div class="card p-3 flex flex-col items-center justify-center bg-neutral-50">
           <span class="text-xl font-bold text-neutral-800">{{ stats.birthdays }}</span>
-          <span class="text-xs text-neutral-500 mt-1">Aniversariantes do Mês</span>
+          <span class="text-xs text-neutral-500 mt-1">Aniversariantes</span>
         </div>
       </div>
       
@@ -484,35 +561,34 @@ async function handleSubmit() {
         </Dialog>
       </TransitionRoot>
       
-      <!-- Card Principal com Abas -->
-      <div class="card p-4">
-        <!-- Abas de Navegação -->
-        <div class="flex justify-between border-b border-neutral-200 mb-4">
-          <button @click="setActiveTab('all')" class="pb-2 flex-1 text-sm font-medium transition-colors text-center" :class="activeTab === 'all' ? 'border-b-2 border-primary-500 text-primary-700' : 'text-neutral-500 hover:text-neutral-700'">
-            <div class="flex items-center justify-center">
-              <AppIcon name="users" class="mr-1" size="xs" :color="activeTab === 'all' ? '#0074ff' : undefined" />
-              Todos
-            </div>
-          </button>
-          <button @click="setActiveTab('consolidators')" class="pb-2 flex-1 text-sm font-medium transition-colors text-center" :class="activeTab === 'consolidators' ? 'border-b-2 border-primary-500 text-primary-700' : 'text-neutral-500 hover:text-neutral-700'">
-            <div class="flex items-center justify-center">
-              <AppIcon name="star" class="mr-1" size="xs" :color="activeTab === 'consolidators' ? '#0074ff' : undefined" />
-              Consolidadores
-            </div>
-          </button>
+      <!-- Lista de membros -->
+      <div>
+        <!-- Filtros em chips -->
+        <div class="mb-4 flex gap-2 overflow-x-auto pb-1 -mx-1 px-1 scrollbar-none">
           <button
-            @click="setActiveTab('birthdays')"
-            class="pb-2 flex-1 text-sm font-medium transition-colors text-center"
-            :class="activeTab === 'birthdays' ? 'border-b-2 border-primary-500 text-primary-700' : 'text-neutral-500 hover:text-neutral-700'"
+            v-for="chip in filterChips"
+            :key="chip.key"
+            type="button"
+            class="shrink-0 touch-manipulation rounded-full px-4 py-2 text-sm font-medium transition-colors"
+            :class="
+              activeTab === chip.key
+                ? 'bg-primary-600 text-white shadow-sm'
+                : 'bg-white text-neutral-600 border border-neutral-200'
+            "
+            @click="setActiveTab(chip.key)"
           >
-            <div class="flex items-center justify-center">
-              <AppIcon name="calendar" class="mr-1" size="xs" :color="activeTab === 'birthdays' ? '#0074ff' : undefined" />
-              Aniversariantes(Mês)
-            </div>
+            {{ chip.label }}
+            <span
+              v-if="chip.key === 'birthdays' && stats.birthdays > 0"
+              class="ml-1.5 inline-flex min-w-[1.25rem] items-center justify-center rounded-full bg-white/20 px-1 text-xs"
+              :class="activeTab === chip.key ? '' : 'bg-fun-100 text-fun-700'"
+            >
+              {{ stats.birthdays }}
+            </span>
           </button>
         </div>
         
-        <!-- Conteúdo das Abas -->
+        <!-- Conteúdo -->
         <div>
           <!-- Loading, Error, Empty States -->
           <div v-if="memberStore.loading" class="text-center py-8">
@@ -523,113 +599,62 @@ async function handleSubmit() {
               <h3 class="text-base font-medium text-red-800">Ocorreu um erro</h3>
               <p class="text-sm text-red-700 mt-1">{{ memberStore.error }}</p>
           </div>
-          <div v-else-if="displayedMembers.length === 0" class="text-center py-8">
-              <AppIcon name="users" class="mx-auto h-12 w-12 text-neutral-400" />
+          <div v-else-if="filteredMembers.length === 0" class="text-center py-12">
+              <AppIcon name="users" class="mx-auto h-12 w-12 text-neutral-300" />
               <h3 class="mt-3 text-base font-medium text-neutral-800">Nenhum membro encontrado</h3>
-              <p class="mt-1 text-xs text-neutral-500 max-w-md mx-auto">Não há membros que correspondam a esta visualização.</p>
-              <button v-if="activeTab !== 'all'" @click="setActiveTab('all')" class="mt-3 btn btn-xs btn-outline">
+              <p class="mt-1 text-xs text-neutral-500 max-w-md mx-auto">
+                {{ searchQuery ? 'Tente outro termo de busca.' : 'Não há membros nesta visualização.' }}
+              </p>
+              <button v-if="activeTab !== 'all' && !searchQuery" @click="setActiveTab('all')" class="mt-3 btn btn-xs btn-outline">
                 Ver todos os membros
               </button>
           </div>
 
-          <!-- Lista de Membros -->
-          <ul v-else class="divide-y divide-neutral-100">
-            <li v-for="member in displayedMembers" :key="member.id" class="py-3">
-              <!-- Card de Aniversariante -->
-              <div v-if="activeTab === 'birthdays'" class="flex items-center" :class="{'opacity-60': !member.isActive}">
-                <div class="bg-fun-100 text-fun-700 font-bold p-2 rounded-lg text-center mr-3">
-                  <span class="block text-xl">{{ getBirthdayDay(member.dataNascimento) }}</span>
-                  <span class="block text-xs uppercase">{{ new Date(member.dataNascimento as string).toLocaleString('default', { month: 'short' }) }}</span>
+          <!-- Lista estilo app -->
+          <ul v-else class="flex flex-col gap-2">
+            <li v-for="member in filteredMembers" :key="member.id">
+              <button
+                type="button"
+                class="flex w-full touch-manipulation items-center gap-3 rounded-xl border border-neutral-200/80 bg-white p-3 text-left shadow-sm active:scale-[0.99] transition-transform"
+                :class="{ 'opacity-60': !member.isActive }"
+                @click="openMemberDetail(member)"
+              >
+                <!-- Avatar / aniversário -->
+                <div
+                  v-if="activeTab === 'birthdays' && member.dataNascimento"
+                  class="flex size-11 shrink-0 flex-col items-center justify-center rounded-xl bg-fun-100 text-fun-700"
+                >
+                  <span class="text-lg font-bold leading-none">{{ getBirthdayDay(member.dataNascimento) }}</span>
+                  <span class="text-[10px] uppercase">{{ new Date(member.dataNascimento as string).toLocaleString('default', { month: 'short' }) }}</span>
                 </div>
-                <div class="flex-1">
-                    <button
-                      @click="openNotes(member)"
-                    class="text-left w-full"
-                    >
-                    <div class="flex items-center gap-1">
-                      <h3 class="font-medium text-neutral-800">{{ member.name }}</h3>
-                  </div>
-                    <div class="text-xs text-neutral-500 mt-0.5 flex items-center gap-3">
-                    <span class="inline-flex items-center">
-                      <AppIcon name="calendar" class="mr-1" size="xs"/>
-                      {{ getAge(member.dataNascimento) }} anos
-                    </span>
-                      <span v-if="member.telefone" class="inline-flex items-center">
-                      <AppIcon name="phone" class="mr-1" size="xs"/>{{ member.telefone }}
-                    </span>
-                  </div>
-                  </button>
-                  <div class="flex flex-wrap gap-1 mt-1">
-                    <span v-if="!member.isActive" class="inline-flex items-center px-1.5 py-0.5 rounded-full text-xs font-medium bg-neutral-100 text-neutral-700">Inativo</span>
-                    <span v-if="member.isConsolidator" class="inline-flex items-center px-1.5 py-0.5 rounded-full text-xs font-medium bg-primary-100 text-primary-700">Consolidador</span>
-                    <span v-if="member.isCoLeader" class="inline-flex items-center px-1.5 py-0.5 rounded-full text-xs font-medium bg-vibrant-100 text-vibrant-700">Co-líder</span>
-                    <span v-if="member.isHost" class="inline-flex items-center px-1.5 py-0.5 rounded-full text-xs font-medium bg-fun-100 text-fun-700">Anfitrião</span>
-                    <span v-if="redeCuidadoStore.mapaCuidadores.get(Number(member.id))" class="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-full text-xs font-medium bg-rose-50 text-rose-600">
-                      <AppIcon name="heart" size="xs" />{{ redeCuidadoStore.mapaCuidadores.get(Number(member.id)) }}
-                    </span>
-                  </div>
+                <div
+                  v-else
+                  class="flex size-11 shrink-0 items-center justify-center rounded-full text-sm font-semibold"
+                  :class="member.isActive ? 'bg-primary-100 text-primary-700' : 'bg-neutral-100 text-neutral-500'"
+                >
+                  {{ member.name.charAt(0).toUpperCase() }}
                 </div>
-                <div class="flex items-center gap-2">
-                  <button @click="startEditing(member)" class="p-1.5 rounded-full bg-neutral-100 hover:bg-neutral-200 transition-colors" title="Editar">
-                    <AppIcon name="edit" size="xs" class="text-neutral-600" />
-                  </button>
-                  <button @click="memberStore.toggleMemberActive(member.id)" class="p-1.5 rounded-full transition-colors" 
-                    :class="member.isActive ? 'bg-yellow-100 hover:bg-yellow-200 text-yellow-600' : 'bg-green-100 hover:bg-green-200 text-green-600'" 
-                    :title="member.isActive ? 'Desativar' : 'Ativar'">
-                    <AppIcon v-if="member.isActive" name="close" size="xs" />
-                    <AppIcon v-else name="check" size="xs" />
-                  </button>
-                  <button @click="confirmDelete(member)" class="p-1.5 rounded-full bg-red-100 hover:bg-red-200 transition-colors text-red-600" title="Excluir">
-                    <AppIcon name="delete" size="xs" />
-                  </button>
-                </div>
-              </div>
 
-              <!-- Card de Membro Padrão -->
-              <div v-else class="flex items-center justify-between" :class="{'opacity-60': !member.isActive}">
-                <div class="flex-1">
-                    <button
-                      @click="openNotes(member)"
-                    class="text-left w-full"
-                    >
-                    <div class="flex items-center gap-1">
-                      <p class="text-sm font-medium text-neutral-800">{{ member.name }}</p>
-                  </div>
-                  <div class="flex flex-wrap items-center text-xs text-neutral-500 mt-0.5">
-                    <span v-if="member.telefone" class="inline-flex items-center mr-3">
-                      <AppIcon name="phone" class="mr-1" size="xs"/>{{ member.telefone }}
-                        </span>
-                    <span v-if="member.dataNascimento" class="inline-flex items-center">
-                      <AppIcon name="calendar" class="mr-1" size="xs"/>{{ formatDate(member.dataNascimento) }}
-                        </span>
-                  </div>
-                  </button>
-                  <div class="flex flex-wrap gap-1 mt-1">
-                    <span v-if="!member.isActive" class="inline-flex items-center px-1.5 py-0.5 rounded-full text-xs font-medium bg-neutral-100 text-neutral-700">Inativo</span>
-                    <span v-if="member.isConsolidator" class="inline-flex items-center px-1.5 py-0.5 rounded-full text-xs font-medium bg-primary-100 text-primary-700">Consolidador</span>
-                    <span v-if="member.isCoLeader" class="inline-flex items-center px-1.5 py-0.5 rounded-full text-xs font-medium bg-vibrant-100 text-vibrant-700">Co-líder</span>
-                    <span v-if="member.isHost" class="inline-flex items-center px-1.5 py-0.5 rounded-full text-xs font-medium bg-fun-100 text-fun-700">Anfitrião</span>
-                    <span v-if="redeCuidadoStore.mapaCuidadores.get(Number(member.id))" class="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-full text-xs font-medium bg-rose-50 text-rose-600">
+                <div class="min-w-0 flex-1">
+                  <p class="truncate text-sm font-semibold text-neutral-900">{{ member.name }}</p>
+                  <p class="mt-0.5 truncate text-xs text-neutral-500">
+                    <span v-if="member.telefone">{{ member.telefone }}</span>
+                    <span v-else-if="member.dataNascimento && activeTab !== 'birthdays'">{{ formatDate(member.dataNascimento) }}</span>
+                    <span v-else-if="activeTab === 'birthdays' && member.dataNascimento">{{ getAge(member.dataNascimento) }} anos</span>
+                  </p>
+                  <div v-if="member.isConsolidator || member.isCoLeader || member.isHost || !member.isActive || redeCuidadoStore.mapaCuidadores.get(Number(member.id))" class="mt-1.5 flex flex-wrap gap-1">
+                    <span v-if="!member.isActive" class="rounded-full bg-neutral-100 px-2 py-0.5 text-[10px] font-medium text-neutral-600">Inativo</span>
+                    <span v-if="member.isConsolidator" class="rounded-full bg-primary-50 px-2 py-0.5 text-[10px] font-medium text-primary-700">Consolidador</span>
+                    <span v-if="member.isCoLeader" class="rounded-full bg-vibrant-50 px-2 py-0.5 text-[10px] font-medium text-vibrant-700">Co-líder</span>
+                    <span v-if="member.isHost" class="rounded-full bg-fun-50 px-2 py-0.5 text-[10px] font-medium text-fun-700">Anfitrião</span>
+                    <span v-if="redeCuidadoStore.mapaCuidadores.get(Number(member.id))" class="inline-flex items-center gap-0.5 rounded-full bg-rose-50 px-2 py-0.5 text-[10px] font-medium text-rose-600">
                       <AppIcon name="heart" size="xs" />{{ redeCuidadoStore.mapaCuidadores.get(Number(member.id)) }}
                     </span>
                   </div>
                 </div>
-                
-                <div class="flex items-center gap-2">
-                  <button @click="startEditing(member)" class="p-1.5 rounded-full bg-neutral-100 hover:bg-neutral-200 transition-colors" title="Editar">
-                    <AppIcon name="edit" size="xs" class="text-neutral-600" />
-                  </button>
-                  <button @click="memberStore.toggleMemberActive(member.id)" class="p-1.5 rounded-full transition-colors" 
-                    :class="member.isActive ? 'bg-yellow-100 hover:bg-yellow-200 text-yellow-600' : 'bg-green-100 hover:bg-green-200 text-green-600'" 
-                    :title="member.isActive ? 'Desativar' : 'Ativar'">
-                    <AppIcon v-if="member.isActive" name="close" size="xs" />
-                    <AppIcon v-else name="check" size="xs" />
-                  </button>
-                  <button @click="confirmDelete(member)" class="p-1.5 rounded-full bg-red-100 hover:bg-red-200 transition-colors text-red-600" title="Excluir">
-                    <AppIcon name="delete" size="xs" />
-                  </button>
-                </div>
-              </div>
+
+                <AppIcon name="dots" size="sm" class="shrink-0 text-neutral-400" />
+              </button>
             </li>
           </ul>
               </div>
@@ -791,13 +816,21 @@ async function handleSubmit() {
           </div>
         </div>
     </main>
+
+    <MobileStickyActionBar
+      v-if="mobileShell && !showAddForm"
+      label="Adicionar Membro"
+      @click="handleAddMember"
+    />
   </div>
 
-  <!-- Modal de Observações do Membro -->
-  <MemberNotesModal
-    :is-open="showNotesModal"
-    :member="selectedForNotes ? { id: selectedForNotes.id, name: selectedForNotes.name, observacoes: selectedForNotes.observacoes } : null"
-    @close="closeNotes"
-    @save="saveNotes"
+  <MemberDetailModal
+    :open="showDetailModal"
+    :member="selectedMember"
+    @close="closeMemberDetail"
+    @edit="handleDetailEdit"
+    @delete="handleDetailDelete"
+    @toggle-active="handleDetailToggle"
+    @save-notes="handleDetailSaveNotes"
   />
 </template>

@@ -858,6 +858,11 @@
   resolved "https://registry.yarnpkg.com/@capacitor/app/-/app-7.1.2.tgz#6b97ac3c36fc21a905142bb7b99f27b9bcbee48b"
   integrity sha512-d4I/oF/PRu4megL7/IGKYfe5j7yzSON1FRFgq6kH+m5kH6g7V+wyjHRLauCzGNjdRx4S+nWOumINds0qcRBtKg==
 
+"@capacitor/camera@^7.0.1":
+  version "7.0.5"
+  resolved "https://registry.yarnpkg.com/@capacitor/camera/-/camera-7.0.5.tgz#ef1caa2469e8272026742d5faf7203785e7fcf2a"
+  integrity sha512-+53f1xHq8on7O+ULXbgWp00ooWvn3fUkWxTP3p5zHi1nVriCxLbYnY0zTpZQqn52M96vclFKkoABbTVQ3x755w==
+
 "@capacitor/cli@^7.2.0":
   version "7.6.8"
   resolved "https://registry.yarnpkg.com/@capacitor/cli/-/cli-7.6.8.tgz#2057e345192dde1a06f2b62ad8ae809be917fb57"

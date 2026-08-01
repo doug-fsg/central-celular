@@ -1,10 +1,95 @@
 import { Request, Response } from 'express';
+import fs from 'fs/promises';
+import path from 'path';
+import crypto from 'crypto';
 import { prisma } from '../lib/prisma';
 import bcrypt from 'bcryptjs';
 import { z } from 'zod';
 import { otpService } from '../services/otpService';
 import { CARGO, isPlatformOwner } from '../lib/roles';
 import { getAccountId, getUserId, assertUsuarioBelongsToAccount } from '../lib/tenant';
+
+const AVATAR_DIR = path.resolve(process.cwd(), 'server', 'uploads', 'avatars');
+const AVATAR_PUBLIC_PREFIX = '/uploads/avatars';
+const AVATAR_MAX_BYTES = 3 * 1024 * 1024;
+const AVATAR_MIME_TO_EXT: Record<string, string> = {
+  'image/jpeg': 'jpg',
+  'image/jpg': 'jpg',
+  'image/png': 'png',
+  'image/webp': 'webp',
+};
+
+const uploadAvatarSchema = z.object({
+  imageData: z.string().min(1),
+  mimeType: z.string().min(1).optional(),
+});
+
+async function ensureAvatarDir(): Promise<void> {
+  await fs.mkdir(AVATAR_DIR, { recursive: true });
+}
+
+function parseImagePayload(input: {
+  imageData: string;
+  mimeType?: string;
+}): { buffer: Buffer; ext: string } | { error: string } {
+  let raw = input.imageData.trim();
+  let mimeType = input.mimeType?.toLowerCase();
+
+  const dataUrlMatch = raw.match(/^data:(image\/[a-z0-9+.-]+);base64,(.+)$/i);
+  if (dataUrlMatch) {
+    mimeType = dataUrlMatch[1].toLowerCase();
+    raw = dataUrlMatch[2];
+  }
+
+  if (!mimeType) {
+    return { error: 'mimeType é obrigatório para uploads sem data URL' };
+  }
+
+  const ext = AVATAR_MIME_TO_EXT[mimeType];
+  if (!ext) {
+    return { error: 'Formato de imagem não suportado. Use JPEG, PNG ou WebP.' };
+  }
+
+  let buffer: Buffer;
+  try {
+    buffer = Buffer.from(raw, 'base64');
+  } catch {
+    return { error: 'imageData inválido' };
+  }
+
+  if (buffer.length === 0) {
+    return { error: 'Imagem vazia' };
+  }
+  if (buffer.length > AVATAR_MAX_BYTES) {
+    return { error: 'Imagem excede o tamanho máximo de 3 MB' };
+  }
+
+  return { buffer, ext };
+}
+
+function avatarPublicUrl(fileName: string): string {
+  return `${AVATAR_PUBLIC_PREFIX}/${fileName}`;
+}
+
+function avatarFilePathFromUrl(url: string): string | null {
+  if (!url.startsWith(`${AVATAR_PUBLIC_PREFIX}/`)) return null;
+  const fileName = path.basename(url);
+  if (!fileName) return null;
+  return path.join(AVATAR_DIR, fileName);
+}
+
+async function removeAvatarFile(url: string | null | undefined): Promise<void> {
+  if (!url) return;
+  const filePath = avatarFilePathFromUrl(url);
+  if (!filePath) return;
+  try {
+    await fs.unlink(filePath);
+  } catch (err: any) {
+    if (err?.code !== 'ENOENT') {
+      console.warn('[UsuariosController] Falha ao remover avatar anterior:', err);
+    }
+  }
+}
 
 function resolveIsSuperAdminForCargo(
   cargo: string,
@@ -777,4 +862,85 @@ export const listarCelularesUsuario = async (req: Request, res: Response) => {
     console.error('Erro ao listar celulares do usuário:', error);
     res.status(500).json({ message: 'Erro ao listar celulares do usuário' });
   }
-}; 
+};
+
+/** Upload de avatar do usuário logado. Aceita data URL ou base64 puro com mimeType explícito. */
+export const uploadAvatarProprio = async (req: Request, res: Response) => {
+  try {
+    const userId = getUserId(req);
+    const accountId = getAccountId(req);
+
+    if (!userId || !accountId) {
+      return res.status(401).json({ message: 'Não autenticado' });
+    }
+
+    const parsed = uploadAvatarSchema.safeParse(req.body);
+    if (!parsed.success) {
+      return res
+        .status(400)
+        .json({ message: 'Dados inválidos', errors: parsed.error.errors });
+    }
+
+    const parsedImage = parseImagePayload(parsed.data);
+    if ('error' in parsedImage) {
+      return res.status(400).json({ message: parsedImage.error });
+    }
+
+    await ensureAvatarDir();
+    const fileName = `${userId}-${crypto.randomBytes(8).toString('hex')}.${parsedImage.ext}`;
+    const filePath = path.join(AVATAR_DIR, fileName);
+    await fs.writeFile(filePath, parsedImage.buffer);
+
+    const currentUser = await prisma.usuario.findFirst({
+      where: { id: userId, accountId },
+      select: { avatarUrl: true },
+    });
+
+    const publicUrl = avatarPublicUrl(fileName);
+    const updated = await prisma.usuario.update({
+      where: { id: userId },
+      data: { avatarUrl: publicUrl },
+      select: { id: true, avatarUrl: true },
+    });
+
+    if (currentUser?.avatarUrl && currentUser.avatarUrl !== publicUrl) {
+      await removeAvatarFile(currentUser.avatarUrl);
+    }
+
+    return res.json(updated);
+  } catch (error) {
+    console.error('[UsuariosController] Erro ao enviar avatar:', error);
+    return res.status(500).json({ message: 'Erro ao enviar avatar' });
+  }
+};
+
+/** Remove avatar do usuário logado e limpa o arquivo do disco. */
+export const removerAvatarProprio = async (req: Request, res: Response) => {
+  try {
+    const userId = getUserId(req);
+    const accountId = getAccountId(req);
+
+    if (!userId || !accountId) {
+      return res.status(401).json({ message: 'Não autenticado' });
+    }
+
+    const currentUser = await prisma.usuario.findFirst({
+      where: { id: userId, accountId },
+      select: { avatarUrl: true },
+    });
+
+    if (currentUser?.avatarUrl) {
+      await removeAvatarFile(currentUser.avatarUrl);
+    }
+
+    await prisma.usuario.update({
+      where: { id: userId },
+      data: { avatarUrl: null },
+    });
+
+    return res.json({ success: true, avatarUrl: null });
+  } catch (error) {
+    console.error('[UsuariosController] Erro ao remover avatar:', error);
+    return res.status(500).json({ message: 'Erro ao remover avatar' });
+  }
+};

@@ -36,6 +36,7 @@ model Usuario {
   cargo              String    // "admin", "pastor", "supervisor", "lider", "colider"
   ativo              Boolean   @default(true)
   isSuperAdmin       Boolean   @default(false) @map("is_super_admin")
+  avatarUrl          String?   @map("avatar_url")
   accountId          Int       @map("account_id")
   account            Account   @relation(fields: [accountId], references: [id])
   createdAt          DateTime  @default(now()) @map("created_at")

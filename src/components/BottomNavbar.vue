@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, computed, onMounted, onUnmounted } from 'vue';
+import { ref, computed } from 'vue';
 import { useRouter } from 'vue-router';
 import { useUserStore } from '../stores/userStore';
 import { useHaptic } from '../composables/useHaptic';
@@ -10,15 +10,15 @@ import {
 } from '../composables/useBottomNav';
 import AppIcon from './AppIcon.vue';
 import MobileMoreSheet from './MobileMoreSheet.vue';
-import type { IconName } from './AppIcon.vue';
+import ProfileAvatar from './ProfileAvatar.vue';
+import ProfileMenuSheet from './ProfileMenuSheet.vue';
 
 const router = useRouter();
 const userStore = useUserStore();
 const { tap } = useHaptic();
 const currentRoute = computed(() => router.currentRoute.value.name);
-const showProfileDropdown = ref(false);
+const showProfileSheet = ref(false);
 const showMoreSheet = ref(false);
-const dropdownRef = ref<HTMLElement | null>(null);
 
 const allNavItems = computed<BottomNavItem[]>(() => {
   if (userStore.canToggleView && userStore.currentView === 'cell') {
@@ -26,7 +26,7 @@ const allNavItems = computed<BottomNavItem[]>(() => {
       { name: 'dashboard', label: 'Início', icon: 'home' },
       { name: 'minha-celula', label: 'Minha Célula', icon: 'users' },
       { name: 'attendance', label: 'Frequência', icon: 'calendar' },
-      { name: 'reports', label: 'Relatórios', icon: 'chart-bar' },
+      { name: 'rede-cuidado', label: 'Rede', icon: 'heart' },
     ];
   }
 
@@ -50,17 +50,23 @@ const allNavItems = computed<BottomNavItem[]>(() => {
     ];
   }
 
+  if (userStore.isSupervisor) {
+    return [
+      { name: 'supervisor-dashboard', label: 'Início', icon: 'home' },
+    ];
+  }
+
   return [
     { name: 'dashboard', label: 'Início', icon: 'home' },
     { name: 'minha-celula', label: 'Minha Célula', icon: 'users' },
     { name: 'attendance', label: 'Frequência', icon: 'calendar' },
-    { name: 'reports', label: 'Relatórios', icon: 'chart-bar' },
+    { name: 'rede-cuidado', label: 'Rede', icon: 'heart' },
   ];
 });
 
 const useOverflowMenu = computed(() => {
-  if (userStore.canToggleView && userStore.currentView === 'cell') return false;
-  return userStore.isChurchAdmin || userStore.isPlatformOwner;
+  if (userStore.isSupervisor) return false;
+  return allNavItems.value.length > 4;
 });
 
 const navSplit = computed(() =>
@@ -73,11 +79,6 @@ const moreNavItemsComputed = computed(() => navSplit.value.more);
 const moreNavActive = computed(() =>
   isMoreNavActive(moreNavItemsComputed.value, currentRoute.value)
 );
-
-const profileItems = [
-  { name: 'profile', label: 'Meu Perfil', icon: 'user' as IconName },
-  { name: 'configuracoes', label: 'Configurações', icon: 'settings' as IconName },
-];
 
 function navigateTo(routeName: string) {
   tap();
@@ -92,16 +93,16 @@ function isProfileActive(): boolean {
   return ['profile', 'configuracoes', 'super-admin'].includes(currentRoute.value as string);
 }
 
-function toggleProfileDropdown() {
+function openProfileSheet() {
   tap();
-  showProfileDropdown.value = !showProfileDropdown.value;
+  showProfileSheet.value = true;
   showMoreSheet.value = false;
 }
 
 function openMoreSheet() {
   tap();
   showMoreSheet.value = true;
-  showProfileDropdown.value = false;
+  showProfileSheet.value = false;
 }
 
 function navigateFromMore(routeName: string) {
@@ -109,46 +110,32 @@ function navigateFromMore(routeName: string) {
   router.push({ name: routeName });
 }
 
-function navigateToProfile(routeName: string) {
+function navigateFromProfile(routeName: string) {
+  showProfileSheet.value = false;
   router.push({ name: routeName });
-  showProfileDropdown.value = false;
 }
 
 async function handleLogout() {
   try {
+    showProfileSheet.value = false;
     await userStore.logout();
     router.push({ name: 'login' });
-    showProfileDropdown.value = false;
   } catch (error) {
     console.error('Erro ao fazer logout:', error);
   }
 }
 
-function toggleView() {
+function toggleViewFromSheet() {
   if (!userStore.canToggleView) return;
   tap();
   userStore.toggleView();
-  showProfileDropdown.value = false;
+  showProfileSheet.value = false;
   if (userStore.currentView === 'cell') {
     router.push({ name: 'dashboard' });
   } else {
     router.push({ name: 'admin-dashboard' });
   }
 }
-
-function handleClickOutside(event: MouseEvent) {
-  if (dropdownRef.value && !dropdownRef.value.contains(event.target as Node)) {
-    showProfileDropdown.value = false;
-  }
-}
-
-onMounted(() => {
-  document.addEventListener('click', handleClickOutside);
-});
-
-onUnmounted(() => {
-  document.removeEventListener('click', handleClickOutside);
-});
 </script>
 
 <template>
@@ -178,72 +165,18 @@ onUnmounted(() => {
       <span class="text-xs mt-1 font-medium">Mais</span>
     </div>
 
-    <div class="relative" ref="dropdownRef">
-      <div
-        @click="toggleProfileDropdown"
-        class="nav-item"
-        :class="isProfileActive() ? 'nav-item-active' : 'nav-item-inactive'"
-      >
-        <AppIcon
-          name="user"
-          size="md"
-          :color="isProfileActive() ? '#0074ff' : undefined"
-        />
-        <span class="text-xs mt-1 font-medium">Perfil</span>
-      </div>
-
-      <div
-        v-if="showProfileDropdown"
-        class="absolute bottom-full right-0 mb-2 w-52 bg-white/95 backdrop-blur-md rounded-xl shadow-lg border border-gray-200 py-2 z-50"
-      >
-        <div
-          v-if="userStore.canToggleView"
-          @click="toggleView"
-          class="flex items-center px-4 py-3 text-primary-700 cursor-pointer select-none"
-          style="min-height: 44px; touch-action: manipulation;"
-        >
-          <AppIcon name="grid" size="sm" class="mr-3" />
-          <span class="text-sm font-medium">
-            {{ userStore.currentView === 'admin' ? 'Ir para visão de célula' : 'Ir para visão admin' }}
-          </span>
-        </div>
-
-        <div v-if="userStore.canToggleView" class="border-t border-gray-100 my-1"></div>
-
-        <div
-          v-if="userStore.isPlatformOwner"
-          @click="navigateToProfile('super-admin')"
-          class="flex items-center px-4 py-3 text-violet-700 cursor-pointer select-none"
-          style="min-height: 44px; touch-action: manipulation;"
-        >
-          <AppIcon name="star" size="sm" class="mr-3" />
-          <span class="text-sm font-medium">Super Admin</span>
-        </div>
-
-        <div v-if="userStore.isPlatformOwner" class="border-t border-gray-100 my-1"></div>
-
-        <div
-          v-for="profileItem in profileItems"
-          :key="profileItem.name"
-          @click="navigateToProfile(profileItem.name)"
-          class="flex items-center px-4 py-3 text-gray-700 cursor-pointer select-none"
-          style="min-height: 44px; touch-action: manipulation;"
-        >
-          <AppIcon :name="profileItem.icon" size="sm" class="mr-3" />
-          <span class="text-sm font-medium">{{ profileItem.label }}</span>
-        </div>
-
-        <div class="border-t border-gray-100 my-1"></div>
-
-        <div
-          @click="handleLogout"
-          class="flex items-center px-4 py-3 text-red-600 cursor-pointer select-none"
-          style="min-height: 44px; touch-action: manipulation;"
-        >
-          <AppIcon name="logout" size="sm" class="mr-3" />
-          <span class="text-sm font-medium">Sair</span>
-        </div>
-      </div>
+    <div
+      @click="openProfileSheet"
+      class="nav-item"
+      :class="isProfileActive() ? 'nav-item-active' : 'nav-item-inactive'"
+    >
+      <ProfileAvatar
+        :name="userStore.user?.nome"
+        :avatar-url="userStore.user?.avatarUrl"
+        size="sm"
+        :ring="isProfileActive()"
+      />
+      <span class="text-xs mt-1 font-medium">Perfil</span>
     </div>
   </nav>
 
@@ -252,5 +185,13 @@ onUnmounted(() => {
     :items="moreNavItemsComputed"
     @navigate="navigateFromMore"
     @close="showMoreSheet = false"
+  />
+
+  <ProfileMenuSheet
+    :open="showProfileSheet"
+    @close="showProfileSheet = false"
+    @navigate="navigateFromProfile"
+    @toggle-view="toggleViewFromSheet"
+    @logout="handleLogout"
   />
 </template>

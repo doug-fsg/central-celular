@@ -21,7 +21,7 @@ export function useAppNavigation() {
         { name: 'dashboard', label: 'Início', icon: 'home' },
         { name: 'minha-celula', label: 'Minha Célula', icon: 'users' },
         { name: 'attendance', label: 'Frequência', icon: 'calendar' },
-        { name: 'reports', label: 'Relatórios', icon: 'chart-bar' },
+        { name: 'rede-cuidado', label: 'Rede de cuidado', icon: 'heart' },
       ]
     }
 
@@ -38,7 +38,6 @@ export function useAppNavigation() {
     if (userStore.isSupervisor) {
       return [
         { name: 'supervisor-dashboard', label: 'Início', icon: 'home' },
-        { name: 'reports', label: 'Relatórios', icon: 'chart-bar' },
       ]
     }
 
@@ -46,7 +45,7 @@ export function useAppNavigation() {
       { name: 'dashboard', label: 'Início', icon: 'home' },
       { name: 'minha-celula', label: 'Minha Célula', icon: 'users' },
       { name: 'attendance', label: 'Frequência', icon: 'calendar' },
-      { name: 'reports', label: 'Relatórios', icon: 'chart-bar' },
+      { name: 'rede-cuidado', label: 'Rede de cuidado', icon: 'heart' },
     ]
   })
 
