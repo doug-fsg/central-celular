@@ -1,6 +1,5 @@
 import { prisma } from '../lib/prisma';
 import { whatsappService } from './whatsappService';
-import { getQuepasaUpstream } from '../lib/env';
 import crypto from 'crypto';
 
 interface CreateOtpParams {
@@ -15,23 +14,13 @@ const OTP_CODE_TTL_MS = 10 * 60 * 1000;
 const INVITE_TOKEN_TTL_MS = 48 * 60 * 60 * 1000;
 
 async function sendQuepasaText(token: string, phone: string, text: string): Promise<boolean> {
-  const upstream = getQuepasaUpstream();
-  const response = await fetch(`${upstream}/v3/bot/${token}/sendText/${phone}`, {
-    method: 'POST',
-    headers: {
-      Accept: 'application/json',
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify({ text }),
-  });
-
-  if (!response.ok) {
-    console.error(`[OtpService] Erro ao enviar mensagem: ${response.status} ${response.statusText}`);
+  try {
+    await whatsappService.sendText(token, phone, text);
+    return true;
+  } catch (error) {
+    console.error('[OtpService] Erro ao enviar mensagem:', error);
     return false;
   }
-
-  const data = await response.json();
-  return data.success === true;
 }
 
 export const otpService = {

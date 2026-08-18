@@ -14,6 +14,7 @@ import MobileStickyActionBar from '../components/MobileStickyActionBar.vue'
 import ReportConfirmSheet from '../components/ReportConfirmSheet.vue'
 import SuccessReportModal from '../components/SuccessReportModal.vue'
 import { usePlatform } from '../composables/usePlatform'
+import { useIsMobileViewport } from '../composables/useIsMobileViewport'
 import { useHaptic } from '../composables/useHaptic'
 
 const route = useRoute()
@@ -21,7 +22,10 @@ const router = useRouter()
 const reportStore = useReportStore()
 const memberStore = useMemberStore()
 const { mobileShell } = usePlatform()
+const { isMobileViewport } = useIsMobileViewport()
 const { tap, success: hapticSuccess, error: hapticError } = useHaptic()
+
+const showMobileActions = computed(() => mobileShell.value || isMobileViewport.value)
 const toastMessage = ref('')
 const toastShow = ref(false)
 const toastType = ref<'success' | 'error' | 'warning' | 'info'>('info')
@@ -311,7 +315,7 @@ watch(teveCelula, async (newValue) => {
 
     <main
       class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4 sm:py-8"
-      :class="{ 'mobile-page__content': mobileShell && !relatorioFinalizado }"
+      :class="{ 'mobile-page__content': showMobileActions && !relatorioFinalizado }"
     >
       <!-- Seletor de semana -->
       <div class="mb-6">
@@ -482,7 +486,7 @@ watch(teveCelula, async (newValue) => {
     </main>
 
     <MobileStickyActionBar
-      v-if="mobileShell && !relatorioFinalizado && !loading && !error"
+      v-if="showMobileActions && !relatorioFinalizado && !loading && !error"
       :label="isCurrentReportWeek ? 'Enviar relatório' : 'Semana anterior'"
       :disabled="!podeEnviar"
       :loading="loading"

@@ -142,18 +142,39 @@ export interface DashboardCuidadoResponse {
 }
 
 /** Resposta GET /admin/dashboard-semana */
+export interface ParticipacaoMembroItem {
+  membroId: number;
+  membroNome: string;
+  liderNome: string;
+  cuidadorNome: string | null;
+}
+
+export interface LiderRelatorioItem {
+  liderId: number;
+  liderNome: string;
+  celulas: string[];
+}
+
 export interface DashboardSemanaResponse {
   periodo: { inicio: string; fim: string };
   participacao: {
     totalMembros: number;
     culto: { presentes: number; total: number; percentual: number };
     celula: { presentes: number; total: number; percentual: number };
+    listas: {
+      culto: ParticipacaoMembroItem[];
+      celula: ParticipacaoMembroItem[];
+    };
   };
   relatorios: {
     lideresTotal: number;
     lideresPreencheram: number;
     pendentes: number;
     percentualAdesao: number;
+    listas: {
+      preencheram: LiderRelatorioItem[];
+      pendentes: LiderRelatorioItem[];
+    };
   };
   filtros: { liderId: number | null };
 }
@@ -220,6 +241,39 @@ export interface PaginatedResponse<T> {
     currentPage: number;
     perPage: number;
   };
+}
+
+export interface PushSubscriber {
+  userId: number;
+  nome: string;
+  cargo: string;
+  platforms: string[];
+  deviceCount: number;
+  updatedAt: string;
+}
+
+export interface PushSendResult {
+  sent: number;
+  skipped: number;
+  failed: number;
+  message?: string;
+  usersTargeted?: number;
+  usersWithSend?: number;
+}
+
+export interface PushSubscribersResponse {
+  subscribers: PushSubscriber[];
+  pagination: {
+    page: number;
+    perPage: number;
+    total: number;
+  };
+}
+
+export interface PushSendPayload {
+  title: string;
+  body: string;
+  url?: string;
 }
 
 // Serviço de administração
@@ -583,5 +637,33 @@ export const adminService = {
       console.error('Erro ao listar membros:', error);
       throw error;
     }
-  }
+  },
+
+  async listarInscritosPush(
+    search?: string,
+    page = 1,
+    perPage = 50,
+  ): Promise<PushSubscribersResponse> {
+    const params = new URLSearchParams({
+      page: String(page),
+      perPage: String(perPage),
+    });
+    if (search?.trim()) params.append('search', search.trim());
+    const response = await api.get(`/admin/push/subscribers?${params.toString()}`);
+    const payload = response?.data ?? response;
+    return {
+      subscribers: payload.subscribers ?? [],
+      pagination: payload.pagination ?? { page, perPage, total: 0 },
+    };
+  },
+
+  async enviarPushUsuario(userId: number, dados: PushSendPayload): Promise<PushSendResult> {
+    const response = await api.post(`/admin/push/users/${userId}/send`, dados);
+    return response?.data ?? response;
+  },
+
+  async enviarPushTodos(dados: PushSendPayload): Promise<PushSendResult> {
+    const response = await api.post('/admin/push/send-all', { ...dados, confirm: true });
+    return response?.data ?? response;
+  },
 }; 

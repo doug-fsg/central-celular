@@ -270,29 +270,13 @@ export const passwordResetService = {
       const whatsappFormatado = this.formatWhatsApp(whatsapp);
       console.log('[PasswordResetService] Número formatado para API:', whatsappFormatado);
 
-      // Enviar mensagem via WhatsApp
-      const response = await fetch(`http://173.249.22.227:31000/v3/bot/${whatsappConnection.token}/sendText/${whatsappFormatado}`, {
-        method: 'POST',
-        headers: {
-          'Accept': 'application/json',
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({
-          text: mensagem
-        })
-      });
-
-      // Verificar se a requisição foi bem-sucedida
-      if (!response.ok) {
-        const errorText = await response.text();
-        console.error(`[PasswordResetService] Erro ao enviar mensagem: ${response.status} ${response.statusText}`, errorText);
-        return false;
-      }
-
-      const data = await response.json();
+      const data = await whatsappService.sendText(
+        whatsappConnection.token,
+        whatsappFormatado,
+        mensagem
+      );
       console.log('[PasswordResetService] Resposta do envio de link:', data);
-
-      return data.success === true;
+      return true;
     } catch (error) {
       console.error('[PasswordResetService] Erro ao enviar link via WhatsApp:', error);
       return false;

@@ -606,7 +606,11 @@ const handleSendSsoLink = async () => {
     }
   } catch (error) {
     console.error('Erro ao enviar link SSO:', error)
-    showFeedback('Erro ao enviar link SSO', 'error')
+    const message =
+      error && typeof error === 'object' && 'message' in error
+        ? String((error as { message: string }).message)
+        : 'Erro ao enviar link SSO'
+    showFeedback(message, 'error')
   } finally {
     sendingLink.value = false
     showConfirmSendLink.value = false

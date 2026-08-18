@@ -914,6 +914,98 @@ export const uploadAvatarProprio = async (req: Request, res: Response) => {
   }
 };
 
+/** Perfil resumido do usuário logado. */
+export const obterPerfilProprio = async (req: Request, res: Response) => {
+  try {
+    const userId = getUserId(req);
+    const accountId = getAccountId(req);
+
+    if (!userId || !accountId) {
+      return res.status(401).json({ message: 'Não autenticado' });
+    }
+
+    const usuario = await prisma.usuario.findFirst({
+      where: { id: userId, accountId },
+      select: {
+        id: true,
+        nome: true,
+        dataNascimento: true,
+      },
+    });
+
+    if (!usuario) {
+      return res.status(404).json({ message: 'Usuário não encontrado' });
+    }
+
+    return res.json(usuario);
+  } catch (error) {
+    console.error('[UsuariosController] Erro ao obter perfil:', error);
+    return res.status(500).json({ message: 'Erro ao carregar perfil' });
+  }
+};
+
+const atualizarPerfilProprioSchema = z.object({
+  dataNascimento: z
+    .string()
+    .regex(/^\d{4}-\d{2}-\d{2}$/, 'Use o formato AAAA-MM-DD')
+    .refine((val) => {
+      const [ano, mes, dia] = val.split('-').map(Number);
+      const date = new Date(ano, mes - 1, dia);
+      const hoje = new Date();
+      hoje.setHours(23, 59, 59, 999);
+      if (date.getFullYear() !== ano || date.getMonth() !== mes - 1 || date.getDate() !== dia) {
+        return false;
+      }
+      if (ano < 1900 || date > hoje) return false;
+      return true;
+    }, { message: 'Data de nascimento inválida' }),
+});
+
+/** Atualiza dados do próprio perfil (usuário logado). */
+export const atualizarPerfilProprio = async (req: Request, res: Response) => {
+  try {
+    const userId = getUserId(req);
+    const accountId = getAccountId(req);
+
+    if (!userId || !accountId) {
+      return res.status(401).json({ message: 'Não autenticado' });
+    }
+
+    const parsed = atualizarPerfilProprioSchema.safeParse(req.body);
+    if (!parsed.success) {
+      return res.status(400).json({
+        message: parsed.error.errors[0]?.message ?? 'Dados inválidos',
+      });
+    }
+
+    const [ano, mes, dia] = parsed.data.dataNascimento.split('-').map(Number);
+    const dataNascimento = new Date(Date.UTC(ano, mes - 1, dia));
+
+    const updated = await prisma.usuario.updateMany({
+      where: { id: userId, accountId },
+      data: { dataNascimento },
+    });
+
+    if (updated.count === 0) {
+      return res.status(404).json({ message: 'Usuário não encontrado' });
+    }
+
+    const usuario = await prisma.usuario.findFirst({
+      where: { id: userId, accountId },
+      select: {
+        id: true,
+        nome: true,
+        dataNascimento: true,
+      },
+    });
+
+    return res.json(usuario);
+  } catch (error) {
+    console.error('[UsuariosController] Erro ao atualizar perfil:', error);
+    return res.status(500).json({ message: 'Erro ao salvar data de nascimento' });
+  }
+};
+
 /** Remove avatar do usuário logado e limpa o arquivo do disco. */
 export const removerAvatarProprio = async (req: Request, res: Response) => {
   try {

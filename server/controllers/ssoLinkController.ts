@@ -74,10 +74,10 @@ export const ssoLinkController = {
       const resultado = await ssoLinkService.enviarLinkSsoWhatsApp(Number(usuarioId), accountId);
       return res.json(resultado);
     } catch (error) {
+      const detail = error instanceof Error ? error.message : 'Erro desconhecido';
       console.error('Erro ao gerar e enviar link SSO:', error);
-      return res.status(500).json({ 
-        message: 'Erro ao gerar e enviar link SSO', 
-        error: error instanceof Error ? error.message : 'Erro desconhecido' 
+      return res.status(500).json({
+        message: detail,
       });
     }
   },

@@ -1,6 +1,7 @@
 import { prisma } from '../lib/prisma';
 import { format, addDays, parseISO, startOfDay } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
+import { whatsappService } from '../services/whatsappService';
 
 // Função para enviar mensagem via WhatsApp
 async function enviarMensagemWhatsApp(whatsapp: string, mensagem: string, accountId: number) {
@@ -19,30 +20,10 @@ async function enviarMensagemWhatsApp(whatsapp: string, mensagem: string, accoun
     }
 
     console.log(`[AniversarioJob] Enviando mensagem para ${whatsapp} via conexão ${whatsappConnection.token}`);
-    
-    // Fazer a requisição para a API de WhatsApp
-    const response = await fetch(`http://173.249.22.227:31000/v3/bot/${whatsappConnection.token}/sendText/${whatsapp}`, {
-      method: 'POST',
-      headers: {
-        'Accept': 'application/json',
-        'Content-Type': 'application/json'
-      },
-      body: JSON.stringify({
-        text: mensagem
-      })
-    });
-    
-    // Verificar se a requisição foi bem-sucedida
-    if (!response.ok) {
-      const errorText = await response.text();
-      console.error(`[AniversarioJob] Erro ao enviar mensagem: ${response.status} ${response.statusText}`, errorText);
-      return false;
-    }
-    
-    const data = await response.json();
+
+    const data = await whatsappService.sendText(whatsappConnection.token, whatsapp, mensagem);
     console.log('[AniversarioJob] Resposta do envio de mensagem:', data);
-    
-    return data.success === true;
+    return true;
   } catch (error) {
     console.error('[AniversarioJob] Erro ao enviar mensagem via WhatsApp:', error);
     return false;

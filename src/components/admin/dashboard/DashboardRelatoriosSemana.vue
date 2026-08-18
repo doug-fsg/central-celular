@@ -1,7 +1,9 @@
 <script setup lang="ts">
+import { ref } from 'vue'
 import type { DashboardSemanaResponse } from '../../../services/adminService'
 import { DASHBOARD_UNIFIED_COPY } from '../../../constants/dashboardUnified'
 import DashboardWeekNav from './DashboardWeekNav.vue'
+import DashboardSemanaDetailModal from './DashboardSemanaDetailModal.vue'
 
 defineProps<{
   data: DashboardSemanaResponse | null
@@ -16,6 +18,16 @@ const emit = defineEmits<{
   nextWeek: []
   retry: []
 }>()
+
+const detailOpen = ref(false)
+
+function openDetail() {
+  detailOpen.value = true
+}
+
+function closeDetail() {
+  detailOpen.value = false
+}
 </script>
 
 <template>
@@ -48,25 +60,47 @@ const emit = defineEmits<{
       </button>
     </div>
 
-    <template v-else-if="data">
-      <div class="flex flex-1 flex-col justify-center">
-        <p class="text-3xl font-bold tabular-nums text-neutral-900">
-          {{ data.relatorios.lideresPreencheram }}
-          <span class="text-lg font-medium text-neutral-500">
-            {{ DASHBOARD_UNIFIED_COPY.relatorios.de }} {{ data.relatorios.lideresTotal }}
-          </span>
-        </p>
-        <p class="mt-1 text-sm text-neutral-600">
-          {{ DASHBOARD_UNIFIED_COPY.relatorios.preencheram }}
-          ({{ data.relatorios.percentualAdesao }}%)
-        </p>
-        <p
-          class="mt-3 text-sm tabular-nums"
-          :class="data.relatorios.pendentes > 0 ? 'text-amber-700' : 'text-neutral-500'"
-        >
-          {{ data.relatorios.pendentes }} {{ DASHBOARD_UNIFIED_COPY.relatorios.pendentes }}
-        </p>
-      </div>
-    </template>
+    <button
+      v-else-if="data"
+      type="button"
+      class="relative flex flex-1 flex-col justify-center rounded-lg text-left transition-colors hover:bg-neutral-50 touch-manipulation"
+      @click="openDetail"
+    >
+      <p class="text-3xl font-bold tabular-nums text-neutral-900">
+        {{ data.relatorios.lideresPreencheram }}
+        <span class="text-lg font-medium text-neutral-500">
+          {{ DASHBOARD_UNIFIED_COPY.relatorios.de }} {{ data.relatorios.lideresTotal }}
+        </span>
+      </p>
+      <p class="mt-1 text-sm text-neutral-600">
+        {{ DASHBOARD_UNIFIED_COPY.relatorios.preencheram }}
+        ({{ data.relatorios.percentualAdesao }}%)
+      </p>
+      <p
+        class="mt-3 text-sm tabular-nums"
+        :class="data.relatorios.pendentes > 0 ? 'text-amber-700' : 'text-neutral-500'"
+      >
+        {{ data.relatorios.pendentes }} {{ DASHBOARD_UNIFIED_COPY.relatorios.pendentes }}
+      </p>
+      <span
+        class="absolute bottom-0 right-0 flex size-8 items-center justify-center rounded-full border border-neutral-200 bg-white text-neutral-500 shadow-sm"
+        aria-hidden="true"
+      >
+        <svg class="size-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7" />
+        </svg>
+      </span>
+    </button>
+
+    <DashboardSemanaDetailModal
+      :open="detailOpen"
+      variant="relatorios"
+      :title="DASHBOARD_UNIFIED_COPY.semanaDetail.relatoriosTitle"
+      icon="calendar"
+      icon-wrap="bg-emerald-100 text-emerald-600"
+      :relatorio-preencheram="data?.relatorios.listas?.preencheram"
+      :relatorio-pendentes="data?.relatorios.listas?.pendentes"
+      @close="closeDetail"
+    />
   </article>
 </template>

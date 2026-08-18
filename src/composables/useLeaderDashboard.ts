@@ -191,12 +191,14 @@ export function useLeaderDashboard() {
           total: totalCelula,
           percentual: totalCelula > 0 ? Math.round((presentesCelula / totalCelula) * 100) : 0,
         },
+        listas: { culto: [], celula: [] },
       },
       relatorios: {
         lideresTotal: 1,
         lideresPreencheram: relatorioEnviado ? 1 : 0,
         pendentes: relatorioEnviado ? 0 : 1,
         percentualAdesao: relatorioEnviado ? 100 : 0,
+        listas: { preencheram: [], pendentes: [] },
       },
       filtros: { liderId: null },
     }

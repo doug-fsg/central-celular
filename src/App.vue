@@ -1,15 +1,20 @@
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, watch } from 'vue'
 import { useRoute } from 'vue-router'
 import AppSidebar from './components/AppSidebar.vue'
 import BottomNavbar from './components/BottomNavbar.vue'
 import PageRouteLoader from './components/PageRouteLoader.vue'
 import MobileOfflineBanner from './components/MobileOfflineBanner.vue'
+import PwaInstallBanner from './components/PwaInstallBanner.vue'
+import BirthdatePromptModal from './components/BirthdatePromptModal.vue'
 import { usePlatform } from './composables/usePlatform'
 import { useSidebarCollapsed } from './composables/useSidebarCollapsed'
 import { useIsMobileViewport } from './composables/useIsMobileViewport'
+import { useUserStore } from './stores/userStore'
+import { registerPushIfEligible } from './composables/usePushNotifications'
 
 const route = useRoute()
+const userStore = useUserStore()
 const { mobileShell } = usePlatform()
 const { collapsed } = useSidebarCollapsed()
 const { isMobileViewport } = useIsMobileViewport()
@@ -19,6 +24,14 @@ const publicRoutes = ['home', 'login', 'gileade', 'first-access', 'reset-passwor
 const showNavigation = computed(() => {
   return !publicRoutes.includes(route.name as string)
 })
+
+watch(
+  () => userStore.isLoggedIn,
+  (loggedIn) => {
+    if (loggedIn) void registerPushIfEligible()
+  },
+  { immediate: true },
+)
 </script>
 
 <template>
@@ -46,4 +59,8 @@ const showNavigation = computed(() => {
   <div v-if="showNavigation && isMobileViewport">
     <BottomNavbar />
   </div>
+
+  <PwaInstallBanner :above-bottom-nav="showNavigation && isMobileViewport" />
+
+  <BirthdatePromptModal v-if="showNavigation" />
 </template>

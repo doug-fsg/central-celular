@@ -1,7 +1,11 @@
 <script setup lang="ts">
+import { ref } from 'vue'
 import type { DashboardSemanaResponse } from '../../../services/adminService'
 import { DASHBOARD_UNIFIED_COPY } from '../../../constants/dashboardUnified'
 import DashboardWeekNav from './DashboardWeekNav.vue'
+import DashboardSemanaDetailModal, {
+  type SemanaDetailVariant,
+} from './DashboardSemanaDetailModal.vue'
 
 defineProps<{
   data: DashboardSemanaResponse | null
@@ -16,6 +20,16 @@ const emit = defineEmits<{
   nextWeek: []
   retry: []
 }>()
+
+const activeVariant = ref<SemanaDetailVariant | null>(null)
+
+function openDetail(variant: SemanaDetailVariant) {
+  activeVariant.value = variant
+}
+
+function closeDetail() {
+  activeVariant.value = null
+}
 </script>
 
 <template>
@@ -52,7 +66,11 @@ const emit = defineEmits<{
         {{ data.participacao.totalMembros }} {{ DASHBOARD_UNIFIED_COPY.participacao.membros }}
       </p>
       <div class="grid flex-1 grid-cols-2 gap-3">
-        <div class="rounded-lg border border-neutral-200 bg-neutral-50/50 p-4">
+        <button
+          type="button"
+          class="relative rounded-lg border border-neutral-200 bg-neutral-50/50 p-4 text-left transition-colors hover:border-primary-200 hover:bg-primary-50/30 touch-manipulation"
+          @click="openDetail('participacao-culto')"
+        >
           <p class="text-xs font-medium text-neutral-500">
             {{ DASHBOARD_UNIFIED_COPY.participacao.culto }}
           </p>
@@ -62,8 +80,21 @@ const emit = defineEmits<{
           <p class="mt-1 text-xs tabular-nums text-neutral-500">
             {{ data.participacao.culto.presentes }} / {{ data.participacao.culto.total }}
           </p>
-        </div>
-        <div class="rounded-lg border border-neutral-200 bg-neutral-50/50 p-4">
+          <span
+            class="absolute bottom-3 right-3 flex size-7 items-center justify-center rounded-full border border-neutral-200 bg-white text-neutral-500 shadow-sm"
+            aria-hidden="true"
+          >
+            <svg class="size-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7" />
+            </svg>
+          </span>
+        </button>
+
+        <button
+          type="button"
+          class="relative rounded-lg border border-neutral-200 bg-neutral-50/50 p-4 text-left transition-colors hover:border-primary-200 hover:bg-primary-50/30 touch-manipulation"
+          @click="openDetail('participacao-celula')"
+        >
           <p class="text-xs font-medium text-neutral-500">
             {{ DASHBOARD_UNIFIED_COPY.participacao.celula }}
           </p>
@@ -73,8 +104,38 @@ const emit = defineEmits<{
           <p class="mt-1 text-xs tabular-nums text-neutral-500">
             {{ data.participacao.celula.presentes }} / {{ data.participacao.celula.total }}
           </p>
-        </div>
+          <span
+            class="absolute bottom-3 right-3 flex size-7 items-center justify-center rounded-full border border-neutral-200 bg-white text-neutral-500 shadow-sm"
+            aria-hidden="true"
+          >
+            <svg class="size-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7" />
+            </svg>
+          </span>
+        </button>
       </div>
     </template>
+
+    <DashboardSemanaDetailModal
+      :open="activeVariant !== null"
+      :variant="activeVariant"
+      :title="
+        activeVariant === 'participacao-culto'
+          ? DASHBOARD_UNIFIED_COPY.participacao.culto
+          : DASHBOARD_UNIFIED_COPY.participacao.celula
+      "
+      :icon="activeVariant === 'participacao-culto' ? 'calendar' : 'users'"
+      :icon-wrap="
+        activeVariant === 'participacao-culto'
+          ? 'bg-violet-100 text-violet-600'
+          : 'bg-sky-100 text-sky-600'
+      "
+      :participacao-items="
+        activeVariant === 'participacao-culto'
+          ? data?.participacao.listas?.culto
+          : data?.participacao.listas?.celula
+      "
+      @close="closeDetail"
+    />
   </article>
 </template>

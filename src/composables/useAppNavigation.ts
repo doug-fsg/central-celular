@@ -29,6 +29,7 @@ export function useAppNavigation() {
       return [
         { name: 'admin-dashboard', label: 'Dashboard', icon: 'home' },
         { name: 'admin-users', label: 'Usuários', icon: 'users' },
+        { name: 'admin-push', label: 'Notificações', icon: 'bell' },
         { name: 'admin-cells', label: 'Células', icon: 'grid' },
         { name: 'admin-members', label: 'Membros', icon: 'users' },
         { name: 'admin-rede-cuidado', label: 'Rede de cuidado', icon: 'heart' },

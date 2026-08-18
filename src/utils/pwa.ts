@@ -12,3 +12,19 @@ export function isInstalledPwaDisplayMode(): boolean {
     return false
   }
 }
+
+export function isIosDevice(userAgent?: string, platform?: string, maxTouchPoints?: number): boolean {
+  const ua = userAgent ?? (typeof navigator !== 'undefined' ? navigator.userAgent : '')
+  const plat = platform ?? (typeof navigator !== 'undefined' ? navigator.platform : '')
+  const touches = maxTouchPoints ?? (typeof navigator !== 'undefined' ? navigator.maxTouchPoints : 0)
+  return /iPad|iPhone|iPod/i.test(ua) || (plat === 'MacIntel' && touches > 1)
+}
+
+/** Safari no iOS/iPadOS (não Chrome/Firefox/Edge iOS). */
+export function isIosSafari(userAgent?: string, platform?: string, maxTouchPoints?: number): boolean {
+  const ua = userAgent ?? (typeof navigator !== 'undefined' ? navigator.userAgent : '')
+  if (!isIosDevice(ua, platform, maxTouchPoints)) return false
+  const isWebkit = /Safari/i.test(ua)
+  const isOtherBrowser = /CriOS|FxiOS|EdgiOS|OPiOS|Chrome|Firefox|Edg/i.test(ua)
+  return isWebkit && !isOtherBrowser
+}

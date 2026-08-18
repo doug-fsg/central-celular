@@ -105,6 +105,12 @@ const router = createRouter({
       meta: { requiresAuth: true, requiresAdmin: true },
     },
     {
+      path: '/admin/notificacoes',
+      name: 'admin-push',
+      component: () => import('../views/admin/AdminPushPage.vue'),
+      meta: { requiresAuth: true, requiresAdmin: true },
+    },
+    {
       path: '/admin/celulas',
       name: 'admin-cells',
       component: () => import('../views/admin/AdminCellsPage.vue'),

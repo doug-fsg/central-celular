@@ -16,6 +16,17 @@ import { obterDashboardCuidadoHandler } from '../controllers/dashboardCuidado.co
 import { obterDashboardSemanaHandler } from '../controllers/dashboardSemana.controller';
 import { deleteUsuarioAdmin } from '../controllers/adminUsers.controller';
 import {
+  listSubscribersHandler,
+  listSubscribersQuerySchema,
+  sendAllPushBodySchema,
+  sendPushBodySchema,
+  sendPushParamsSchema,
+  sendToAllHandler,
+  sendToUserHandler,
+} from '../controllers/adminPush.controller';
+import { validate } from '../middlewares/validate.middleware';
+import { pushSendLimiter } from '../middlewares/rateLimit.middleware';
+import {
   listarCelulas,
   statusRelatoriosCelulas,
   obterCelula,
@@ -42,6 +53,25 @@ adminRouter.post('/usuarios', criarUsuario);
 adminRouter.put('/usuarios/:id', atualizarUsuario);
 adminRouter.patch('/usuarios/:id/status', ativarDesativarUsuario);
 adminRouter.delete('/usuarios/:id', deleteUsuarioAdmin);
+
+adminRouter.get(
+  '/push/subscribers',
+  validate(listSubscribersQuerySchema, 'query'),
+  listSubscribersHandler,
+);
+adminRouter.post(
+  '/push/users/:userId/send',
+  pushSendLimiter,
+  validate(sendPushParamsSchema, 'params'),
+  validate(sendPushBodySchema),
+  sendToUserHandler,
+);
+adminRouter.post(
+  '/push/send-all',
+  pushSendLimiter,
+  validate(sendAllPushBodySchema),
+  sendToAllHandler,
+);
 
 // Dashboard agregado de rede de cuidado (pastoral)
 adminRouter.get('/dashboard-cuidado', obterDashboardCuidadoHandler);

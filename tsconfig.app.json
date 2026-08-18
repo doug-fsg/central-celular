@@ -34,5 +34,6 @@
     "src/**/*.tsx",
     "src/**/*.vue",
     "src/types/**/*.d.ts"
-  ]
+  ],
+  "exclude": ["src/sw.ts"]
 }

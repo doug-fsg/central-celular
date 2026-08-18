@@ -3,10 +3,36 @@ import { ref, onMounted, computed } from 'vue';
 import { useUsuarioConfigStore } from '../stores/usuarioConfigStore';
 import { useUserStore } from '../stores/userStore';
 import WhatsAppConnections from '../components/WhatsAppConnections.vue';
+import { usePushNotifications } from '../composables/usePushNotifications';
 
 const userStore = useUserStore();
 const configStore = useUsuarioConfigStore();
 const whatsappRef = ref<any>(null);
+const {
+  permissionStatus,
+  registering,
+  testing,
+  errorMessage: pushError,
+  lastTestMessage,
+  refreshPermission,
+  enablePush,
+  sendTestPush,
+} = usePushNotifications();
+
+const pushStatusLabel = computed(() => {
+  switch (permissionStatus.value) {
+    case 'granted':
+      return 'Ativadas neste dispositivo';
+    case 'denied':
+      return 'Bloqueadas no navegador';
+    case 'prompt':
+      return 'Ainda não ativadas';
+    case 'ios-browser':
+      return 'No iPhone/iPad, instale o app na tela inicial para ativar';
+    default:
+      return 'Não suportadas neste navegador';
+  }
+});
 
 // Estados do formulário
 const form = ref({
@@ -43,6 +69,7 @@ const isDevelopment = computed(() => {
 
 // Carregar configurações ao montar o componente
 onMounted(async () => {
+  refreshPermission();
   await configStore.loadConfig();
   
   if (configStore.config) {
@@ -159,9 +186,14 @@ const testAniversarioNotification = async () => {
             <p class="text-sm font-medium text-blue-800">{{ testMessage }}</p>
           </div>
           
+          <!-- Alerta de push -->
+          <div v-if="lastTestMessage" class="mx-4 mb-4 p-4 rounded-lg bg-blue-50 border border-blue-200">
+            <p class="text-sm font-medium text-blue-800">{{ lastTestMessage }}</p>
+          </div>
+
           <!-- Alerta de erro -->
-          <div v-if="errorMessage" class="mx-4 mb-4 p-4 rounded-lg bg-red-50 border border-red-200">
-            <p class="text-sm font-medium text-red-800">{{ errorMessage }}</p>
+          <div v-if="errorMessage || pushError" class="mx-4 mb-4 p-4 rounded-lg bg-red-50 border border-red-200">
+            <p class="text-sm font-medium text-red-800">{{ errorMessage || pushError }}</p>
           </div>
           
           <!-- Tabs de navegação -->
@@ -201,8 +233,36 @@ const testAniversarioNotification = async () => {
             <form @submit.prevent="saveConfig" class="space-y-8">
               <!-- Tab: Notificações -->
               <div v-show="activeTab === 'notificacoes'">
+                <div class="space-y-4">
+                  <h4 class="text-base font-semibold text-gray-900">Notificações no aplicativo</h4>
+                  <p class="text-sm text-gray-500">
+                    Status: {{ pushStatusLabel }}
+                  </p>
+                  <div class="flex flex-wrap gap-3">
+                    <button
+                      type="button"
+                      :disabled="registering || permissionStatus === 'unsupported'"
+                      class="inline-flex items-center gap-2 rounded-md border border-transparent bg-primary-600 px-4 py-2 text-sm font-medium text-white shadow-sm hover:bg-primary-700 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50 transition-colors"
+                      @click="enablePush"
+                    >
+                      {{ registering ? 'Ativando...' : permissionStatus === 'granted' ? 'Reativar neste dispositivo' : 'Ativar notificações' }}
+                    </button>
+                    <button
+                      type="button"
+                      :disabled="testing"
+                      class="inline-flex items-center gap-2 rounded-md border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 shadow-sm hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50 transition-colors"
+                      @click="sendTestPush"
+                    >
+                      {{ testing ? 'Enviando...' : 'Enviar notificação de teste' }}
+                    </button>
+                  </div>
+                  <p v-if="permissionStatus === 'ios-browser'" class="text-xs text-gray-500">
+                    No Safari do iPhone, toque em Compartilhar e depois em Adicionar à Tela de Início.
+                  </p>
+                </div>
+
                 <!-- Seção de notificações de aniversário (apenas para líderes) -->
-                <div v-if="isLider" class="space-y-6">
+                <div v-if="isLider" class="space-y-6 mt-8 pt-8 border-t border-gray-200">
                   <h4 class="text-base font-semibold text-gray-900">Aniversários de Membros</h4>
                 
                 <div class="flex items-start">

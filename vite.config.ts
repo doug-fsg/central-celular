@@ -63,21 +63,11 @@ export default defineConfig({
                 },
               ],
             },
-            workbox: {
+            strategies: 'injectManifest',
+            srcDir: 'src',
+            filename: 'sw.ts',
+            injectManifest: {
               globPatterns: ['**/*.{js,css,html,ico,png,svg,woff2}'],
-              runtimeCaching: [
-                {
-                  urlPattern: /^\/api\//,
-                  handler: 'NetworkFirst',
-                  options: {
-                    cacheName: 'api-cache',
-                    networkTimeoutSeconds: 10,
-                    cacheableResponse: {
-                      statuses: [0, 200],
-                    },
-                  },
-                },
-              ],
             },
             devOptions: {
               enabled: false,

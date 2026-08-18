@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, ref } from 'vue'
 import { RouterLink } from 'vue-router'
 import type { DashboardCuidadoResponse } from '../../../services/adminService'
 import { DASHBOARD_UNIFIED_COPY } from '../../../constants/dashboardUnified'
@@ -10,13 +10,25 @@ import {
   resolveDashboardLimiares,
 } from '../../../utils/dashboardCuidadoUi'
 
+const PREVIEW_LIMIT = 5
+
 const props = defineProps<{
   celulas: DashboardCuidadoResponse['celulas']
   limiares: DashboardCuidadoResponse['limiares'] | null
   loading: boolean
 }>()
 
+const expanded = ref(false)
+
 const limiaresResolved = computed(() => resolveDashboardLimiares(props.limiares))
+
+const visibleCelulas = computed(() =>
+  expanded.value ? props.celulas : props.celulas.slice(0, PREVIEW_LIMIT),
+)
+
+const hiddenCount = computed(() => Math.max(0, props.celulas.length - PREVIEW_LIMIT))
+
+const showToggle = computed(() => props.celulas.length > PREVIEW_LIMIT)
 
 function barClass(pct: number) {
   return coverageBarClass(pct, limiaresResolved.value)
@@ -53,7 +65,7 @@ function cardClass(pct: number, totalMembros: number) {
 
     <template v-else>
       <ul class="flex flex-col gap-2 sm:hidden">
-        <li v-for="c in celulas" :key="c.celulaId">
+        <li v-for="c in visibleCelulas" :key="c.celulaId">
           <RouterLink
             :to="{ name: 'admin-rede-cuidado', query: { celulaId: String(c.celulaId) } }"
             custom
@@ -102,7 +114,7 @@ function cardClass(pct: number, totalMembros: number) {
           </thead>
           <tbody>
             <tr
-              v-for="c in celulas"
+              v-for="c in visibleCelulas"
               :key="c.celulaId"
               class="border-t border-neutral-100 hover:bg-neutral-50/80"
               :class="rowClass(c.percentualCobertura, c.totalMembros)"
@@ -135,6 +147,20 @@ function cardClass(pct: number, totalMembros: number) {
             </tr>
           </tbody>
         </table>
+      </div>
+
+      <div v-if="showToggle" class="mt-4 text-center">
+        <button
+          type="button"
+          class="text-sm font-medium text-primary-600 hover:text-primary-700 touch-manipulation"
+          @click="expanded = !expanded"
+        >
+          {{
+            expanded
+              ? DASHBOARD_UNIFIED_COPY.celulas.verMenos
+              : DASHBOARD_UNIFIED_COPY.celulas.verMais(hiddenCount)
+          }}
+        </button>
       </div>
     </template>
   </section>

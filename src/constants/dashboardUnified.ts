@@ -54,6 +54,14 @@ export const DASHBOARD_UNIFIED_COPY = {
     verRede: 'Ver rede',
     hint: 'consolidadores com cuidados atribuídos',
   },
+  celulas: {
+    verMais: (n: number) => `Ver mais (${n})`,
+    verMenos: 'Ver menos',
+  },
+  semanaDetail: {
+    relatoriosTitle: 'Relatórios da semana',
+    toqueVerDetalhes: 'Toque para ver detalhes',
+  },
 } as const;
 
 export type FrequenciaPeriodoKey = (typeof DASHBOARD_UNIFIED_COPY.frequenciaPeriodos)[number]['key'];

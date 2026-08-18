@@ -51,6 +51,7 @@ const navLinks = computed(() => {
     return [
       { name: 'admin-dashboard', label: 'Dashboard' },
       { name: 'admin-users', label: 'Usuários' },
+      { name: 'admin-push', label: 'Notificações' },
       { name: 'admin-cells', label: 'Células' },
       { name: 'admin-members', label: 'Membros' },
       { name: 'admin-rede-cuidado', label: 'Rede de cuidado' },
@@ -61,6 +62,7 @@ const navLinks = computed(() => {
     return [
       { name: 'admin-dashboard', label: 'Dashboard' },
       { name: 'admin-users', label: 'Usuários' },
+      { name: 'admin-push', label: 'Notificações' },
       { name: 'admin-cells', label: 'Células' },
       { name: 'admin-members', label: 'Membros' },
       { name: 'admin-rede-cuidado', label: 'Rede de cuidado' },

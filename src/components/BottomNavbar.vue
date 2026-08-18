@@ -35,6 +35,7 @@ const allNavItems = computed<BottomNavItem[]>(() => {
       { name: 'admin-dashboard', label: 'Dashboard', icon: 'home' },
       { name: 'admin-cells', label: 'Células', icon: 'grid' },
       { name: 'admin-users', label: 'Usuários', icon: 'users' },
+      { name: 'admin-push', label: 'Notificações', icon: 'bell' },
       { name: 'admin-members', label: 'Membros', icon: 'users' },
       { name: 'admin-rede-cuidado', label: 'Rede', icon: 'heart' },
     ];
@@ -45,6 +46,7 @@ const allNavItems = computed<BottomNavItem[]>(() => {
       { name: 'admin-dashboard', label: 'Dashboard', icon: 'home' },
       { name: 'admin-cells', label: 'Células', icon: 'grid' },
       { name: 'admin-users', label: 'Usuários', icon: 'users' },
+      { name: 'admin-push', label: 'Notificações', icon: 'bell' },
       { name: 'admin-members', label: 'Membros', icon: 'users' },
       { name: 'admin-rede-cuidado', label: 'Rede', icon: 'heart' },
     ];

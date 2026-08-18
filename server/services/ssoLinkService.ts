@@ -134,6 +134,7 @@ export const ssoLinkService = {
             cargo: true,
             accountId: true,
             isSuperAdmin: true,
+            dataNascimento: true,
             celulasLideradas: {
               select: {
                 id: true
@@ -231,7 +232,8 @@ export const ssoLinkService = {
         cargo: link.usuario.cargo,
         accountId: link.usuario.accountId,
         celulaId: link.usuario.celulasLideradas[0]?.id || null,
-        isSuperAdmin: link.usuario.isSuperAdmin || false
+        isSuperAdmin: link.usuario.isSuperAdmin || false,
+        dataNascimento: link.usuario.dataNascimento,
       },
       token: authToken
     };
@@ -318,29 +320,7 @@ export const ssoLinkService = {
       console.log('[SsoLinkService] Número original:', usuario.whatsapp);
       console.log('[SsoLinkService] Número formatado para API:', whatsappFormatado);
 
-      // Enviar mensagem via WhatsApp
-      const response = await fetch(`http://173.249.22.227:31000/v3/bot/${whatsappConnection.token}/sendText/${whatsappFormatado}`, {
-        method: 'POST',
-        headers: {
-          'Accept': 'application/json',
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({
-          text: mensagem
-        })
-      });
-      
-      // Verificar se a requisição foi bem-sucedida
-      if (!response.ok) {
-        const errorText = await response.text();
-        throw new Error(`Erro ao enviar mensagem: ${response.status} ${response.statusText} - ${errorText}`);
-      }
-      
-      const data = await response.json();
-      
-      if (!data.success) {
-        throw new Error('Falha ao enviar mensagem via WhatsApp');
-      }
+      await whatsappService.sendText(whatsappConnection.token, whatsappFormatado, mensagem);
 
       return {
         success: true,

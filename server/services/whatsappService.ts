@@ -1,4 +1,12 @@
 import { prisma } from '../lib/prisma';
+import { getQuepasaUpstream } from '../lib/env';
+
+function toQuepasaChatId(phone: string): string {
+  if (phone.includes('@')) {
+    return phone;
+  }
+  return phone.replace(/\D/g, '');
+}
 
 export const whatsappService = {
   // Função para formatar número de telefone de acordo com as regras de DDD
@@ -114,5 +122,55 @@ export const whatsappService = {
     return prisma.whatsAppConnection.delete({
       where: { token }
     });
-  }
+  },
+
+  /**
+   * Envia texto pelo QuePasa v5+ (`POST /send`).
+   * O endpoint legado `/v3/bot/{token}/sendText/{phone}` retorna 404 nessa versão.
+   */
+  async sendText(token: string, phone: string, text: string): Promise<unknown> {
+    const upstream = getQuepasaUpstream();
+    const chatId = toQuepasaChatId(phone);
+    const url = `${upstream}/send`;
+
+    console.log('[WhatsApp Service] Enviando texto via QuePasa:', {
+      url,
+      chatId,
+      tokenPrefix: token.slice(0, 10),
+    });
+
+    const response = await fetch(url, {
+      method: 'POST',
+      headers: {
+        Accept: 'application/json',
+        'Content-Type': 'application/json',
+        'X-QUEPASA-TOKEN': token,
+        'X-QUEPASA-CHATID': chatId,
+      },
+      body: JSON.stringify({
+        text,
+        chatid: chatId,
+      }),
+    });
+
+    const raw = await response.text();
+    let data: { success?: boolean; message?: string } = {};
+    try {
+      data = raw ? JSON.parse(raw) : {};
+    } catch {
+      data = { message: raw };
+    }
+
+    if (!response.ok) {
+      throw new Error(
+        `Erro ao enviar mensagem: ${response.status} ${response.statusText} - ${raw}`
+      );
+    }
+
+    if (data.success === false) {
+      throw new Error(data.message || 'Falha ao enviar mensagem via WhatsApp');
+    }
+
+    return data;
+  },
 }; 

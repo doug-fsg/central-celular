@@ -23,3 +23,15 @@ export const authLimiter = rateLimit({
     message: 'Muitas tentativas. Aguarde um minuto.',
   },
 });
+
+export const pushSendLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 20,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: {
+    success: false,
+    error: { code: 'RATE_LIMIT', message: 'Muitos envios de notificação. Tente novamente mais tarde.' },
+    message: 'Muitos envios de notificação. Tente novamente mais tarde.',
+  },
+});
