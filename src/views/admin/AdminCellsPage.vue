@@ -574,19 +574,19 @@ onUnmounted(() => {
         <h1 class="text-xl sm:text-2xl font-bold text-neutral-800">Células</h1>
         <p class="mt-1 text-xs sm:text-sm text-neutral-500">Gerencie células do sistema</p>
       </div>
-      <div class="flex flex-wrap items-center gap-2">
+      <div class="flex items-center gap-2 shrink-0">
         <button
           type="button"
           @click="exportarCsv"
           :disabled="exportingCsv || loadingCells"
-          class="inline-flex items-center px-4 py-2 border border-neutral-300 text-sm font-medium rounded-md shadow-sm text-neutral-700 bg-white hover:bg-neutral-50 disabled:opacity-50 disabled:cursor-not-allowed"
+          class="inline-flex items-center px-3 py-2 sm:px-4 border border-neutral-300 text-xs sm:text-sm font-medium rounded-md shadow-sm text-neutral-700 bg-white hover:bg-neutral-50 disabled:opacity-50 disabled:cursor-not-allowed whitespace-nowrap"
         >
           {{ exportingCsv ? 'Exportando…' : 'Exportar CSV' }}
         </button>
         <button 
           @click="handleNovaCelula"
           :disabled="isLoadingCell"
-          class="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-primary-600 hover:bg-primary-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500 disabled:opacity-50 disabled:cursor-not-allowed"
+          class="inline-flex items-center px-3 py-2 sm:px-4 border border-transparent text-xs sm:text-sm font-medium rounded-md shadow-sm text-white bg-primary-600 hover:bg-primary-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500 disabled:opacity-50 disabled:cursor-not-allowed whitespace-nowrap"
         >
         <svg v-if="isLoadingCell" class="animate-spin -ml-1 mr-2 h-4 w-4 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
           <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>

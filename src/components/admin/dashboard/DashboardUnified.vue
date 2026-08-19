@@ -131,18 +131,5 @@ function goRedeCuidado() {
       <DashboardCuidadoresAtivos :total="consolidadoresAtivos" :loading="cuidadoLoading" />
     </div>
 
-    <!-- Mobile sticky CTA -->
-    <div
-      class="pointer-events-none fixed left-0 right-0 z-20 px-4 sm:hidden"
-      style="bottom: calc(4.5rem + env(safe-area-inset-bottom, 0px))"
-    >
-      <button
-        type="button"
-        class="pointer-events-auto min-h-[48px] w-full touch-manipulation rounded-xl bg-primary-600 text-sm font-semibold text-white shadow-lg active:bg-primary-700"
-        @click="goRedeCuidado"
-      >
-        {{ DASHBOARD_UNIFIED_COPY.ctaRede }}
-      </button>
-    </div>
   </div>
 </template>

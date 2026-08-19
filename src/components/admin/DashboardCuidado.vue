@@ -128,19 +128,6 @@ const showCelebration = computed(() => {
 
     <DashboardCuidadoCelulas :celulas="celulas" :limiares="limiares" :loading="loading" />
 
-    <!-- Sticky mobile CTA -->
-    <div
-      class="pointer-events-none fixed left-0 right-0 z-20 px-4 sm:hidden"
-      style="bottom: calc(4.5rem + env(safe-area-inset-bottom, 0px))"
-    >
-      <button
-        type="button"
-        class="pointer-events-auto min-h-[48px] w-full touch-manipulation rounded-xl bg-rose-600 text-sm font-semibold text-white shadow-lg active:bg-rose-700"
-        @click="router.push({ name: 'admin-rede-cuidado' })"
-      >
-        {{ DASHBOARD_CUIDADO_COPY.ctaSticky }}
-      </button>
-    </div>
 
     <div class="mt-6 hidden justify-end sm:flex">
       <button
