@@ -1,5 +1,4 @@
 import { Request, Response } from 'express';
-import { startOfWeek, format } from 'date-fns';
 import { prisma } from '../lib/prisma';
 import {
   getAccountId,
@@ -7,64 +6,6 @@ import {
   assertRelatorioBelongsToAccount,
 } from '../lib/tenant';
 import { relatorioService } from '../services/relatorioService';
-
-type RelatorioComPresencas = {
-  dataInicio: Date;
-  evento: number;
-  presencas: { tipo: number; status: number }[];
-};
-
-function pctPresencasPorTipo(rels: RelatorioComPresencas[], tipo: 0 | 1): number {
-  let presentes = 0;
-  let total = 0;
-  for (const r of rels) {
-    for (const p of r.presencas) {
-      if (p.tipo !== tipo) continue;
-      total += 1;
-      if (p.status === 1) presentes += 1;
-    }
-  }
-  return total > 0 ? Math.round((presentes / total) * 100) : 0;
-}
-
-/** Agrupa relatórios enviados por semana (segunda como início) e monta indicadores do modal admin. */
-function resumoSemanalPorEvento(relatorios: RelatorioComPresencas[], evento: 0 | 1): {
-  ultimaSemana: number;
-  penultimaSemana: number;
-  media: number;
-  series: number[];
-  semanasInicioISO: string[];
-} {
-  const tipo = (evento === 0 ? 0 : 1) as 0 | 1;
-  const filtrados = relatorios.filter((r) => r.evento === evento);
-  const porSemana = new Map<number, RelatorioComPresencas[]>();
-  for (const r of filtrados) {
-    const chave = startOfWeek(r.dataInicio, { weekStartsOn: 1 }).getTime();
-    const lista = porSemana.get(chave) ?? [];
-    lista.push(r);
-    porSemana.set(chave, lista);
-  }
-  const semanasAsc = [...porSemana.keys()].sort((a, b) => a - b);
-  const series = semanasAsc.map((k) => pctPresencasPorTipo(porSemana.get(k)!, tipo));
-  const semanasInicioISO = semanasAsc.map((k) => format(new Date(k), 'yyyy-MM-dd'));
-  const n = series.length;
-  return {
-    ultimaSemana: n > 0 ? series[n - 1] : 0,
-    penultimaSemana: n > 1 ? series[n - 2] : 0,
-    media: n > 0 ? Math.round(series.reduce((s, v) => s + v, 0) / n) : 0,
-    series,
-    semanasInicioISO,
-  };
-}
-
-// Estendendo o tipo Request para incluir o usuário autenticado
-interface AuthRequest extends Request {
-  auth: {
-    id: number;
-    email: string;
-    cargo: string;
-  };
-}
 
 // Listar relatórios com base em célula e período
 export const listarRelatorios = async (req: Request, res: Response) => {
@@ -319,27 +260,18 @@ export const marcarTodosMembros = async (req: Request, res: Response) => {
     }
 
     const membros = relatorio.celula.membros;
+    const relatorioId = Number(id);
+    const statusNum = Number(status);
+    const membroIds = membros.map((m) => m.id);
 
-    const operacoes = membros.map(membro => 
-        prisma.presenca.upsert({
-            where: {
-                relatorioId_membroId_tipo: {
-                    relatorioId: Number(id),
-                    membroId: membro.id,
-                    tipo: tipoPresenca,
-                },
-            },
-            update: { status: Number(status) },
-            create: {
-                relatorioId: Number(id),
-                membroId: membro.id,
-                status: Number(status),
-                tipo: tipoPresenca,
-            },
-        })
-    );
-
-    await prisma.$transaction(operacoes);
+    if (membroIds.length > 0) {
+      await prisma.$executeRaw`
+        INSERT INTO presencas (relatorio_id, membro_id, status, tipo)
+        SELECT ${relatorioId}, unnest(${membroIds}::int[]), ${statusNum}, ${tipoPresenca}
+        ON CONFLICT (relatorio_id, membro_id, tipo)
+        DO UPDATE SET status = ${statusNum}
+      `;
+    }
 
     res.json({ message: 'Presenças atualizadas com sucesso' });
   } catch (error) {
@@ -441,72 +373,44 @@ export const obterFrequenciaPorData = async (req: Request, res: Response) => {
     const inicio = new Date(dataInicio as string);
     const fim = new Date(dataFim as string);
 
-    const whereClause: any = {
-      // Apenas relatórios enviados (status = 1)
-      status: 1,
-      // Filtrar relatórios cuja dataInicio esteja dentro do período
-      dataInicio: { 
-        gte: inicio,
-        lte: fim
-      }
-    };
+    const celulaFilter = celulaId ? Number(celulaId) : null;
 
-    // Filtrar por célula específica se fornecido
-    if (celulaId) {
-      whereClause.celulaId = Number(celulaId);
-    }
+    const rows = await prisma.$queryRaw<
+      Array<{
+        data_key: string;
+        celula_presentes: number;
+        celula_total: number;
+        culto_presentes: number;
+        culto_total: number;
+      }>
+    >`
+      SELECT
+        r.data_inicio::date::text AS data_key,
+        COALESCE(SUM(CASE WHEN p.tipo = 0 AND p.status = 1 THEN 1 ELSE 0 END), 0)::int AS celula_presentes,
+        COALESCE(SUM(CASE WHEN p.tipo = 0 THEN 1 ELSE 0 END), 0)::int AS celula_total,
+        COALESCE(SUM(CASE WHEN p.tipo = 1 AND p.status = 1 THEN 1 ELSE 0 END), 0)::int AS culto_presentes,
+        COALESCE(SUM(CASE WHEN p.tipo = 1 THEN 1 ELSE 0 END), 0)::int AS culto_total
+      FROM relatorios r
+      INNER JOIN presencas p ON p.relatorio_id = r.id
+      WHERE r.status = 1
+        AND r.data_inicio >= ${inicio}
+        AND r.data_inicio <= ${fim}
+        AND (${celulaFilter}::integer IS NULL OR r.celula_id = ${celulaFilter})
+      GROUP BY r.data_inicio::date
+      ORDER BY r.data_inicio::date ASC
+    `;
 
-    const relatorios = await prisma.relatorio.findMany({
-      where: whereClause,
-      include: {
-        celula: { select: { nome: true } },
-        presencas: true
-      },
-      orderBy: { dataInicio: 'asc' }
-    });
-
-    // Agrupar dados por data
-    const dadosPorData = new Map();
-
-    for (const relatorio of relatorios) {
-      const dataKey = relatorio.dataInicio.toISOString().split('T')[0];
-      
-      if (!dadosPorData.has(dataKey)) {
-        dadosPorData.set(dataKey, {
-          data: dataKey,
-          celula: { presentes: 0, total: 0 },
-          culto: { presentes: 0, total: 0 }
-        });
-      }
-
-      const dadosData = dadosPorData.get(dataKey);
-      
-      // Contar presenças por tipo (independente do evento do relatório)
-      // Um relatório pode ter presenças de ambos os tipos (célula e culto)
-      const presencasCelula = relatorio.presencas.filter(p => p.tipo === 0);
-      const presencasCulto = relatorio.presencas.filter(p => p.tipo === 1);
-
-      // Contar presenças de célula (tipo === 0)
-      dadosData.celula.presentes += presencasCelula.filter(p => p.status === 1).length;
-      dadosData.celula.total += presencasCelula.length;
-
-      // Contar presenças de culto (tipo === 1)
-      dadosData.culto.presentes += presencasCulto.filter(p => p.status === 1).length;
-      dadosData.culto.total += presencasCulto.length;
-    }
-
-    // Converter para array e ordenar por data
-    const resultado = Array.from(dadosPorData.values()).map(dados => ({
-      data: dados.data,
-      formatDate: new Date(dados.data).toLocaleDateString('pt-BR', { 
-        day: '2-digit', 
-        month: '2-digit' 
+    const resultado = rows.map((row) => ({
+      data: row.data_key,
+      formatDate: new Date(row.data_key).toLocaleDateString('pt-BR', {
+        day: '2-digit',
+        month: '2-digit',
       }),
-      celula: dados.celula.presentes,
-      culto: dados.culto.presentes,
-      totalCelula: dados.celula.total,
-      totalCulto: dados.culto.total
-    })).sort((a, b) => a.data.localeCompare(b.data));
+      celula: row.celula_presentes,
+      culto: row.culto_presentes,
+      totalCelula: row.celula_total,
+      totalCulto: row.culto_total,
+    }));
 
     res.json(resultado);
   } catch (error) {
@@ -561,53 +465,86 @@ export const obterEstatisticas = async (req: Request, res: Response) => {
     const tresMesesAtras = new Date();
     tresMesesAtras.setMonth(tresMesesAtras.getMonth() - 3);
 
-    const relatorios = await prisma.relatorio.findMany({
-      where: {
-        celulaId: Number(celulaId),
-        status: 1, // Enviado
-        dataInicio: { gte: tresMesesAtras },
-      },
-      include: {
-        presencas: true,
-      },
-      orderBy: { dataInicio: 'asc' },
-    });
+    const celId = Number(celulaId);
 
-    const relatoriosCelula = relatorios.filter((r) => r.evento === 0);
-    const relatoriosCulto = relatorios.filter((r) => r.evento === 1);
+    type AggRow = {
+      total_rel_celula: number;
+      total_rel_culto: number;
+      presentes_celula: number;
+      presentes_culto: number;
+      possiveis_celula: number;
+      possiveis_culto: number;
+    };
 
-    let presencaCelula = 0;
-    if (relatoriosCelula.length > 0) {
-      const totalPresencasCelula = relatoriosCelula.reduce(
-        (acc, rel) => acc + rel.presencas.filter((p) => p.tipo === 0 && p.status === 1).length,
-        0
-      );
-      const totalPossivelPresencas = relatoriosCelula.length * totalMembros;
-      presencaCelula =
-        totalPossivelPresencas > 0 ? Math.round((totalPresencasCelula / totalPossivelPresencas) * 100) : 0;
+    type WeekRow = {
+      semana_inicio: string;
+      evento: number;
+      presentes: number;
+      total: number;
+    };
+
+    const [aggRows, weekRows] = await Promise.all([
+      prisma.$queryRaw<AggRow[]>`
+        SELECT
+          COUNT(DISTINCT CASE WHEN r.evento = 0 THEN r.id END)::int AS total_rel_celula,
+          COUNT(DISTINCT CASE WHEN r.evento = 1 THEN r.id END)::int AS total_rel_culto,
+          COALESCE(SUM(CASE WHEN p.tipo = 0 AND p.status = 1 THEN 1 ELSE 0 END), 0)::int AS presentes_celula,
+          COALESCE(SUM(CASE WHEN p.tipo = 1 AND p.status = 1 THEN 1 ELSE 0 END), 0)::int AS presentes_culto,
+          COALESCE(SUM(CASE WHEN p.tipo = 0 THEN 1 ELSE 0 END), 0)::int AS possiveis_celula,
+          COALESCE(SUM(CASE WHEN p.tipo = 1 THEN 1 ELSE 0 END), 0)::int AS possiveis_culto
+        FROM relatorios r
+        LEFT JOIN presencas p ON p.relatorio_id = r.id
+        WHERE r.celula_id = ${celId}
+          AND r.status = 1
+          AND r.data_inicio >= ${tresMesesAtras}
+      `,
+      prisma.$queryRaw<WeekRow[]>`
+        SELECT
+          to_char(date_trunc('week', r.data_inicio), 'YYYY-MM-DD') AS semana_inicio,
+          r.evento,
+          COALESCE(SUM(CASE WHEN p.status = 1 THEN 1 ELSE 0 END), 0)::int AS presentes,
+          COUNT(p.id)::int AS total
+        FROM relatorios r
+        LEFT JOIN presencas p ON p.relatorio_id = r.id AND p.tipo = r.evento
+        WHERE r.celula_id = ${celId}
+          AND r.status = 1
+          AND r.data_inicio >= ${tresMesesAtras}
+        GROUP BY date_trunc('week', r.data_inicio), r.evento
+        ORDER BY semana_inicio ASC
+      `,
+    ]);
+
+    const agg = aggRows[0] ?? {
+      total_rel_celula: 0, total_rel_culto: 0,
+      presentes_celula: 0, presentes_culto: 0,
+      possiveis_celula: 0, possiveis_culto: 0,
+    };
+
+    const possiveisCel = agg.total_rel_celula * totalMembros;
+    const possiveisCul = agg.total_rel_culto * totalMembros;
+    const presencaCelula = possiveisCel > 0 ? Math.round((agg.presentes_celula / possiveisCel) * 100) : 0;
+    const presencaCulto = possiveisCul > 0 ? Math.round((agg.presentes_culto / possiveisCul) * 100) : 0;
+    const totalRel = agg.total_rel_celula + agg.total_rel_culto;
+    const taxaPresenca = totalRel > 0
+      ? Math.round((presencaCelula * agg.total_rel_celula + presencaCulto * agg.total_rel_culto) / totalRel)
+      : 0;
+
+    function buildWeekStats(rows: WeekRow[], evento: number) {
+      const filtered = rows.filter((r) => r.evento === evento);
+      const series = filtered.map((r) => (r.total > 0 ? Math.round((r.presentes / r.total) * 100) : 0));
+      const semanasInicioISO = filtered.map((r) => r.semana_inicio);
+      const n = series.length;
+      return {
+        ultimaSemana: n > 0 ? series[n - 1] : 0,
+        penultimaSemana: n > 1 ? series[n - 2] : 0,
+        media: n > 0 ? Math.round(series.reduce((s, v) => s + v, 0) / n) : 0,
+        series,
+        semanasInicioISO,
+      };
     }
 
-    let presencaCulto = 0;
-    if (relatoriosCulto.length > 0) {
-      const totalPresencasCulto = relatoriosCulto.reduce(
-        (acc, rel) => acc + rel.presencas.filter((p) => p.tipo === 1 && p.status === 1).length,
-        0
-      );
-      const totalPossivelPresencas = relatoriosCulto.length * totalMembros;
-      presencaCulto =
-        totalPossivelPresencas > 0 ? Math.round((totalPresencasCulto / totalPossivelPresencas) * 100) : 0;
-    }
-
-    const taxaPresenca =
-      relatorios.length > 0
-        ? Math.round(
-            (presencaCelula * relatoriosCelula.length + presencaCulto * relatoriosCulto.length) /
-              relatorios.length
-          )
-        : 0;
-
-    const statsCelula = resumoSemanalPorEvento(relatorios, 0);
-    const statsCulto = resumoSemanalPorEvento(relatorios, 1);
+    const statsCelula = buildWeekStats(weekRows, 0);
+    const statsCulto = buildWeekStats(weekRows, 1);
 
     res.json({
       totalMembros,

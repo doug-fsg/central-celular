@@ -55,6 +55,7 @@ model Usuario {
 
   @@unique([email, accountId])
   @@unique([whatsapp, accountId])
+  @@index([accountId, ativo])
   @@map("usuarios")
 }
 
@@ -89,6 +90,8 @@ model Celula {
   relatorios      Relatorio[]
   atribuicoesCuidado AtribuicaoCuidado[]
 
+  @@index([accountId, ativo])
+  @@index([liderId])
   @@map("celulas")
 }
 
@@ -109,6 +112,7 @@ model Membro {
   cuidadoPor      AtribuicaoCuidado?  @relation("cuidado")
   cuidaDeAlguem   AtribuicaoCuidado[] @relation("consolidador")
 
+  @@index([celulaId, ativo])
   @@map("membros")
 }
 
@@ -138,6 +142,8 @@ model Relatorio {
   presencas   Presenca[]
 
   @@unique([celulaId, dataInicio, dataFim, evento])
+  @@index([celulaId, status, dataInicio])
+  @@index([status, dataInicio, dataFim])
   @@map("relatorios")
 }
 
@@ -151,6 +157,8 @@ model Presenca {
   tipo         Int       @default(0) // 0 = celula, 1 = culto
 
   @@unique([relatorioId, membroId, tipo])
+  @@index([relatorioId, tipo, status])
+  @@index([membroId])
   @@map("presencas")
 }
 
@@ -206,6 +214,7 @@ model OtpCode {
   accountId   Int       @map("account_id")
   account     Account   @relation(fields: [accountId], references: [id])
 
+  @@index([whatsapp, accountId, used, expiresAt])
   @@map("otp_codes")
 }
 
@@ -279,6 +288,7 @@ model RefreshToken {
   revokedAt  DateTime? @map("revoked_at")
   createdAt  DateTime  @default(now()) @map("created_at")
 
+  @@index([usuarioId, revokedAt, expiresAt])
   @@map("refresh_tokens")
 }
 
