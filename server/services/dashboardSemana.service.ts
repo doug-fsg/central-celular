@@ -86,8 +86,8 @@ async function listarPresentesPorTipo(
     WHERE p.tipo = ${tipo}
       AND p.status = 1
       AND r.status = 1
-      AND r.data_envio >= ${dataInicio}
-      AND r.data_envio <= ${fimDia}
+      AND r.data_inicio >= ${dataInicio}
+      AND r.data_fim <= ${fimDia}
       AND c.account_id = ${accountId}
       AND c.ativo = true
       AND m.ativo = true
@@ -187,7 +187,8 @@ export async function montarDashboardSemana(
       by: ['tipo', 'status'],
       where: {
         relatorio: {
-          dataEnvio: { gte: dataInicio, lte: fimDia },
+          dataInicio: { gte: dataInicio },
+          dataFim: { lte: fimDia },
           celula: celulaScope,
         },
       },
@@ -203,8 +204,8 @@ export async function montarDashboardSemana(
       FROM relatorios r
       INNER JOIN celulas c ON c.id = r.celula_id
       WHERE r.status = 1
-        AND r.data_envio >= ${dataInicio}
-        AND r.data_envio <= ${fimDia}
+        AND r.data_inicio >= ${dataInicio}
+        AND r.data_fim <= ${fimDia}
         AND c.account_id = ${accountId}
         AND c.ativo = true
         AND (${liderId}::integer IS NULL OR c.lider_id = ${liderId})
@@ -223,7 +224,8 @@ export async function montarDashboardSemana(
     prisma.relatorio.findMany({
       where: {
         status: 1,
-        dataEnvio: { gte: dataInicio, lte: fimDia },
+        dataInicio: { gte: dataInicio },
+        dataFim: { lte: fimDia },
         celula: celulaScope,
       },
       select: { celulaId: true },

@@ -209,10 +209,8 @@ adminRouter.get('/estatisticas', async (req, res) => {
         by: ['tipo', 'status'],
         where: {
           relatorio: {
-            dataEnvio: {
-              gte: dataInicio,
-              lte: hoje,
-            },
+            dataInicio: { gte: dataInicio },
+            dataFim: { lte: hoje },
             celula: celulaScope,
           },
         },
@@ -246,10 +244,8 @@ adminRouter.get('/estatisticas', async (req, res) => {
         by: ['tipo', 'status'],
         where: {
           relatorio: {
-            dataEnvio: {
-              gte: periodoAnteriorInicio,
-              lte: periodoAnteriorFim,
-            },
+            dataInicio: { gte: periodoAnteriorInicio },
+            dataFim: { lte: periodoAnteriorFim },
             celula: celulaScope,
           },
         },
@@ -308,10 +304,9 @@ adminRouter.get('/estatisticas', async (req, res) => {
       // Relatórios enviados no período (filtrar por líder se fornecido)
       prisma.relatorio.count({
         where: {
-          dataEnvio: {
-            gte: dataInicio,
-            lte: hoje
-          },
+          status: 1,
+          dataInicio: { gte: dataInicio },
+          dataFim: { lte: hoje },
           celula: celulaScope,
         },
       }),
@@ -402,7 +397,8 @@ adminRouter.get('/estatisticas', async (req, res) => {
           prisma.relatorio.count({
             where: {
               status: 1,
-              dataEnvio: { gte: dataInicio, lte: hoje },
+              dataInicio: { gte: dataInicio },
+              dataFim: { lte: hoje },
               celula: scope,
             },
           }),
