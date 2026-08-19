@@ -203,7 +203,9 @@ export function usePushNotifications() {
       const subscription = await registration.pushManager.getSubscription()
       if (subscription) {
         const token = JSON.stringify(subscription.toJSON())
-        await api.delete(`/devices/${encodeURIComponent(token)}`)
+        try {
+          await api.post('/devices/unsubscribe', { token })
+        } catch { /* token may not exist server-side */ }
         await subscription.unsubscribe()
       }
       refreshPermission()
