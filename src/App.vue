@@ -6,6 +6,7 @@ import BottomNavbar from './components/BottomNavbar.vue'
 import PageRouteLoader from './components/PageRouteLoader.vue'
 import MobileOfflineBanner from './components/MobileOfflineBanner.vue'
 import PwaInstallBanner from './components/PwaInstallBanner.vue'
+import PushPromptBanner from './components/PushPromptBanner.vue'
 import BirthdatePromptModal from './components/BirthdatePromptModal.vue'
 import { usePlatform } from './composables/usePlatform'
 import { useSidebarCollapsed } from './composables/useSidebarCollapsed'
@@ -61,6 +62,8 @@ watch(
   </div>
 
   <PwaInstallBanner :above-bottom-nav="showNavigation && isMobileViewport" />
+
+  <PushPromptBanner v-if="showNavigation" :above-bottom-nav="showNavigation && isMobileViewport" />
 
   <BirthdatePromptModal v-if="showNavigation" />
 </template>
