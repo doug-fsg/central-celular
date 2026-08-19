@@ -66,19 +66,17 @@ services:
       - central-network
 
   frontend:
-    image: nginx:alpine
+    build:
+      context: .
+      dockerfile: Dockerfile.frontend
+      args:
+        VITE_API_URL: ${VITE_API_URL:-}
+        VITE_QUEPASA_USER_EMAIL: ${VITE_QUEPASA_USER_EMAIL:-}
     restart: unless-stopped
     ports:
       - "${FRONTEND_PORT:-8181}:80"
-    env_file:
-      - .env
     environment:
       QUEPASA_UPSTREAM: ${QUEPASA_UPSTREAM:-http://173.249.22.227:31000}
-    volumes:
-      - ./dist:/usr/share/nginx/html:ro
-      - ./docker/nginx.conf.template:/etc/nginx/templates/default.conf.template:ro
-      - ./docker/frontend-entrypoint.sh:/docker-entrypoint.sh:ro
-    entrypoint: ["/bin/sh", "/docker-entrypoint.sh"]
     depends_on:
       app:
         condition: service_healthy

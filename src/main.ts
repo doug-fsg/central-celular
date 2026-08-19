@@ -37,6 +37,24 @@ function hideMobilePwaSplash(): void {
   window.setTimeout(done, 500)
 }
 
+function setupSwAutoUpdate(): void {
+  if (!('serviceWorker' in navigator)) return
+
+  const CHECK_INTERVAL_MS = 10 * 60 * 1000 // 10 min
+
+  const checkForUpdate = () => {
+    navigator.serviceWorker.getRegistration().then((reg) => {
+      reg?.update().catch(() => {})
+    })
+  }
+
+  setInterval(checkForUpdate, CHECK_INTERVAL_MS)
+
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'visible') checkForUpdate()
+  })
+}
+
 async function bootstrap(): Promise<void> {
   await initNativeShell()
 
@@ -49,6 +67,8 @@ async function bootstrap(): Promise<void> {
   app.component('AppIcon', AppIcon)
   app.directive('fade-in', vFadeIn)
   app.mount('#app')
+
+  setupSwAutoUpdate()
 
   void router.isReady().then(() => {
     requestAnimationFrame(() => {
