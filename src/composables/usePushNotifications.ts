@@ -190,6 +190,36 @@ export function usePushNotifications() {
     }
   }
 
+  async function disablePush(): Promise<boolean> {
+    registering.value = true
+    errorMessage.value = ''
+    try {
+      if (isNativeApp()) {
+        errorMessage.value = 'Use as configurações do sistema para desativar notificações'
+        return false
+      }
+
+      const registration = await navigator.serviceWorker.ready
+      const subscription = await registration.pushManager.getSubscription()
+      if (subscription) {
+        const token = JSON.stringify(subscription.toJSON())
+        await api.delete(`/devices/${encodeURIComponent(token)}`)
+        await subscription.unsubscribe()
+      }
+      refreshPermission()
+      return true
+    } catch (error: unknown) {
+      const fallback = 'Não foi possível desativar as notificações'
+      errorMessage.value =
+        typeof error === 'object' && error && 'message' in error
+          ? String((error as { message?: string }).message || fallback)
+          : fallback
+      return false
+    } finally {
+      registering.value = false
+    }
+  }
+
   async function sendTestPush(): Promise<boolean> {
     testing.value = true
     errorMessage.value = ''
@@ -219,6 +249,7 @@ export function usePushNotifications() {
     isSupported,
     refreshPermission,
     enablePush,
+    disablePush,
     sendTestPush,
   }
 }

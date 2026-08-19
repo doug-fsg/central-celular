@@ -11,12 +11,10 @@ const whatsappRef = ref<any>(null);
 const {
   permissionStatus,
   registering,
-  testing,
   errorMessage: pushError,
-  lastTestMessage,
   refreshPermission,
   enablePush,
-  sendTestPush,
+  disablePush,
 } = usePushNotifications();
 
 const pushStatusLabel = computed(() => {
@@ -185,11 +183,6 @@ const testAniversarioNotification = async () => {
           <div v-if="testMessage" class="mx-4 mb-4 p-4 rounded-lg bg-blue-50 border border-blue-200">
             <p class="text-sm font-medium text-blue-800">{{ testMessage }}</p>
           </div>
-          
-          <!-- Alerta de push -->
-          <div v-if="lastTestMessage" class="mx-4 mb-4 p-4 rounded-lg bg-blue-50 border border-blue-200">
-            <p class="text-sm font-medium text-blue-800">{{ lastTestMessage }}</p>
-          </div>
 
           <!-- Alerta de erro -->
           <div v-if="errorMessage || pushError" class="mx-4 mb-4 p-4 rounded-lg bg-red-50 border border-red-200">
@@ -240,20 +233,22 @@ const testAniversarioNotification = async () => {
                   </p>
                   <div class="flex flex-wrap gap-3">
                     <button
+                      v-if="permissionStatus !== 'granted'"
                       type="button"
                       :disabled="registering || permissionStatus === 'unsupported'"
                       class="inline-flex items-center gap-2 rounded-md border border-transparent bg-primary-600 px-4 py-2 text-sm font-medium text-white shadow-sm hover:bg-primary-700 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50 transition-colors"
                       @click="enablePush"
                     >
-                      {{ registering ? 'Ativando...' : permissionStatus === 'granted' ? 'Reativar neste dispositivo' : 'Ativar notificações' }}
+                      {{ registering ? 'Ativando...' : 'Ativar notificações' }}
                     </button>
                     <button
+                      v-if="permissionStatus === 'granted'"
                       type="button"
-                      :disabled="testing"
-                      class="inline-flex items-center gap-2 rounded-md border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 shadow-sm hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50 transition-colors"
-                      @click="sendTestPush"
+                      :disabled="registering"
+                      class="inline-flex items-center gap-2 rounded-md border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-red-600 shadow-sm hover:bg-red-50 focus:outline-none focus:ring-2 focus:ring-red-500 focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50 transition-colors"
+                      @click="disablePush"
                     >
-                      {{ testing ? 'Enviando...' : 'Enviar notificação de teste' }}
+                      {{ registering ? 'Desativando...' : 'Desativar notificações' }}
                     </button>
                   </div>
                   <p v-if="permissionStatus === 'ios-browser'" class="text-xs text-gray-500">
