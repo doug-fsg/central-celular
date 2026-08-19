@@ -133,6 +133,7 @@ export async function registerPushIfEligible(): Promise<void> {
 
 export function usePushNotifications() {
   const permissionStatus = ref<PushPermissionStatus>('unsupported')
+  const subscribed = ref(false)
   const registering = ref(false)
   const testing = ref(false)
   const errorMessage = ref('')
@@ -141,6 +142,21 @@ export function usePushNotifications() {
   const isSupported = computed(
     () => permissionStatus.value !== 'unsupported' && permissionStatus.value !== 'ios-browser',
   )
+
+  async function checkSubscription(): Promise<void> {
+    try {
+      if (isNativeApp() || !canRequestWebPush()) {
+        subscribed.value = false
+        return
+      }
+      const reg = await getServiceWorkerRegistration(2000).catch(() => null)
+      if (!reg) { subscribed.value = false; return }
+      const sub = await reg.pushManager.getSubscription()
+      subscribed.value = sub !== null
+    } catch {
+      subscribed.value = false
+    }
+  }
 
   function refreshPermission(): void {
     if (isNativeApp()) {
@@ -200,6 +216,7 @@ export function usePushNotifications() {
 
       await registerWebPush()
       refreshPermission()
+      subscribed.value = true
       return true
     } catch (error: unknown) {
       const fallback = 'Não foi possível ativar as notificações'
@@ -237,6 +254,7 @@ export function usePushNotifications() {
         } catch { /* token may not exist server-side */ }
         await subscription.unsubscribe()
       }
+      subscribed.value = false
       refreshPermission()
       return true
     } catch (error: unknown) {
@@ -279,12 +297,14 @@ export function usePushNotifications() {
 
   return {
     permissionStatus,
+    subscribed,
     registering,
     testing,
     errorMessage,
     lastTestMessage,
     isSupported,
     refreshPermission,
+    checkSubscription,
     enablePush,
     disablePush,
     sendTestPush,

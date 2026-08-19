@@ -10,14 +10,19 @@ const configStore = useUsuarioConfigStore();
 const whatsappRef = ref<any>(null);
 const {
   permissionStatus,
+  subscribed,
   registering,
   errorMessage: pushError,
   refreshPermission,
+  checkSubscription,
   enablePush,
   disablePush,
 } = usePushNotifications();
 
 const pushStatusLabel = computed(() => {
+  if (permissionStatus.value === 'granted' && !subscribed.value) {
+    return 'Permissão concedida, mas notificações desativadas';
+  }
   switch (permissionStatus.value) {
     case 'granted':
       return 'Ativadas neste dispositivo';
@@ -68,6 +73,7 @@ const isDevelopment = computed(() => {
 // Carregar configurações ao montar o componente
 onMounted(async () => {
   refreshPermission();
+  void checkSubscription();
   await configStore.loadConfig();
   
   if (configStore.config) {
@@ -233,16 +239,16 @@ const testAniversarioNotification = async () => {
                   </p>
                   <div class="flex flex-wrap gap-3">
                     <button
-                      v-if="permissionStatus !== 'granted'"
+                      v-if="!subscribed"
                       type="button"
                       :disabled="registering || permissionStatus === 'unsupported'"
                       class="inline-flex items-center gap-2 rounded-md border border-transparent bg-primary-600 px-4 py-2 text-sm font-medium text-white shadow-sm hover:bg-primary-700 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50 transition-colors"
                       @click="enablePush"
                     >
-                      {{ registering ? 'Ativando...' : 'Ativar notificações' }}
+                      {{ registering ? 'Ativando...' : permissionStatus === 'granted' ? 'Reativar notificações' : 'Ativar notificações' }}
                     </button>
                     <button
-                      v-if="permissionStatus === 'granted'"
+                      v-if="subscribed"
                       type="button"
                       :disabled="registering"
                       class="inline-flex items-center gap-2 rounded-md border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-red-600 shadow-sm hover:bg-red-50 focus:outline-none focus:ring-2 focus:ring-red-500 focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50 transition-colors"
