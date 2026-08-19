@@ -32,8 +32,31 @@ export function canRequestWebPush(): boolean {
   return true
 }
 
+async function getServiceWorkerRegistration(timeoutMs = 5000): Promise<ServiceWorkerRegistration> {
+  if (typeof navigator === 'undefined' || !('serviceWorker' in navigator)) {
+    throw new Error('Service worker indisponível')
+  }
+
+  const sw = navigator.serviceWorker
+
+  // Preferir getRegistration porque funciona mesmo quando não existe "controlling" (ex: alguns cenários de dev).
+  if (typeof sw.getRegistration === 'function') {
+    const reg = await sw.getRegistration().catch(() => null)
+    if (reg) return reg
+  }
+
+  // No modo `localhost` o PWA plugin pode não registrar service worker (devOptions.enabled = false).
+  // Nesses casos, `serviceWorker.ready` pode não resolver e deixar o botão preso em "Ativando...".
+  return await Promise.race([
+    sw.ready,
+    new Promise<ServiceWorkerRegistration>((_, reject) => {
+      setTimeout(() => reject(new Error('Service worker não registrada (modo dev/sem PWA)')), timeoutMs)
+    }),
+  ])
+}
+
 async function registerWebPush(): Promise<void> {
-  const registration = await navigator.serviceWorker.ready
+  const registration = await getServiceWorkerRegistration()
   const res = await api.get('/devices/vapid-public-key')
   const publicKey = res.data?.publicKey ?? res.publicKey
   if (!publicKey) {
@@ -180,9 +203,15 @@ export function usePushNotifications() {
       return true
     } catch (error: unknown) {
       const fallback = 'Não foi possível ativar as notificações'
+      const friendlySwMissing =
+        'Push exige um PWA (service worker). No `localhost`, faça `yarn build` e `yarn preview` (ou instale o Aprisco na tela inicial).'
       errorMessage.value =
         typeof error === 'object' && error && 'message' in error
-          ? String((error as { message?: string }).message || fallback)
+          ? (String((error as { message?: string }).message || fallback).includes(
+            'Service worker não registrada',
+          )
+              ? friendlySwMissing
+              : String((error as { message?: string }).message || fallback))
           : fallback
       return false
     } finally {
@@ -199,7 +228,7 @@ export function usePushNotifications() {
         return false
       }
 
-      const registration = await navigator.serviceWorker.ready
+      const registration = await getServiceWorkerRegistration()
       const subscription = await registration.pushManager.getSubscription()
       if (subscription) {
         const token = JSON.stringify(subscription.toJSON())
@@ -212,9 +241,15 @@ export function usePushNotifications() {
       return true
     } catch (error: unknown) {
       const fallback = 'Não foi possível desativar as notificações'
+      const friendlySwMissing =
+        'Não conseguimos desativar porque o PWA (service worker) não está ativo neste modo de desenvolvimento.'
       errorMessage.value =
         typeof error === 'object' && error && 'message' in error
-          ? String((error as { message?: string }).message || fallback)
+          ? (String((error as { message?: string }).message || fallback).includes(
+            'Service worker não registrada',
+          )
+              ? friendlySwMissing
+              : String((error as { message?: string }).message || fallback))
           : fallback
       return false
     } finally {
